@@ -2,49 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { ethers } from "ethers";
+import { DEFAULT_TOKENS, TokenItem, loadAllBalances, provider } from "../lib/inri";
 
-const BASE = "/inri-wallet-stage/";
-const RPC_URL = "https://rpc-chain.inri.life";
 const ACTIVITY_KEY = "wallet_activity_demo";
 
-type TokenItem = {
-  symbol: string;
-  logo: string;
+type ViewToken = TokenItem & {
   balance: string;
-  isNative?: boolean;
-  address?: string;
-  decimals?: number;
 };
-
-const DEFAULT_TOKENS: TokenItem[] = [
-  {
-    symbol: "INRI",
-    logo: BASE + "token-inri.png",
-    balance: "0.000000",
-    isNative: true,
-  },
-  {
-    symbol: "iUSD",
-    logo: BASE + "token-iusd.png",
-    balance: "0.000000",
-    address: "0x116b2fF23e062A52E2c0ea12dF7e2638b62Fa0FC",
-    decimals: 6,
-  },
-  {
-    symbol: "WINRI",
-    logo: BASE + "token-winri.png",
-    balance: "0.000000",
-    address: "0x8731F1709745173470821eAeEd9BC600EEC9A3D1",
-    decimals: 18,
-  },
-  {
-    symbol: "DNR",
-    logo: BASE + "token-dnr.png",
-    balance: "0.000000",
-    address: "0xDa9541bB01d9EC1991328516C71B0E539a97d27f",
-    decimals: 18,
-  },
-];
 
 export default function SendScreen({
   theme = "dark",
@@ -65,7 +29,9 @@ export default function SendScreen({
   const [showScanner, setShowScanner] = useState(false);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [tokens, setTokens] = useState<TokenItem[]>(DEFAULT_TOKENS);
+  const [tokens, setTokens] = useState<ViewToken[]>(
+    DEFAULT_TOKENS.map((item) => ({ ...item, balance: "0.000000" }))
+  );
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
@@ -81,34 +47,16 @@ export default function SendScreen({
     let active = true;
 
     async function loadBalances() {
-      if (!address) return;
-
       try {
-        const provider = new ethers.JsonRpcProvider(RPC_URL);
-
-        const nativeRaw = await provider.getBalance(address);
-        const next = [...DEFAULT_TOKENS];
-        next[0].balance = Number(ethers.formatEther(nativeRaw)).toFixed(6);
-
-        const abi = ["function balanceOf(address) view returns (uint256)"];
-
-        for (let i = 1; i < next.length; i++) {
-          const item = next[i];
-          if (!item.address) continue;
-
-          try {
-            const contract = new ethers.Contract(item.address, abi, provider);
-            const raw = await contract.balanceOf(address);
-            next[i].balance = Number(
-              ethers.formatUnits(raw, item.decimals || 18)
-            ).toFixed(6);
-          } catch {
-            next[i].balance = "0.000000";
-          }
-        }
-
+        const balances = await loadAllBalances(address, tokens);
         if (!active) return;
-        setTokens(next);
+
+        setTokens((prev) =>
+          prev.map((item) => ({
+            ...item,
+            balance: balances[item.symbol] || "0.000000",
+          }))
+        );
       } catch {}
     }
 
@@ -161,10 +109,14 @@ export default function SendScreen({
       return;
     }
 
+    if (Number(amount) > Number(token.balance || "0")) {
+      showMessage(t.insufficientBalance);
+      return;
+    }
+
     setSending(true);
 
     try {
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
       const wallet = ethers.Wallet.fromPhrase(mnemonic).connect(provider);
 
       let txHash = "";
@@ -195,11 +147,20 @@ export default function SendScreen({
         to: toAddress.trim(),
         from: address,
         createdAt: new Date().toISOString(),
+        status: "confirmed",
       });
 
       showMessage(`${t.sent}: ${amount} ${token.symbol}`);
       setAmount("");
       setToAddress("");
+
+      const balances = await loadAllBalances(address, tokens);
+      setTokens((prev) =>
+        prev.map((item) => ({
+          ...item,
+          balance: balances[item.symbol] || "0.000000",
+        }))
+      );
     } catch (e: any) {
       showMessage(e?.shortMessage || e?.message || t.sendFailed);
     } finally {
@@ -308,11 +269,7 @@ export default function SendScreen({
 
           <div style={tokenPreviewStyle}>
             <div style={tokenLeftStyle}>
-              <img
-                src={token.logo}
-                alt={token.symbol}
-                style={tokenLogoStyle}
-              />
+              <img src={token.logo} alt={token.symbol} style={tokenLogoStyle} />
               <div>
                 <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>
                   {token.symbol}
@@ -519,51 +476,53 @@ function getText(lang: string) {
       copyAddress: "Copy Address",
       showQr: "Show QR",
       hideQr: "Hide QR",
-      sending: "Sending...",
-      scanQr: "Scan QR",
-      close: "Close",
-      scanHint: "Point the camera at a wallet QR code.",
       copied: "Copied.",
-      copyFail: "Copy failed.",
+      copyFail: "Could not copy.",
+      noWallet: "Unlock your wallet first.",
       invalidAddress: "Invalid recipient address.",
       invalidAmount: "Invalid amount.",
+      insufficientBalance: "Insufficient balance.",
+      sending: "Sending...",
       sent: "Sent",
-      sendFailed: "Send failed.",
-      cameraUnavailable: "Camera not available.",
-      qrCaptured: "QR captured.",
-      cameraFail: "Could not open camera.",
+      sendFailed: "Transaction failed.",
       nativeInfo: "INRI is the native gas token of the network and pays transaction fees.",
-      tokenInfo: "This sends a real ERC-20 transfer on INRI.",
-      noWallet: "No wallet loaded.",
+      tokenInfo: "ERC20 token transfer through the INRI network.",
+      scanQr: "Scan QR",
+      close: "Close",
+      scanHint: "Point your camera at a QR code containing a wallet address.",
+      qrCaptured: "Address captured from QR.",
+      cameraFail: "Could not open camera.",
+      cameraUnavailable: "Camera unavailable.",
     },
     pt: {
       send: "Enviar",
       token: "Token",
       balance: "Saldo",
       recipient: "Endereço do destinatário",
-      amount: "Valor",
+      amount: "Quantidade",
       yourAddress: "Seu endereço",
-      openCamera: "Abrir câmera",
-      useMyAddress: "Usar meu endereço",
-      copyAddress: "Copiar endereço",
+      openCamera: "Abrir Câmera",
+      useMyAddress: "Usar Meu Endereço",
+      copyAddress: "Copiar Endereço",
       showQr: "Mostrar QR",
       hideQr: "Ocultar QR",
+      copied: "Copiado.",
+      copyFail: "Não foi possível copiar.",
+      noWallet: "Desbloqueie sua carteira primeiro.",
+      invalidAddress: "Endereço do destinatário inválido.",
+      invalidAmount: "Quantidade inválida.",
+      insufficientBalance: "Saldo insuficiente.",
       sending: "Enviando...",
+      sent: "Enviado",
+      sendFailed: "Falha na transação.",
+      nativeInfo: "INRI é o token nativo da rede e paga as taxas.",
+      tokenInfo: "Transferência de token ERC20 pela rede INRI.",
       scanQr: "Ler QR",
       close: "Fechar",
-      scanHint: "Aponte a câmera para um QR de carteira.",
-      copied: "Copiado.",
-      copyFail: "Falha ao copiar.",
-      invalidAddress: "Endereço inválido.",
-      invalidAmount: "Valor inválido.",
-      sent: "Enviado",
-      sendFailed: "Falha no envio.",
-      cameraUnavailable: "Câmera indisponível.",
-      qrCaptured: "QR capturado.",
+      scanHint: "Aponte sua câmera para um QR code com endereço de carteira.",
+      qrCaptured: "Endereço capturado do QR.",
       cameraFail: "Não foi possível abrir a câmera.",
-      nativeInfo: "INRI é o token nativo da rede e paga as taxas.",
-      tokenInfo: "Isso envia uma transferência ERC-20 real na INRI.",
-      noWallet: "Nenhuma carteira carregada.",
+      cameraUnavailable: "Câmera indisponível.",
     },
     es: {
       send: "Enviar",
@@ -572,27 +531,28 @@ function getText(lang: string) {
       recipient: "Dirección del destinatario",
       amount: "Cantidad",
       yourAddress: "Tu dirección",
-      openCamera: "Abrir cámara",
-      useMyAddress: "Usar mi dirección",
-      copyAddress: "Copiar dirección",
+      openCamera: "Abrir Cámara",
+      useMyAddress: "Usar Mi Dirección",
+      copyAddress: "Copiar Dirección",
       showQr: "Mostrar QR",
       hideQr: "Ocultar QR",
+      copied: "Copiado.",
+      copyFail: "No se pudo copiar.",
+      noWallet: "Primero desbloquea tu billetera.",
+      invalidAddress: "Dirección del destinatario inválida.",
+      invalidAmount: "Cantidad inválida.",
+      insufficientBalance: "Saldo insuficiente.",
       sending: "Enviando...",
+      sent: "Enviado",
+      sendFailed: "La transacción falló.",
+      nativeInfo: "INRI es el token nativo de la red y paga las comisiones.",
+      tokenInfo: "Transferencia de token ERC20 por la red INRI.",
       scanQr: "Escanear QR",
       close: "Cerrar",
-      scanHint: "Apunta la cámara al QR de una billetera.",
-      copied: "Copiado.",
-      copyFail: "Error al copiar.",
-      invalidAddress: "Dirección inválida.",
-      invalidAmount: "Cantidad inválida.",
-      sent: "Enviado",
-      sendFailed: "Error al enviar.",
-      cameraUnavailable: "Cámara no disponible.",
-      qrCaptured: "QR capturado.",
+      scanHint: "Apunta tu cámara a un código QR que contenga una dirección.",
+      qrCaptured: "Dirección capturada desde el QR.",
       cameraFail: "No se pudo abrir la cámara.",
-      nativeInfo: "INRI es el token nativo de la red y paga las comisiones.",
-      tokenInfo: "Esto envía una transferencia ERC-20 real en INRI.",
-      noWallet: "No hay billetera cargada.",
+      cameraUnavailable: "Cámara no disponible.",
     },
   };
 
@@ -603,7 +563,7 @@ function cardStyle(isLight: boolean): React.CSSProperties {
   return {
     border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
     borderRadius: 18,
-    background: isLight ? "#ffffff" : "#0d111b",
+    background: isLight ? "#fbfcff" : "#0f1522",
     padding: 14,
   };
 }
@@ -622,43 +582,23 @@ function inputStyle(isLight: boolean): React.CSSProperties {
     padding: 12,
     borderRadius: 12,
     border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-    background: isLight ? "#f6f8fc" : "#121621",
-    color: isLight ? "#10131a" : "#fff",
+    background: isLight ? "#f6f8fc" : "#0d111b",
+    color: isLight ? "#10131a" : "#ffffff",
     outline: "none",
+    boxSizing: "border-box",
   };
 }
 
 function selectStyle(isLight: boolean): React.CSSProperties {
   return {
-    background: isLight ? "#f6f8fc" : "#121621",
-    color: isLight ? "#10131a" : "#fff",
+    padding: "10px 12px",
+    borderRadius: 12,
     border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-    borderRadius: 10,
-    padding: "8px 10px",
+    background: isLight ? "#ffffff" : "#12192a",
+    color: isLight ? "#10131a" : "#ffffff",
+    outline: "none",
   };
 }
-
-const tokenPreviewStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const tokenLeftStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-};
-
-const tokenLogoStyle: React.CSSProperties = {
-  width: 36,
-  height: 36,
-  borderRadius: 18,
-  objectFit: "cover",
-  background: "#121621",
-};
 
 function mainButtonStyle(): React.CSSProperties {
   return {
@@ -676,8 +616,9 @@ function mainButtonStyle(): React.CSSProperties {
 
 function secondaryButtonStyle(): React.CSSProperties {
   return {
-    padding: "10px 14px",
-    borderRadius: 12,
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: 14,
     border: "1px solid #252b39",
     background: "#1b2741",
     color: "#fff",
@@ -686,37 +627,56 @@ function secondaryButtonStyle(): React.CSSProperties {
   };
 }
 
+const tokenPreviewStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const tokenLeftStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+};
+
+const tokenLogoStyle: React.CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: 17,
+  objectFit: "cover",
+};
+
 function infoStyle(isLight: boolean): React.CSSProperties {
   return {
+    textAlign: "center",
     color: isLight ? "#5b6578" : "#97a0b3",
     fontSize: 13,
-    textAlign: "center",
   };
 }
 
 const messageStyle: React.CSSProperties = {
   color: "#3f7cff",
-  fontSize: 13,
-  textAlign: "center",
   fontWeight: 700,
+  textAlign: "center",
+  fontSize: 13,
 };
 
 const modalBackdropStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,.7)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
+  background: "rgba(0,0,0,.6)",
+  display: "grid",
+  placeItems: "center",
   padding: 16,
-  zIndex: 100,
+  zIndex: 50,
 };
 
 function modalStyle(isLight: boolean): React.CSSProperties {
   return {
     width: "min(560px, 100%)",
-    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
     borderRadius: 20,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
     background: isLight ? "#ffffff" : "#121621",
     padding: 16,
   };
