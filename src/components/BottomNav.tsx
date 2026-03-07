@@ -32,20 +32,21 @@ export default function BottomNav({
         left: 0,
         right: 0,
         bottom: 0,
-        zIndex: 40,
-        padding: "10px 8px 14px",
-        background: isLight ? "rgba(255,255,255,.94)" : "rgba(15,20,32,.96)",
+        zIndex: 50,
+        background: isLight ? "rgba(255,255,255,.96)" : "rgba(15,20,32,.96)",
         borderTop: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-        backdropFilter: "blur(14px)",
+        backdropFilter: "blur(12px)",
+        padding: "8px 8px calc(8px + env(safe-area-inset-bottom))",
       }}
     >
       <div
         style={{
-          maxWidth: 980,
-          margin: "0 auto",
-          display: "grid",
-          gridTemplateColumns: "repeat(7,1fr)",
+          display: "flex",
           gap: 8,
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
         }}
       >
         {items.map((item) => {
@@ -56,7 +57,9 @@ export default function BottomNav({
               key={item.id}
               onClick={() => setTab(item.id)}
               style={{
-                padding: "12px 8px",
+                flex: "0 0 auto",
+                minWidth: 92,
+                padding: "12px 14px",
                 borderRadius: 16,
                 border: active
                   ? "1px solid #89a9ff"
@@ -72,7 +75,7 @@ export default function BottomNav({
                 fontWeight: 800,
                 fontSize: 14,
                 cursor: "pointer",
-                minHeight: 48,
+                whiteSpace: "nowrap",
               }}
             >
               {item.label}
