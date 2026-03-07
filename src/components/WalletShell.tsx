@@ -117,6 +117,7 @@ export default function WalletShell() {
 
     document.body.style.color = theme === "light" ? "#10131a" : "#ffffff";
     document.body.style.margin = "0";
+    document.body.style.minWidth = "320px";
 
     ensureFavicon();
   }, [theme, lang]);
@@ -404,10 +405,22 @@ export default function WalletShell() {
         );
 
       case "swap":
-        return <SwapScreen theme={theme} lang={lang} />;
+        return (
+          <SwapScreen
+            theme={theme}
+            lang={lang}
+            address={address}
+          />
+        );
 
       case "bridge":
-        return <BridgeScreen theme={theme} lang={lang} />;
+        return (
+          <BridgeScreen
+            theme={theme}
+            lang={lang}
+            address={address}
+          />
+        );
 
       case "settings":
         return (
@@ -688,7 +701,7 @@ export default function WalletShell() {
     <div
       style={{
         minHeight: "100vh",
-        paddingBottom: "110px",
+        paddingBottom: "112px",
         background:
           theme === "light"
             ? "linear-gradient(180deg,#eef3fb 0%, #f7f9fd 100%)"
@@ -701,9 +714,10 @@ export default function WalletShell() {
       <main
         style={{
           padding: "16px",
-          maxWidth: 900,
+          maxWidth: 980,
           margin: "0 auto",
           boxSizing: "border-box",
+          width: "100%",
         }}
       >
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
