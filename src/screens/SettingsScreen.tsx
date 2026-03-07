@@ -61,12 +61,7 @@ export default function SettingsScreen({
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gap: 14,
-      }}
-    >
+    <div style={{ display: "grid", gap: 14 }}>
       <div
         style={{
           border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
