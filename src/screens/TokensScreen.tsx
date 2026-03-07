@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { ethers } from "ethers";
 
 const BASE = "/inri-wallet-stage/";
+const RPC_URL = "https://rpc-chain.inri.life";
+const CUSTOM_TOKENS_KEY = "wallet_custom_tokens";
 
 type TokenItem = {
   symbol: string;
@@ -26,7 +29,7 @@ const DEFAULT_TOKENS: TokenItem[] = [
     balance: "0.000000",
     logo: BASE + "token-iusd.png",
     isDefault: true,
-    address: "",
+    address: "0x116b2fF23e062A52E2c0ea12dF7e2638b62Fa0FC",
     decimals: 6,
   },
   {
@@ -35,7 +38,7 @@ const DEFAULT_TOKENS: TokenItem[] = [
     balance: "0.000000",
     logo: BASE + "token-winri.png",
     isDefault: true,
-    address: "",
+    address: "0x8731F1709745173470821eAeEd9BC600EEC9A3D1",
     decimals: 18,
   },
   {
@@ -44,21 +47,31 @@ const DEFAULT_TOKENS: TokenItem[] = [
     balance: "0.000000",
     logo: BASE + "token-dnr.png",
     isDefault: true,
-    address: "",
+    address: "0xDa9541bB01d9EC1991328516C71B0E539a97d27f",
     decimals: 18,
   },
 ];
 
-export default function TokensScreen() {
+export default function TokensScreen({
+  theme = "dark",
+  lang = "en",
+  address,
+}: {
+  theme?: "dark" | "light";
+  lang?: string;
+  address: string;
+}) {
+  const isLight = theme === "light";
   const [customTokens, setCustomTokens] = useState<TokenItem[]>([]);
   const [symbol, setSymbol] = useState("");
-  const [address, setAddress] = useState("");
+  const [tokenAddress, setTokenAddress] = useState("");
   const [decimals, setDecimals] = useState("18");
   const [logo, setLogo] = useState("");
   const [message, setMessage] = useState("");
+  const t = getText(lang);
 
   useEffect(() => {
-    const saved = localStorage.getItem("wallet_custom_tokens");
+    const saved = localStorage.getItem(CUSTOM_TOKENS_KEY);
     if (saved) {
       try {
         setCustomTokens(JSON.parse(saved));
@@ -69,12 +82,61 @@ export default function TokensScreen() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("wallet_custom_tokens", JSON.stringify(customTokens));
+    localStorage.setItem(CUSTOM_TOKENS_KEY, JSON.stringify(customTokens));
   }, [customTokens]);
 
   const tokens = useMemo(() => {
     return [...DEFAULT_TOKENS, ...customTokens];
   }, [customTokens]);
+
+  const [balances, setBalances] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadBalances() {
+      if (!address) return;
+
+      try {
+        const provider = new ethers.JsonRpcProvider(RPC_URL);
+        const next: Record<string, string> = {};
+
+        const nativeRaw = await provider.getBalance(address);
+        next["INRI"] = Number(ethers.formatEther(nativeRaw)).toFixed(6);
+
+        const abi = ["function balanceOf(address) view returns (uint256)"];
+
+        for (const token of tokens) {
+          if (token.symbol === "INRI") continue;
+          if (!token.address) {
+            next[token.symbol] = "0.000000";
+            continue;
+          }
+
+          try {
+            const contract = new ethers.Contract(token.address, abi, provider);
+            const raw = await contract.balanceOf(address);
+            next[token.symbol] = Number(
+              ethers.formatUnits(raw, token.decimals || 18)
+            ).toFixed(6);
+          } catch {
+            next[token.symbol] = "0.000000";
+          }
+        }
+
+        if (!active) return;
+        setBalances(next);
+      } catch {}
+    }
+
+    loadBalances();
+    const timer = setInterval(loadBalances, 12000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [address, tokens]);
 
   function showMessage(text: string) {
     setMessage(text);
@@ -83,38 +145,38 @@ export default function TokensScreen() {
 
   function addToken() {
     const cleanSymbol = symbol.trim().toUpperCase();
-    const cleanAddress = address.trim();
+    const cleanAddress = tokenAddress.trim();
     const cleanLogo = logo.trim();
     const cleanDecimals = Number(decimals);
 
     if (!cleanSymbol) {
-      showMessage("Token symbol is required.");
+      showMessage(t.symbolRequired);
       return;
     }
 
     if (!cleanAddress) {
-      showMessage("Token address is required.");
+      showMessage(t.addressRequired);
       return;
     }
 
     if (!/^0x[a-fA-F0-9]{40}$/.test(cleanAddress)) {
-      showMessage("Invalid token address.");
+      showMessage(t.invalidAddress);
       return;
     }
 
     if (!Number.isFinite(cleanDecimals) || cleanDecimals < 0 || cleanDecimals > 36) {
-      showMessage("Invalid decimals.");
+      showMessage(t.invalidDecimals);
       return;
     }
 
     const exists = tokens.some(
-      (t) =>
-        t.symbol.toUpperCase() === cleanSymbol ||
-        (t.address && t.address.toLowerCase() === cleanAddress.toLowerCase())
+      (token) =>
+        token.symbol.toUpperCase() === cleanSymbol ||
+        (token.address && token.address.toLowerCase() === cleanAddress.toLowerCase())
     );
 
     if (exists) {
-      showMessage("Token already exists.");
+      showMessage(t.tokenExists);
       return;
     }
 
@@ -130,50 +192,43 @@ export default function TokensScreen() {
 
     setCustomTokens((prev) => [...prev, newToken]);
     setSymbol("");
-    setAddress("");
+    setTokenAddress("");
     setDecimals("18");
     setLogo("");
-    showMessage("Token added.");
+    showMessage(t.tokenAdded);
   }
 
   function removeToken(tokenSymbol: string) {
-    const target = customTokens.find((t) => t.symbol === tokenSymbol);
-    if (!target) return;
-
     setCustomTokens((prev) => prev.filter((t) => t.symbol !== tokenSymbol));
-    showMessage("Token removed.");
+    showMessage(t.tokenRemoved);
   }
 
   return (
     <div
       style={{
-        border: "1px solid #252b39",
+        border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
         borderRadius: 20,
-        background: "#121621",
+        background: isLight ? "#ffffff" : "#121621",
         padding: 16,
       }}
     >
-      <h2 style={{ marginTop: 0, marginBottom: 16 }}>Tokens</h2>
+      <h2 style={{ marginTop: 0, color: isLight ? "#10131a" : "#ffffff" }}>
+        {t.tokens}
+      </h2>
 
-      <div
-        style={{
-          display: "grid",
-          gap: 10,
-          marginBottom: 16,
-        }}
-      >
+      <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
         <input
-          placeholder="Token symbol"
+          placeholder={t.tokenSymbol}
           value={symbol}
           onChange={(e) => setSymbol(e.target.value)}
-          style={inputStyle}
+          style={inputStyle(isLight)}
         />
 
         <input
-          placeholder="Token address"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          style={inputStyle}
+          placeholder={t.tokenAddress}
+          value={tokenAddress}
+          onChange={(e) => setTokenAddress(e.target.value)}
+          style={inputStyle(isLight)}
         />
 
         <div
@@ -184,26 +239,28 @@ export default function TokensScreen() {
           }}
         >
           <input
-            placeholder="Logo URL (optional)"
+            placeholder={t.logoOptional}
             value={logo}
             onChange={(e) => setLogo(e.target.value)}
-            style={inputStyle}
+            style={inputStyle(isLight)}
           />
 
           <input
-            placeholder="Decimals"
+            placeholder="18"
             value={decimals}
             onChange={(e) => setDecimals(e.target.value)}
-            style={inputStyle}
+            style={inputStyle(isLight)}
           />
         </div>
 
-        <button onClick={addToken} style={addButtonStyle}>
-          Add Token
+        <button onClick={addToken} style={mainButtonStyle()}>
+          {t.addToken}
         </button>
 
         {message ? (
-          <div style={{ color: "#8fb3ff", fontSize: 13 }}>{message}</div>
+          <div style={{ color: "#3f7cff", fontSize: 13, fontWeight: 700 }}>
+            {message}
+          </div>
         ) : null}
       </div>
 
@@ -216,7 +273,7 @@ export default function TokensScreen() {
               justifyContent: "space-between",
               alignItems: "center",
               padding: "12px 0",
-              borderBottom: "1px solid rgba(255,255,255,.06)",
+              borderBottom: `1px solid ${isLight ? "rgba(20,30,60,.08)" : "rgba(255,255,255,.06)"}`,
               gap: 12,
             }}
           >
@@ -235,10 +292,17 @@ export default function TokensScreen() {
               />
 
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 800 }}>{token.symbol}</div>
                 <div
                   style={{
-                    color: "#97a0b3",
+                    fontWeight: 800,
+                    color: isLight ? "#10131a" : "#ffffff",
+                  }}
+                >
+                  {token.symbol}
+                </div>
+                <div
+                  style={{
+                    color: isLight ? "#5b6578" : "#97a0b3",
                     fontSize: 12,
                     whiteSpace: "nowrap",
                     overflow: "hidden",
@@ -252,27 +316,31 @@ export default function TokensScreen() {
             </div>
 
             <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
-              <div style={{ fontWeight: 800 }}>{token.balance}</div>
+              <div
+                style={{
+                  fontWeight: 800,
+                  color: isLight ? "#10131a" : "#ffffff",
+                }}
+              >
+                {balances[token.symbol] ?? "0.000000"}
+              </div>
 
               {token.isDefault ? (
                 <div
                   style={{
-                    background: "#1e2433",
-                    color: "#97a0b3",
+                    background: isLight ? "#eef2f8" : "#1e2433",
+                    color: isLight ? "#4a5568" : "#97a0b3",
                     padding: "6px 10px",
                     borderRadius: 8,
                     fontSize: 12,
                     fontWeight: 700,
                   }}
                 >
-                  Fixed
+                  {t.fixed}
                 </div>
               ) : (
-                <button
-                  onClick={() => removeToken(token.symbol)}
-                  style={removeButtonStyle}
-                >
-                  Remove
+                <button onClick={() => removeToken(token.symbol)} style={removeButtonStyle()}>
+                  {t.remove}
                 </button>
               )}
             </div>
@@ -283,32 +351,94 @@ export default function TokensScreen() {
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid #252b39",
-  background: "#0d111b",
-  color: "#fff",
-  outline: "none",
-};
+function getText(lang: string) {
+  const map: Record<string, any> = {
+    en: {
+      tokens: "Tokens",
+      tokenSymbol: "Token symbol",
+      tokenAddress: "Token address",
+      logoOptional: "Logo URL (optional)",
+      addToken: "Add Token",
+      remove: "Remove",
+      fixed: "Fixed",
+      symbolRequired: "Token symbol is required.",
+      addressRequired: "Token address is required.",
+      invalidAddress: "Invalid token address.",
+      invalidDecimals: "Invalid decimals.",
+      tokenExists: "Token already exists.",
+      tokenAdded: "Token added.",
+      tokenRemoved: "Token removed.",
+    },
+    pt: {
+      tokens: "Tokens",
+      tokenSymbol: "Símbolo do token",
+      tokenAddress: "Endereço do token",
+      logoOptional: "URL da logo (opcional)",
+      addToken: "Adicionar Token",
+      remove: "Remover",
+      fixed: "Fixo",
+      symbolRequired: "Símbolo obrigatório.",
+      addressRequired: "Endereço do token obrigatório.",
+      invalidAddress: "Endereço do token inválido.",
+      invalidDecimals: "Decimais inválidos.",
+      tokenExists: "Token já existe.",
+      tokenAdded: "Token adicionado.",
+      tokenRemoved: "Token removido.",
+    },
+    es: {
+      tokens: "Tokens",
+      tokenSymbol: "Símbolo del token",
+      tokenAddress: "Dirección del token",
+      logoOptional: "URL del logo (opcional)",
+      addToken: "Agregar Token",
+      remove: "Eliminar",
+      fixed: "Fijo",
+      symbolRequired: "Símbolo obligatorio.",
+      addressRequired: "Dirección del token obligatoria.",
+      invalidAddress: "Dirección del token inválida.",
+      invalidDecimals: "Decimales inválidos.",
+      tokenExists: "El token ya existe.",
+      tokenAdded: "Token agregado.",
+      tokenRemoved: "Token eliminado.",
+    },
+  };
 
-const addButtonStyle: React.CSSProperties = {
-  padding: "12px 16px",
-  borderRadius: 12,
-  border: "none",
-  background: "#3f7cff",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 700,
-};
+  return map[lang] || map.en;
+}
 
-const removeButtonStyle: React.CSSProperties = {
-  background: "#ff4d4d",
-  border: "none",
-  color: "#fff",
-  padding: "6px 10px",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontWeight: 700,
-};
+function inputStyle(isLight: boolean): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: 12,
+    borderRadius: 12,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#f6f8fc" : "#0d111b",
+    color: isLight ? "#10131a" : "#fff",
+    outline: "none",
+  };
+}
+
+function mainButtonStyle(): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: 12,
+    border: "none",
+    background: "#3f7cff",
+    color: "#fff",
+    cursor: "pointer",
+    fontWeight: 800,
+  };
+}
+
+function removeButtonStyle(): React.CSSProperties {
+  return {
+    background: "#ff4d4d",
+    border: "none",
+    color: "#fff",
+    padding: "6px 10px",
+    borderRadius: 8,
+    cursor: "pointer",
+    fontWeight: 700,
+  };
+}
