@@ -1,29 +1,24 @@
-import React, { useState } from "react";
+import React from "react";
 import QRCode from "react-qr-code";
-
-type ReceiveScreenProps = {
-  theme?: "dark" | "light";
-  lang?: string;
-  address: string;
-};
 
 export default function ReceiveScreen({
   theme = "dark",
   lang = "en",
   address,
-}: ReceiveScreenProps) {
+}: {
+  theme?: "dark" | "light";
+  lang?: string;
+  address: string;
+}) {
   const isLight = theme === "light";
-  const [message, setMessage] = useState("");
-  const text = getText(lang);
+  const t = getText(lang);
 
   async function copyAddress() {
     try {
       await navigator.clipboard.writeText(address);
-      setMessage(text.copied);
-      setTimeout(() => setMessage(""), 2200);
+      alert(t.copied);
     } catch {
-      setMessage(text.copyFail);
-      setTimeout(() => setMessage(""), 2200);
+      alert(t.copyFail);
     }
   }
 
@@ -37,31 +32,34 @@ export default function ReceiveScreen({
       }}
     >
       <h2 style={{ marginTop: 0, color: isLight ? "#10131a" : "#ffffff" }}>
-        {text.receive}
+        {t.receive}
       </h2>
 
       <div
         style={{
-          width: 220,
-          margin: "0 auto",
-          borderRadius: 22,
-          background: "#ffffff",
-          padding: 16,
           display: "grid",
           placeItems: "center",
+          margin: "24px 0",
         }}
       >
-        <QRCode value={address || "0x"} size={180} />
+        <div
+          style={{
+            background: "#fff",
+            padding: 16,
+            borderRadius: 20,
+          }}
+        >
+          <QRCode value={address || "0x"} size={190} />
+        </div>
       </div>
 
       <div
         style={{
-          marginTop: 16,
-          padding: 12,
+          padding: 14,
           borderRadius: 14,
           border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-          background: isLight ? "#f6f8fc" : "#0d111b",
-          color: isLight ? "#4a5568" : "#97a0b3",
+          background: isLight ? "#f8fafc" : "#0f1522",
+          color: isLight ? "#334155" : "#cdd6ea",
           wordBreak: "break-all",
           fontSize: 13,
         }}
@@ -72,33 +70,20 @@ export default function ReceiveScreen({
       <button
         onClick={copyAddress}
         style={{
-          marginTop: 14,
           width: "100%",
-          padding: "12px 16px",
-          borderRadius: 12,
+          marginTop: 14,
+          padding: "14px 16px",
+          borderRadius: 14,
           border: "none",
           background: "#3f7cff",
           color: "#fff",
           cursor: "pointer",
           fontWeight: 800,
+          fontSize: 16,
         }}
       >
-        {text.copyAddress}
+        {t.copyAddress}
       </button>
-
-      {message ? (
-        <div
-          style={{
-            marginTop: 10,
-            color: "#3f7cff",
-            fontSize: 13,
-            textAlign: "center",
-            fontWeight: 700,
-          }}
-        >
-          {message}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -109,19 +94,67 @@ function getText(lang: string) {
       receive: "Receive",
       copyAddress: "Copy Address",
       copied: "Address copied.",
-      copyFail: "Copy failed.",
+      copyFail: "Could not copy address.",
     },
     pt: {
       receive: "Receber",
-      copyAddress: "Copiar endereço",
+      copyAddress: "Copiar Endereço",
       copied: "Endereço copiado.",
-      copyFail: "Falha ao copiar.",
+      copyFail: "Não foi possível copiar o endereço.",
     },
     es: {
       receive: "Recibir",
-      copyAddress: "Copiar dirección",
+      copyAddress: "Copiar Dirección",
       copied: "Dirección copiada.",
-      copyFail: "Error al copiar.",
+      copyFail: "No se pudo copiar la dirección.",
+    },
+    fr: {
+      receive: "Recevoir",
+      copyAddress: "Copier l’adresse",
+      copied: "Adresse copiée.",
+      copyFail: "Impossible de copier l’adresse.",
+    },
+    de: {
+      receive: "Empfangen",
+      copyAddress: "Adresse kopieren",
+      copied: "Adresse kopiert.",
+      copyFail: "Adresse konnte nicht kopiert werden.",
+    },
+    it: {
+      receive: "Ricevi",
+      copyAddress: "Copia indirizzo",
+      copied: "Indirizzo copiato.",
+      copyFail: "Impossibile copiare l’indirizzo.",
+    },
+    ru: {
+      receive: "Получить",
+      copyAddress: "Скопировать адрес",
+      copied: "Адрес скопирован.",
+      copyFail: "Не удалось скопировать адрес.",
+    },
+    zh: {
+      receive: "接收",
+      copyAddress: "复制地址",
+      copied: "地址已复制。",
+      copyFail: "无法复制地址。",
+    },
+    ja: {
+      receive: "受取",
+      copyAddress: "アドレスをコピー",
+      copied: "アドレスをコピーしました。",
+      copyFail: "アドレスをコピーできませんでした。",
+    },
+    ko: {
+      receive: "수신",
+      copyAddress: "주소 복사",
+      copied: "주소가 복사되었습니다.",
+      copyFail: "주소를 복사할 수 없습니다.",
+    },
+    tr: {
+      receive: "Al",
+      copyAddress: "Adresi Kopyala",
+      copied: "Adres kopyalandı.",
+      copyFail: "Adres kopyalanamadı.",
     },
   };
 
