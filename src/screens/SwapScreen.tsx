@@ -1,201 +1,238 @@
 import React, { useMemo, useState } from "react";
+import { DEFAULT_TOKENS } from "../lib/inri";
 
-const BASE = "/inri-wallet-stage/";
+export default function SwapScreen({
+  theme = "dark",
+  lang = "en",
+}: {
+  theme?: "dark" | "light";
+  lang?: string;
+}) {
+  const isLight = theme === "light";
+  const t = getText(lang);
 
-const TOKENS = [
-  { symbol: "INRI", logo: BASE + "token-inri.png" },
-  { symbol: "iUSD", logo: BASE + "token-iusd.png" },
-  { symbol: "WINRI", logo: BASE + "token-winri.png" },
-  { symbol: "DNR", logo: BASE + "token-dnr.png" },
-];
+  const tokenOptions = DEFAULT_TOKENS.filter((x) => x.symbol === "INRI" || x.symbol === "iUSD");
 
-export default function SwapScreen() {
   const [fromToken, setFromToken] = useState("INRI");
   const [toToken, setToToken] = useState("iUSD");
   const [amount, setAmount] = useState("");
 
-  const preview = useMemo(() => {
+  const estimated = useMemo(() => {
     const n = Number(amount || "0");
     if (!Number.isFinite(n) || n <= 0) return "0.000000";
-    const fee = n * 0.003;
-    return (n - fee).toFixed(6);
+    return (n * 0.997).toFixed(6);
   }, [amount]);
 
-  const fromObj = TOKENS.find((t) => t.symbol === fromToken);
-  const toObj = TOKENS.find((t) => t.symbol === toToken);
-
-  function switchTokens() {
-    setFromToken(toToken);
-    setToToken(fromToken);
-  }
+  const from = tokenOptions.find((t) => t.symbol === fromToken) || tokenOptions[0];
+  const to = tokenOptions.find((t) => t.symbol === toToken) || tokenOptions[1];
 
   return (
     <div
       style={{
-        border: "1px solid #252b39",
+        border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
         borderRadius: 20,
-        background: "#121621",
+        background: isLight ? "#ffffff" : "#121621",
         padding: 16,
       }}
     >
-      <h2 style={{ marginTop: 0 }}>Swap</h2>
+      <h2 style={{ marginTop: 0, color: isLight ? "#10131a" : "#ffffff" }}>
+        {t.swap}
+      </h2>
 
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={boxStyle}>
-          <div style={labelStyle}>From</div>
-          <div style={tokenRowStyle}>
-            <div style={tokenLeftStyle}>
-              <img src={fromObj?.logo} alt={fromToken} style={tokenLogoStyle} />
-              <div style={{ fontWeight: 800 }}>{fromToken}</div>
-            </div>
+      <div style={panel(isLight)}>
+        <div style={label(isLight)}>{t.from}</div>
 
-            <select
-              value={fromToken}
-              onChange={(e) => setFromToken(e.target.value)}
-              style={selectStyle}
-            >
-              {TOKENS.map((t) => (
-                <option key={t.symbol} value={t.symbol}>
-                  {t.symbol}
-                </option>
-              ))}
-            </select>
+        <div style={row}>
+          <div style={tokenBox}>
+            <img src={from.logo} alt={from.symbol} style={logoStyle} />
+            <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{from.symbol}</strong>
           </div>
 
-          <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            style={inputStyle}
-          />
-        </div>
-
-        <button onClick={switchTokens} style={switchButtonStyle}>
-          ⇅
-        </button>
-
-        <div style={boxStyle}>
-          <div style={labelStyle}>To</div>
-          <div style={tokenRowStyle}>
-            <div style={tokenLeftStyle}>
-              <img src={toObj?.logo} alt={toToken} style={tokenLogoStyle} />
-              <div style={{ fontWeight: 800 }}>{toToken}</div>
-            </div>
-
-            <select
-              value={toToken}
-              onChange={(e) => setToToken(e.target.value)}
-              style={selectStyle}
-            >
-              {TOKENS.map((t) => (
-                <option key={t.symbol} value={t.symbol}>
-                  {t.symbol}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div
-            style={{
-              marginTop: 10,
-              color: "#fff",
-              fontWeight: 800,
-              fontSize: 22,
-            }}
+          <select
+            value={fromToken}
+            onChange={(e) => setFromToken(e.target.value)}
+            style={selectStyle(isLight)}
           >
-            {preview}
-          </div>
+            {tokenOptions.map((item) => (
+              <option key={item.symbol} value={item.symbol}>
+                {item.symbol}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div style={infoStyle}>
-          Preview only. Estimated 0.3% swap fee.
-        </div>
-
-        <button style={mainButtonStyle}>Swap</button>
+        <input
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="0.00"
+          style={inputStyle(isLight)}
+        />
       </div>
+
+      <div
+        style={{
+          display: "grid",
+          placeItems: "center",
+          margin: "12px 0",
+        }}
+      >
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: "50%",
+            display: "grid",
+            placeItems: "center",
+            background: isLight ? "#edf3ff" : "#1b2741",
+            color: "#3f7cff",
+            fontSize: 22,
+            fontWeight: 900,
+          }}
+        >
+          ⇅
+        </div>
+      </div>
+
+      <div style={panel(isLight)}>
+        <div style={label(isLight)}>{t.to}</div>
+
+        <div style={row}>
+          <div style={tokenBox}>
+            <img src={to.logo} alt={to.symbol} style={logoStyle} />
+            <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{to.symbol}</strong>
+          </div>
+
+          <select
+            value={toToken}
+            onChange={(e) => setToToken(e.target.value)}
+            style={selectStyle(isLight)}
+          >
+            {tokenOptions.map((item) => (
+              <option key={item.symbol} value={item.symbol}>
+                {item.symbol}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 18,
+            fontWeight: 900,
+            color: isLight ? "#10131a" : "#fff",
+          }}
+        >
+          {estimated}
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: 14,
+          textAlign: "center",
+          color: isLight ? "#5b6578" : "#97a0b3",
+          fontSize: 13,
+        }}
+      >
+        {t.previewFee}
+      </div>
+
+      <button
+        style={{
+          width: "100%",
+          marginTop: 14,
+          padding: "14px 16px",
+          borderRadius: 14,
+          border: "none",
+          background: "#3f7cff",
+          color: "#fff",
+          cursor: "pointer",
+          fontWeight: 800,
+          fontSize: 16,
+        }}
+      >
+        {t.swap}
+      </button>
     </div>
   );
 }
 
-const boxStyle: React.CSSProperties = {
-  border: "1px solid #252b39",
-  borderRadius: 18,
-  background: "#0d111b",
-  padding: 14,
-};
+function getText(lang: string) {
+  const map: Record<string, any> = {
+    en: { swap: "Swap", from: "From", to: "To", previewFee: "Preview only. Estimated 0.3% swap fee." },
+    pt: { swap: "Swap", from: "De", to: "Para", previewFee: "Apenas visualização. Taxa estimada de swap: 0,3%." },
+    es: { swap: "Swap", from: "De", to: "Para", previewFee: "Vista previa. Tarifa estimada de swap: 0,3%." },
+    fr: { swap: "Swap", from: "De", to: "Vers", previewFee: "Aperçu uniquement. Frais estimés de 0,3%." },
+    de: { swap: "Swap", from: "Von", to: "Zu", previewFee: "Nur Vorschau. Geschätzte Swap-Gebühr: 0,3%." },
+    it: { swap: "Swap", from: "Da", to: "A", previewFee: "Solo anteprima. Commissione stimata: 0,3%." },
+    ru: { swap: "Swap", from: "От", to: "К", previewFee: "Только предпросмотр. Комиссия swap: 0,3%." },
+    zh: { swap: "兑换", from: "从", to: "到", previewFee: "仅预览。预计 0.3% 兑换费。" },
+    ja: { swap: "スワップ", from: "元", to: "先", previewFee: "プレビューのみ。推定手数料 0.3%." },
+    ko: { swap: "스왑", from: "보내는 토큰", to: "받는 토큰", previewFee: "미리보기 전용. 예상 수수료 0.3%." },
+    tr: { swap: "Swap", from: "Kimden", to: "Kime", previewFee: "Sadece önizleme. Tahmini swap ücreti %0,3." },
+  };
+  return map[lang] || map.en;
+}
 
-const labelStyle: React.CSSProperties = {
-  color: "#97a0b3",
-  fontSize: 13,
-  marginBottom: 10,
-};
+function panel(isLight: boolean): React.CSSProperties {
+  return {
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    borderRadius: 20,
+    background: isLight ? "#fbfcff" : "#0f1522",
+    padding: 14,
+  };
+}
 
-const tokenRowStyle: React.CSSProperties = {
+function label(isLight: boolean): React.CSSProperties {
+  return {
+    marginBottom: 10,
+    fontSize: 13,
+    color: isLight ? "#5b6578" : "#97a0b3",
+  };
+}
+
+const row: React.CSSProperties = {
   display: "flex",
-  justifyContent: "space-between",
   alignItems: "center",
+  justifyContent: "space-between",
   gap: 12,
 };
 
-const tokenLeftStyle: React.CSSProperties = {
+const tokenBox: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 10,
 };
 
-const tokenLogoStyle: React.CSSProperties = {
+const logoStyle: React.CSSProperties = {
   width: 34,
   height: 34,
   borderRadius: 17,
   objectFit: "cover",
 };
 
-const selectStyle: React.CSSProperties = {
-  background: "#121621",
-  color: "#fff",
-  border: "1px solid #252b39",
-  borderRadius: 10,
-  padding: "8px 10px",
-};
+function selectStyle(isLight: boolean): React.CSSProperties {
+  return {
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#ffffff" : "#12192a",
+    color: isLight ? "#10131a" : "#ffffff",
+    outline: "none",
+  };
+}
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  marginTop: 12,
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid #252b39",
-  background: "#121621",
-  color: "#fff",
-  outline: "none",
-};
-
-const switchButtonStyle: React.CSSProperties = {
-  width: 52,
-  height: 52,
-  margin: "0 auto",
-  borderRadius: 26,
-  border: "1px solid #252b39",
-  background: "#1b2741",
-  color: "#fff",
-  cursor: "pointer",
-  fontSize: 22,
-  fontWeight: 800,
-};
-
-const infoStyle: React.CSSProperties = {
-  color: "#97a0b3",
-  fontSize: 13,
-  textAlign: "center",
-};
-
-const mainButtonStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "14px 16px",
-  borderRadius: 14,
-  border: "none",
-  background: "#3f7cff",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 800,
-  fontSize: 16,
-};
+function inputStyle(isLight: boolean): React.CSSProperties {
+  return {
+    width: "100%",
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#f6f8fc" : "#0d111b",
+    color: isLight ? "#10131a" : "#ffffff",
+    outline: "none",
+    boxSizing: "border-box",
+  };
+}
