@@ -91,6 +91,19 @@ export default function SendScreen() {
     showMessage(`Send preview: ${amount} ${selectedToken}`);
   }
 
+  function stopCameraTracks() {
+    const video = videoRef.current;
+    const stream = video?.srcObject as MediaStream | null;
+
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+
+    if (video) {
+      video.srcObject = null;
+    }
+  }
+
   async function openScanner() {
     setShowScanner(true);
 
@@ -144,16 +157,20 @@ export default function SendScreen() {
 
   function closeScanner() {
     try {
-      readerRef.current?.reset();
+      (readerRef.current as any)?.reset?.();
     } catch {}
+
+    stopCameraTracks();
     setShowScanner(false);
   }
 
   useEffect(() => {
     return () => {
       try {
-        readerRef.current?.reset();
+        (readerRef.current as any)?.reset?.();
       } catch {}
+
+      stopCameraTracks();
     };
   }, []);
 
