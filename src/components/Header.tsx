@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 const BASE = "/inri-wallet-stage/";
+const AVATAR_KEY = "wallet_avatar";
 
 type HeaderProps = {
   walletName?: string;
@@ -11,7 +12,13 @@ export default function Header({
   walletName = "INRI Wallet",
   theme = "dark",
 }: HeaderProps) {
+  const [avatar, setAvatar] = useState("");
   const isLight = theme === "light";
+
+  useEffect(() => {
+    const saved = localStorage.getItem(AVATAR_KEY);
+    if (saved) setAvatar(saved);
+  }, []);
 
   return (
     <header
@@ -40,8 +47,8 @@ export default function Header({
             src={BASE + "token-inri.png"}
             alt="INRI"
             style={{
-              width: 46,
-              height: 46,
+              width: 56,
+              height: 56,
               objectFit: "contain",
               display: "block",
             }}
@@ -51,7 +58,7 @@ export default function Header({
             <div
               style={{
                 fontWeight: 900,
-                fontSize: 18,
+                fontSize: 20,
                 color: isLight ? "#10131a" : "#ffffff",
               }}
             >
@@ -82,6 +89,37 @@ export default function Header({
             }}
           >
             Online • 3777
+          </div>
+
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              overflow: "hidden",
+              border: `1px solid ${isLight ? "#dbe2f0" : "#2a3350"}`,
+              background: isLight ? "#eef2f8" : "#121621",
+              display: "grid",
+              placeItems: "center",
+              flexShrink: 0,
+            }}
+          >
+            {avatar ? (
+              <img
+                src={avatar}
+                alt="avatar"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              <span
+                style={{
+                  color: isLight ? "#10131a" : "#ffffff",
+                  fontWeight: 800,
+                }}
+              >
+                U
+              </span>
+            )}
           </div>
         </div>
       </div>
