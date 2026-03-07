@@ -15,7 +15,7 @@ export default function BottomNav({
   const isLight = theme === "light";
   const t = getText(lang);
 
-  const items: Array<{ id: Tab; label: string }> = [
+  const items: { id: Tab; label: string }[] = [
     { id: "dashboard", label: t.home },
     { id: "send", label: t.send },
     { id: "receive", label: t.receive },
@@ -29,27 +29,23 @@ export default function BottomNav({
     <nav
       style={{
         position: "fixed",
+        bottom: 0,
         left: 0,
         right: 0,
-        bottom: 0,
-        zIndex: 50,
-        background: isLight ? "rgba(255,255,255,.96)" : "rgba(15,20,32,.96)",
-        borderTop: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-        backdropFilter: "blur(12px)",
-        padding: "8px 8px calc(10px + env(safe-area-inset-bottom))",
+        zIndex: 100,
+        background: isLight ? "#ffffff" : "#0b0f1a",
+        borderTop: `1px solid ${isLight ? "#dbe2f0" : "#1e2535"}`,
+        padding: "10px 12px",
         boxSizing: "border-box",
       }}
     >
       <div
         style={{
-          display: "flex",
+          maxWidth: 980,
+          margin: "0 auto",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(90px, 1fr))",
           gap: 8,
-          overflowX: "auto",
-          overflowY: "hidden",
-          WebkitOverflowScrolling: "touch",
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
-          paddingBottom: 2,
         }}
       >
         {items.map((item) => {
@@ -60,26 +56,25 @@ export default function BottomNav({
               key={item.id}
               onClick={() => setTab(item.id)}
               style={{
-                flex: "0 0 auto",
-                minWidth: 96,
-                padding: "12px 14px",
-                borderRadius: 16,
+                padding: "12px 10px",
+                borderRadius: 14,
                 border: active
-                  ? "1px solid #89a9ff"
+                  ? "1px solid #4d7ef2"
                   : `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
                 background: active
-                  ? isLight
-                    ? "#edf3ff"
-                    : "#1b2b52"
+                  ? "#3f7cff"
                   : isLight
+                  ? "#f8f9ff"
+                  : "#12182a",
+                color: active
                   ? "#ffffff"
-                  : "#111827",
-                color: active ? "#3f7cff" : isLight ? "#334155" : "#d8dfef",
-                fontWeight: 800,
+                  : isLight
+                  ? "#334155"
+                  : "#cfd6e4",
+                fontWeight: 700,
                 fontSize: 14,
                 cursor: "pointer",
-                whiteSpace: "nowrap",
-                boxSizing: "border-box",
+                transition: "all .15s ease",
               }}
             >
               {item.label}
@@ -87,18 +82,12 @@ export default function BottomNav({
           );
         })}
       </div>
-
-      <style>{`
-        nav div::-webkit-scrollbar {
-          display: none;
-        }
-      `}</style>
     </nav>
   );
 }
 
 function getText(lang: string) {
-  const map: Record<string, any> = {
+  const map: any = {
     en: {
       home: "Home",
       send: "Send",
@@ -108,6 +97,7 @@ function getText(lang: string) {
       activity: "Activity",
       settings: "Settings",
     },
+
     pt: {
       home: "Início",
       send: "Enviar",
@@ -117,6 +107,7 @@ function getText(lang: string) {
       activity: "Atividade",
       settings: "Config",
     },
+
     es: {
       home: "Inicio",
       send: "Enviar",
@@ -126,6 +117,7 @@ function getText(lang: string) {
       activity: "Actividad",
       settings: "Ajustes",
     },
+
     fr: {
       home: "Accueil",
       send: "Envoyer",
@@ -135,6 +127,7 @@ function getText(lang: string) {
       activity: "Activité",
       settings: "Réglages",
     },
+
     de: {
       home: "Start",
       send: "Senden",
@@ -144,24 +137,17 @@ function getText(lang: string) {
       activity: "Aktivität",
       settings: "Einstellungen",
     },
-    it: {
-      home: "Home",
-      send: "Invia",
-      receive: "Ricevi",
-      tokens: "Token",
+
+    ja: {
+      home: "ホーム",
+      send: "送信",
+      receive: "受信",
+      tokens: "トークン",
       nfts: "NFT",
-      activity: "Attività",
-      settings: "Impostazioni",
+      activity: "履歴",
+      settings: "設定",
     },
-    ru: {
-      home: "Главная",
-      send: "Отправить",
-      receive: "Получить",
-      tokens: "Токены",
-      nfts: "NFT",
-      activity: "Активность",
-      settings: "Настройки",
-    },
+
     zh: {
       home: "首页",
       send: "发送",
@@ -170,33 +156,6 @@ function getText(lang: string) {
       nfts: "NFT",
       activity: "活动",
       settings: "设置",
-    },
-    ja: {
-      home: "ホーム",
-      send: "送信",
-      receive: "受取",
-      tokens: "トークン",
-      nfts: "NFT",
-      activity: "履歴",
-      settings: "設定",
-    },
-    ko: {
-      home: "홈",
-      send: "전송",
-      receive: "수신",
-      tokens: "토큰",
-      nfts: "NFT",
-      activity: "활동",
-      settings: "설정",
-    },
-    tr: {
-      home: "Ana Sayfa",
-      send: "Gönder",
-      receive: "Al",
-      tokens: "Tokenlar",
-      nfts: "NFT",
-      activity: "Aktivite",
-      settings: "Ayarlar",
     },
   };
 
