@@ -2,10 +2,16 @@ import { ethers } from "ethers";
 
 const BASE = "/inri-wallet-stage/";
 
-export const RPC_URL = "https://rpc-chain.inri.life";
+export const RPC_URL = "https://rpc.inri.life";
+export const RPC_FALLBACK_URL = "https://rpc-chain.inri.life";
 export const CHAIN_ID = 3777;
 
 export const provider = new ethers.JsonRpcProvider(RPC_URL, {
+  name: "INRI",
+  chainId: CHAIN_ID,
+});
+
+export const fallbackProvider = new ethers.JsonRpcProvider(RPC_FALLBACK_URL, {
   name: "INRI",
   chainId: CHAIN_ID,
 });
@@ -63,10 +69,62 @@ export const ERC20_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)",
 ];
 
+async function rpcCall(url: string, method: string, params: any[]) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params,
+    }),
+  });
+
+  const data = await res.json();
+
+  if (data.error) {
+    throw new Error(data.error.message || "RPC error");
+  }
+
+  return data.result;
+}
+
+async function getNativeBalanceRaw(address: string) {
+  try {
+    const result = await rpcCall(RPC_URL, "eth_getBalance", [address, "latest"]);
+    return Number(ethers.formatEther(result)).toFixed(6);
+  } catch {
+    const result = await rpcCall(RPC_FALLBACK_URL, "eth_getBalance", [address, "latest"]);
+    return Number(ethers.formatEther(result)).toFixed(6);
+  }
+}
+
 export async function getNativeBalance(address: string) {
   if (!address) return "0.000000";
-  const raw = await provider.getBalance(address);
-  return Number(ethers.formatEther(raw)).toFixed(6);
+
+  try {
+    const raw = await provider.getBalance(address);
+    return Number(ethers.formatEther(raw)).toFixed(6);
+  } catch {
+    try {
+      const raw = await fallbackProvider.getBalance(address);
+      return Number(ethers.formatEther(raw)).toFixed(6);
+    } catch {
+      return await getNativeBalanceRaw(address);
+    }
+  }
+}
+
+async function getTokenBalanceWithProvider(
+  activeProvider: ethers.JsonRpcProvider,
+  tokenAddress: string,
+  walletAddress: string,
+  decimals = 18
+) {
+  const contract = new ethers.Contract(tokenAddress, ERC20_ABI, activeProvider);
+  const raw = await contract.balanceOf(walletAddress);
+  return Number(ethers.formatUnits(raw, decimals)).toFixed(6);
 }
 
 export async function getTokenBalance(
@@ -75,9 +133,21 @@ export async function getTokenBalance(
   decimals = 18
 ) {
   if (!tokenAddress || !walletAddress) return "0.000000";
-  const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-  const raw = await contract.balanceOf(walletAddress);
-  return Number(ethers.formatUnits(raw, decimals)).toFixed(6);
+
+  try {
+    return await getTokenBalanceWithProvider(provider, tokenAddress, walletAddress, decimals);
+  } catch {
+    try {
+      return await getTokenBalanceWithProvider(
+        fallbackProvider,
+        tokenAddress,
+        walletAddress,
+        decimals
+      );
+    } catch {
+      return "0.000000";
+    }
+  }
 }
 
 export async function loadAllBalances(address: string, tokens: TokenItem[]) {
@@ -90,30 +160,24 @@ export async function loadAllBalances(address: string, tokens: TokenItem[]) {
     return balances;
   }
 
-  try {
-    balances["INRI"] = await getNativeBalance(address);
-  } catch {
-    balances["INRI"] = "0.000000";
-  }
+  balances["INRI"] = await getNativeBalance(address);
 
-  for (const token of tokens) {
-    if (token.symbol === "INRI") continue;
+  await Promise.all(
+    tokens.map(async (token) => {
+      if (token.symbol === "INRI") return;
 
-    if (!token.address) {
-      balances[token.symbol] = "0.000000";
-      continue;
-    }
+      if (!token.address) {
+        balances[token.symbol] = "0.000000";
+        return;
+      }
 
-    try {
       balances[token.symbol] = await getTokenBalance(
         token.address,
         address,
         token.decimals || 18
       );
-    } catch {
-      balances[token.symbol] = "0.000000";
-    }
-  }
+    })
+  );
 
   return balances;
 }
