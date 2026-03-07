@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ethers } from "ethers";
-
-const RPC_URL = "https://rpc-chain.inri.life";
+import { getNativeBalance } from "../lib/inri";
 
 export default function DashboardScreen({
   setTab,
@@ -22,16 +20,10 @@ export default function DashboardScreen({
     let active = true;
 
     async function loadBalance() {
-      if (!address) {
-        setBalance("0.000000");
-        return;
-      }
-
       try {
-        const provider = new ethers.JsonRpcProvider(RPC_URL);
-        const raw = await provider.getBalance(address);
+        const value = await getNativeBalance(address || "");
         if (!active) return;
-        setBalance(Number(ethers.formatEther(raw)).toFixed(6));
+        setBalance(value);
       } catch {
         if (!active) return;
         setBalance("0.000000");
@@ -60,6 +52,7 @@ export default function DashboardScreen({
         <div style={{ color: isLight ? "#5b6578" : "#97a0b3" }}>
           {t.totalBalance}
         </div>
+
         <div
           style={{
             fontSize: 34,
