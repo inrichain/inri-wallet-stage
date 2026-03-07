@@ -31,7 +31,7 @@ export default function DashboardScreen({
     }
 
     loadBalance();
-    const timer = setInterval(loadBalance, 10000);
+    const timer = setInterval(loadBalance, 8000);
 
     return () => {
       active = false;
@@ -59,6 +59,7 @@ export default function DashboardScreen({
             fontWeight: 900,
             marginTop: 8,
             color: isLight ? "#10131a" : "#ffffff",
+            wordBreak: "break-word",
           }}
         >
           {balance} INRI
@@ -79,7 +80,7 @@ export default function DashboardScreen({
       <section
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2,1fr)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           gap: 12,
         }}
       >
@@ -106,7 +107,7 @@ export default function DashboardScreen({
                 marginTop: 6,
               }}
             >
-              Open {label} screen
+              {t.open} {label}
             </div>
           </button>
         ))}
@@ -123,6 +124,7 @@ function getText(lang: string) {
       receive: "Receive",
       swap: "Swap",
       bridge: "Bridge",
+      open: "Open",
     },
     pt: {
       totalBalance: "Saldo total",
@@ -130,6 +132,7 @@ function getText(lang: string) {
       receive: "Receber",
       swap: "Swap",
       bridge: "Bridge",
+      open: "Abrir",
     },
     es: {
       totalBalance: "Saldo total",
@@ -137,6 +140,71 @@ function getText(lang: string) {
       receive: "Recibir",
       swap: "Swap",
       bridge: "Bridge",
+      open: "Abrir",
+    },
+    fr: {
+      totalBalance: "Solde total",
+      send: "Envoyer",
+      receive: "Recevoir",
+      swap: "Swap",
+      bridge: "Bridge",
+      open: "Ouvrir",
+    },
+    de: {
+      totalBalance: "Gesamtsaldo",
+      send: "Senden",
+      receive: "Empfangen",
+      swap: "Swap",
+      bridge: "Bridge",
+      open: "Öffnen",
+    },
+    it: {
+      totalBalance: "Saldo totale",
+      send: "Invia",
+      receive: "Ricevi",
+      swap: "Swap",
+      bridge: "Bridge",
+      open: "Apri",
+    },
+    ru: {
+      totalBalance: "Общий баланс",
+      send: "Отправить",
+      receive: "Получить",
+      swap: "Swap",
+      bridge: "Bridge",
+      open: "Открыть",
+    },
+    zh: {
+      totalBalance: "总余额",
+      send: "发送",
+      receive: "接收",
+      swap: "Swap",
+      bridge: "Bridge",
+      open: "打开",
+    },
+    ja: {
+      totalBalance: "総残高",
+      send: "送信",
+      receive: "受取",
+      swap: "Swap",
+      bridge: "Bridge",
+      open: "開く",
+    },
+    ko: {
+      totalBalance: "총 잔액",
+      send: "전송",
+      receive: "수신",
+      swap: "Swap",
+      bridge: "Bridge",
+      open: "열기",
+    },
+    tr: {
+      totalBalance: "Toplam bakiye",
+      send: "Gönder",
+      receive: "Al",
+      swap: "Swap",
+      bridge: "Bridge",
+      open: "Aç",
     },
   };
   return map[lang] || map.en;
