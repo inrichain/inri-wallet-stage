@@ -10,15 +10,18 @@ import ActivityScreen from "../screens/ActivityScreen";
 import SwapScreen from "../screens/SwapScreen";
 import BridgeScreen from "../screens/BridgeScreen";
 import SettingsScreen from "../screens/SettingsScreen";
+import {
+  getMnemonicFromWallet,
+  isValidSeedPhrase,
+  normalizeSeed,
+  shortAddress,
+} from "../lib/inri";
 
 const BASE = "/inri-wallet-stage/";
-const RPC_URL = "https://rpc-chain.inri.life";
-const CHAIN_ID = 3777;
-
 const VAULTS_KEY = "inri_wallet_vaults_v2";
 const CURRENT_WALLET_KEY = "inri_wallet_current_id";
-const LANG_KEY = "inri_wallet_lang";
-const THEME_KEY = "inri_wallet_theme";
+const LANG_KEY = "wallet_lang";
+const THEME_KEY = "wallet_theme";
 
 export type Tab =
   | "dashboard"
@@ -48,11 +51,6 @@ type UnlockedWallet = {
   mnemonic: string;
   privateKey: string;
 };
-
-const provider = new ethers.JsonRpcProvider(RPC_URL, {
-  name: "INRI",
-  chainId: CHAIN_ID,
-});
 
 export default function WalletShell() {
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -115,8 +113,6 @@ export default function WalletShell() {
 
     document.body.style.color = theme === "light" ? "#10131a" : "#ffffff";
     document.body.style.margin = "0";
-    document.body.style.fontFamily =
-      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
     ensureFavicon();
   }, [theme, lang]);
@@ -141,7 +137,7 @@ export default function WalletShell() {
 
   function showMessage(text: string) {
     setMessage(text);
-    window.setTimeout(() => setMessage(""), 2800);
+    window.setTimeout(() => setMessage(""), 2600);
   }
 
   function generateSeedPhrase() {
@@ -217,7 +213,7 @@ export default function WalletShell() {
       return;
     }
 
-    if (!createOrImportSeedLooksValid(importSeed.trim())) {
+    if (!isValidSeedPhrase(importSeed.trim())) {
       showMessage(t.invalidSeed);
       return;
     }
@@ -230,7 +226,8 @@ export default function WalletShell() {
     setLoading(true);
 
     try {
-      const baseWallet = ethers.Wallet.fromPhrase(normalizeSeed(importSeed.trim()));
+      const normalizedSeed = normalizeSeed(importSeed.trim());
+      const baseWallet = ethers.Wallet.fromPhrase(normalizedSeed);
       const encryptedJson = await baseWallet.encrypt(importPassword.trim());
 
       const alreadyExists = wallets.some(
@@ -242,8 +239,6 @@ export default function WalletShell() {
         setLoading(false);
         return;
       }
-
-      const seedNormalized = normalizeSeed(importSeed.trim());
 
       const item: WalletVault = {
         id: "wallet_" + Date.now(),
@@ -262,7 +257,7 @@ export default function WalletShell() {
         id: item.id,
         name: item.name,
         address: baseWallet.address,
-        mnemonic: seedNormalized,
+        mnemonic: normalizedSeed,
         privateKey: baseWallet.privateKey,
       });
 
@@ -299,7 +294,7 @@ export default function WalletShell() {
         unlockPassword.trim()
       );
 
-      const mnemonic = decrypted.mnemonic?.phrase || "";
+      const mnemonic = getMnemonicFromWallet(decrypted);
 
       setUnlockedWallet({
         id: vault.id,
@@ -325,10 +320,6 @@ export default function WalletShell() {
     setView("auth");
     setUnlockPassword("");
     showMessage(t.locked);
-  }
-
-  function logoutAndLock() {
-    lockWallet();
   }
 
   const currentWalletMeta = useMemo(() => {
@@ -664,21 +655,6 @@ export default function WalletShell() {
                 {message}
               </div>
             ) : null}
-
-            {wallets.length > 0 ? (
-              <div
-                style={{
-                  marginTop: 18,
-                  paddingTop: 14,
-                  borderTop: `1px solid ${theme === "light" ? "#e7edf7" : "#252b39"}`,
-                  color: theme === "light" ? "#5b6578" : "#97a0b3",
-                  fontSize: 12,
-                  textAlign: "center",
-                }}
-              >
-                {wallets.length} {wallets.length === 1 ? t.walletStored : t.walletsStored}
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
@@ -700,7 +676,7 @@ export default function WalletShell() {
 
       <main style={{ padding: "16px", maxWidth: 900, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-          <button onClick={logoutAndLock} style={secondaryButtonStyle(theme)}>
+          <button onClick={lockWallet} style={secondaryButtonStyle(theme)}>
             {t.lock}
           </button>
         </div>
@@ -711,21 +687,6 @@ export default function WalletShell() {
       <BottomNav tab={tab} setTab={setTab} theme={theme} lang={lang} />
     </div>
   );
-}
-
-function normalizeSeed(seed: string) {
-  return seed.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function createOrImportSeedLooksValid(seed: string) {
-  const normalized = normalizeSeed(seed);
-  const parts = normalized.split(" ").filter(Boolean);
-  return [12, 15, 18, 21, 24].includes(parts.length);
-}
-
-function shortAddress(address: string) {
-  if (!address) return "";
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 function getText(lang: string) {
@@ -759,12 +720,10 @@ function getText(lang: string) {
       seedGenerateError: "Could not generate seed phrase.",
       processing: "Processing...",
       enterPassword: "Enter your password.",
-      seedBackupConfirm: "I wrote down my seed phrase and stored it somewhere safe. I understand that losing it means losing access to my wallet.",
+      seedBackupConfirm:
+        "I wrote down my seed phrase and stored it somewhere safe. I understand that losing it means losing access to my wallet.",
       walletAlreadyExists: "This wallet already exists on this device.",
-      walletStored: "wallet stored",
-      walletsStored: "wallets stored",
     },
-
     pt: {
       authSubtitle: "Crie, importe ou desbloqueie sua carteira",
       unlock: "Desbloquear",
@@ -794,12 +753,10 @@ function getText(lang: string) {
       seedGenerateError: "Não foi possível gerar a seed phrase.",
       processing: "Processando...",
       enterPassword: "Digite sua senha.",
-      seedBackupConfirm: "Eu anotei minha seed phrase e guardei em um lugar seguro. Entendo que perder essa frase significa perder o acesso à minha carteira.",
+      seedBackupConfirm:
+        "Eu anotei minha seed phrase e guardei em um lugar seguro. Entendo que perder essa frase significa perder o acesso à minha carteira.",
       walletAlreadyExists: "Essa carteira já existe neste dispositivo.",
-      walletStored: "carteira salva",
-      walletsStored: "carteiras salvas",
     },
-
     es: {
       authSubtitle: "Crea, importa o desbloquea tu billetera",
       unlock: "Desbloquear",
@@ -829,290 +786,9 @@ function getText(lang: string) {
       seedGenerateError: "No se pudo generar la seed phrase.",
       processing: "Procesando...",
       enterPassword: "Ingresa tu contraseña.",
-      seedBackupConfirm: "Escribí mi seed phrase y la guardé en un lugar seguro. Entiendo que perderla significa perder el acceso a mi billetera.",
+      seedBackupConfirm:
+        "Escribí mi seed phrase y la guardé en un lugar seguro. Entiendo que perderla significa perder el acceso a mi billetera.",
       walletAlreadyExists: "Esta billetera ya existe en este dispositivo.",
-      walletStored: "billetera guardada",
-      walletsStored: "billeteras guardadas",
-    },
-
-    fr: {
-      authSubtitle: "Créez, importez ou déverrouillez votre portefeuille",
-      unlock: "Déverrouiller",
-      create: "Créer",
-      import: "Importer",
-      password: "Entrez votre mot de passe",
-      passwordCreate: "Créez un mot de passe (min. 6 caractères)",
-      walletName: "Nom du portefeuille",
-      generatedSeed: "Phrase seed générée",
-      generateSeed: "Générer la Seed",
-      createWallet: "Créer le Portefeuille",
-      importWallet: "Importer le Portefeuille",
-      pasteSeed: "Collez la phrase seed",
-      generateSeedFirst: "Générez d'abord la seed.",
-      confirmSeedSaveFirst: "Confirmez que vous avez sauvegardé votre phrase seed.",
-      passwordShort: "Le mot de passe doit contenir au moins 6 caractères.",
-      walletCreated: "Portefeuille créé.",
-      walletImported: "Portefeuille importé.",
-      wrongPassword: "Mot de passe incorrect.",
-      noWallet: "Aucun portefeuille trouvé.",
-      noWalletsYet: "Aucun portefeuille pour le moment",
-      unlocked: "Déverrouillé.",
-      locked: "Verrouillé.",
-      lock: "Verrouiller",
-      invalidSeed: "Phrase seed invalide.",
-      createFailed: "Impossible de créer le portefeuille.",
-      seedGenerateError: "Impossible de générer la phrase seed.",
-      processing: "Traitement...",
-      enterPassword: "Entrez votre mot de passe.",
-      seedBackupConfirm: "J’ai noté ma phrase seed et je l’ai conservée en lieu sûr. Je comprends que la perdre signifie perdre l’accès à mon portefeuille.",
-      walletAlreadyExists: "Ce portefeuille existe déjà sur cet appareil.",
-      walletStored: "portefeuille enregistré",
-      walletsStored: "portefeuilles enregistrés",
-    },
-
-    de: {
-      authSubtitle: "Erstellen, importieren oder entsperren Sie Ihre Wallet",
-      unlock: "Entsperren",
-      create: "Erstellen",
-      import: "Importieren",
-      password: "Passwort eingeben",
-      passwordCreate: "Passwort erstellen (mind. 6 Zeichen)",
-      walletName: "Wallet-Name",
-      generatedSeed: "Generierte Seed-Phrase",
-      generateSeed: "Seed generieren",
-      createWallet: "Wallet erstellen",
-      importWallet: "Wallet importieren",
-      pasteSeed: "Seed-Phrase einfügen",
-      generateSeedFirst: "Bitte zuerst eine Seed generieren.",
-      confirmSeedSaveFirst: "Bestätigen Sie, dass Sie Ihre Seed-Phrase gespeichert haben.",
-      passwordShort: "Das Passwort muss mindestens 6 Zeichen haben.",
-      walletCreated: "Wallet erstellt.",
-      walletImported: "Wallet importiert.",
-      wrongPassword: "Falsches Passwort.",
-      noWallet: "Keine Wallet gefunden.",
-      noWalletsYet: "Noch keine Wallets",
-      unlocked: "Entsperrt.",
-      locked: "Gesperrt.",
-      lock: "Sperren",
-      invalidSeed: "Ungültige Seed-Phrase.",
-      createFailed: "Wallet konnte nicht erstellt werden.",
-      seedGenerateError: "Seed-Phrase konnte nicht generiert werden.",
-      processing: "Wird verarbeitet...",
-      enterPassword: "Passwort eingeben.",
-      seedBackupConfirm: "Ich habe meine Seed-Phrase notiert und sicher aufbewahrt. Ich verstehe, dass ich ohne sie den Zugriff auf meine Wallet verliere.",
-      walletAlreadyExists: "Diese Wallet existiert bereits auf diesem Gerät.",
-      walletStored: "Wallet gespeichert",
-      walletsStored: "Wallets gespeichert",
-    },
-
-    it: {
-      authSubtitle: "Crea, importa o sblocca il tuo wallet",
-      unlock: "Sblocca",
-      create: "Crea",
-      import: "Importa",
-      password: "Inserisci la password",
-      passwordCreate: "Crea una password (min. 6 caratteri)",
-      walletName: "Nome del wallet",
-      generatedSeed: "Seed phrase generata",
-      generateSeed: "Genera Seed",
-      createWallet: "Crea Wallet",
-      importWallet: "Importa Wallet",
-      pasteSeed: "Incolla la seed phrase",
-      generateSeedFirst: "Genera prima la seed.",
-      confirmSeedSaveFirst: "Conferma di aver salvato la seed phrase.",
-      passwordShort: "La password deve contenere almeno 6 caratteri.",
-      walletCreated: "Wallet creato.",
-      walletImported: "Wallet importato.",
-      wrongPassword: "Password errata.",
-      noWallet: "Nessun wallet trovato.",
-      noWalletsYet: "Nessun wallet ancora",
-      unlocked: "Sbloccato.",
-      locked: "Bloccato.",
-      lock: "Blocca",
-      invalidSeed: "Seed phrase non valida.",
-      createFailed: "Impossibile creare il wallet.",
-      seedGenerateError: "Impossibile generare la seed phrase.",
-      processing: "Elaborazione...",
-      enterPassword: "Inserisci la password.",
-      seedBackupConfirm: "Ho scritto la mia seed phrase e l'ho conservata in un posto sicuro. Capisco che perderla significa perdere l'accesso al wallet.",
-      walletAlreadyExists: "Questo wallet esiste già su questo dispositivo.",
-      walletStored: "wallet salvato",
-      walletsStored: "wallet salvati",
-    },
-
-    ru: {
-      authSubtitle: "Создайте, импортируйте или разблокируйте кошелек",
-      unlock: "Разблокировать",
-      create: "Создать",
-      import: "Импорт",
-      password: "Введите пароль",
-      passwordCreate: "Создайте пароль (мин. 6 символов)",
-      walletName: "Название кошелька",
-      generatedSeed: "Сгенерированная seed-фраза",
-      generateSeed: "Сгенерировать Seed",
-      createWallet: "Создать кошелек",
-      importWallet: "Импортировать кошелек",
-      pasteSeed: "Вставьте seed-фразу",
-      generateSeedFirst: "Сначала сгенерируйте seed-фразу.",
-      confirmSeedSaveFirst: "Подтвердите, что вы сохранили seed-фразу.",
-      passwordShort: "Пароль должен содержать не менее 6 символов.",
-      walletCreated: "Кошелек создан.",
-      walletImported: "Кошелек импортирован.",
-      wrongPassword: "Неверный пароль.",
-      noWallet: "Кошелек не найден.",
-      noWalletsYet: "Кошельков пока нет",
-      unlocked: "Разблокировано.",
-      locked: "Заблокировано.",
-      lock: "Заблокировать",
-      invalidSeed: "Недействительная seed-фраза.",
-      createFailed: "Не удалось создать кошелек.",
-      seedGenerateError: "Не удалось сгенерировать seed-фразу.",
-      processing: "Обработка...",
-      enterPassword: "Введите пароль.",
-      seedBackupConfirm: "Я записал seed-фразу и сохранил её в безопасном месте. Я понимаю, что потеря этой фразы означает потерю доступа к кошельку.",
-      walletAlreadyExists: "Этот кошелек уже существует на этом устройстве.",
-      walletStored: "кошелек сохранен",
-      walletsStored: "кошельков сохранено",
-    },
-
-    zh: {
-      authSubtitle: "创建、导入或解锁您的钱包",
-      unlock: "解锁",
-      create: "创建",
-      import: "导入",
-      password: "输入密码",
-      passwordCreate: "创建密码（至少 6 位）",
-      walletName: "钱包名称",
-      generatedSeed: "已生成助记词",
-      generateSeed: "生成助记词",
-      createWallet: "创建钱包",
-      importWallet: "导入钱包",
-      pasteSeed: "粘贴助记词",
-      generateSeedFirst: "请先生成助记词。",
-      confirmSeedSaveFirst: "请确认您已保存助记词。",
-      passwordShort: "密码至少需要 6 位字符。",
-      walletCreated: "钱包已创建。",
-      walletImported: "钱包已导入。",
-      wrongPassword: "密码错误。",
-      noWallet: "未找到钱包。",
-      noWalletsYet: "还没有钱包",
-      unlocked: "已解锁。",
-      locked: "已锁定。",
-      lock: "锁定",
-      invalidSeed: "助记词无效。",
-      createFailed: "无法创建钱包。",
-      seedGenerateError: "无法生成助记词。",
-      processing: "处理中...",
-      enterPassword: "请输入密码。",
-      seedBackupConfirm: "我已写下助记词并安全保存。我明白丢失助记词将意味着失去钱包访问权限。",
-      walletAlreadyExists: "此钱包已存在于此设备中。",
-      walletStored: "已保存钱包",
-      walletsStored: "已保存钱包",
-    },
-
-    ja: {
-      authSubtitle: "ウォレットを作成、インポート、またはロック解除",
-      unlock: "ロック解除",
-      create: "作成",
-      import: "インポート",
-      password: "パスワードを入力",
-      passwordCreate: "パスワードを作成（6文字以上）",
-      walletName: "ウォレット名",
-      generatedSeed: "生成されたシードフレーズ",
-      generateSeed: "シード生成",
-      createWallet: "ウォレット作成",
-      importWallet: "ウォレットをインポート",
-      pasteSeed: "シードフレーズを貼り付け",
-      generateSeedFirst: "先にシードを生成してください。",
-      confirmSeedSaveFirst: "シードフレーズを保存したことを確認してください。",
-      passwordShort: "パスワードは6文字以上必要です。",
-      walletCreated: "ウォレットを作成しました。",
-      walletImported: "ウォレットをインポートしました。",
-      wrongPassword: "パスワードが正しくありません。",
-      noWallet: "ウォレットが見つかりません。",
-      noWalletsYet: "まだウォレットがありません",
-      unlocked: "ロック解除しました。",
-      locked: "ロックされました。",
-      lock: "ロック",
-      invalidSeed: "無効なシードフレーズです。",
-      createFailed: "ウォレットを作成できませんでした。",
-      seedGenerateError: "シードフレーズを生成できませんでした。",
-      processing: "処理中...",
-      enterPassword: "パスワードを入力してください。",
-      seedBackupConfirm: "シードフレーズを書き留めて安全な場所に保管しました。これを失うとウォレットにアクセスできなくなることを理解しています。",
-      walletAlreadyExists: "このウォレットはこのデバイスに既に存在します。",
-      walletStored: "保存済みウォレット",
-      walletsStored: "保存済みウォレット",
-    },
-
-    ko: {
-      authSubtitle: "지갑을 생성, 가져오기 또는 잠금 해제하세요",
-      unlock: "잠금 해제",
-      create: "생성",
-      import: "가져오기",
-      password: "비밀번호 입력",
-      passwordCreate: "비밀번호 생성(최소 6자)",
-      walletName: "지갑 이름",
-      generatedSeed: "생성된 시드 구문",
-      generateSeed: "시드 생성",
-      createWallet: "지갑 생성",
-      importWallet: "지갑 가져오기",
-      pasteSeed: "시드 구문 붙여넣기",
-      generateSeedFirst: "먼저 시드를 생성하세요.",
-      confirmSeedSaveFirst: "시드 구문을 저장했는지 확인하세요.",
-      passwordShort: "비밀번호는 최소 6자 이상이어야 합니다.",
-      walletCreated: "지갑이 생성되었습니다.",
-      walletImported: "지갑을 가져왔습니다.",
-      wrongPassword: "비밀번호가 올바르지 않습니다.",
-      noWallet: "지갑을 찾을 수 없습니다.",
-      noWalletsYet: "아직 지갑이 없습니다",
-      unlocked: "잠금 해제되었습니다.",
-      locked: "잠겼습니다.",
-      lock: "잠그기",
-      invalidSeed: "유효하지 않은 시드 구문입니다.",
-      createFailed: "지갑을 생성할 수 없습니다.",
-      seedGenerateError: "시드 구문을 생성할 수 없습니다.",
-      processing: "처리 중...",
-      enterPassword: "비밀번호를 입력하세요.",
-      seedBackupConfirm: "시드 구문을 적어 안전한 곳에 보관했습니다. 이를 잃어버리면 지갑 접근 권한을 잃는다는 것을 이해합니다.",
-      walletAlreadyExists: "이 지갑은 이미 이 기기에 존재합니다.",
-      walletStored: "저장된 지갑",
-      walletsStored: "저장된 지갑",
-    },
-
-    tr: {
-      authSubtitle: "Cüzdanınızı oluşturun, içe aktarın veya kilidini açın",
-      unlock: "Kilidi Aç",
-      create: "Oluştur",
-      import: "İçe Aktar",
-      password: "Şifrenizi girin",
-      passwordCreate: "Bir şifre oluşturun (en az 6 karakter)",
-      walletName: "Cüzdan adı",
-      generatedSeed: "Oluşturulan seed phrase",
-      generateSeed: "Seed Oluştur",
-      createWallet: "Cüzdan Oluştur",
-      importWallet: "Cüzdanı İçe Aktar",
-      pasteSeed: "Seed phrase yapıştırın",
-      generateSeedFirst: "Önce seed oluşturun.",
-      confirmSeedSaveFirst: "Seed phrase'i kaydettiğinizi onaylayın.",
-      passwordShort: "Şifre en az 6 karakter olmalıdır.",
-      walletCreated: "Cüzdan oluşturuldu.",
-      walletImported: "Cüzdan içe aktarıldı.",
-      wrongPassword: "Yanlış şifre.",
-      noWallet: "Cüzdan bulunamadı.",
-      noWalletsYet: "Henüz cüzdan yok",
-      unlocked: "Kilidi açıldı.",
-      locked: "Kilitlendi.",
-      lock: "Kilitle",
-      invalidSeed: "Geçersiz seed phrase.",
-      createFailed: "Cüzdan oluşturulamadı.",
-      seedGenerateError: "Seed phrase oluşturulamadı.",
-      processing: "İşleniyor...",
-      enterPassword: "Şifrenizi girin.",
-      seedBackupConfirm: "Seed phrase'imi yazdım ve güvenli bir yerde sakladım. Bunu kaybetmenin cüzdanıma erişimi kaybetmek anlamına geldiğini anlıyorum.",
-      walletAlreadyExists: "Bu cüzdan bu cihazda zaten موجود.",
-      walletStored: "cüzdan kaydedildi",
-      walletsStored: "cüzdan kaydedildi",
     },
   };
 
