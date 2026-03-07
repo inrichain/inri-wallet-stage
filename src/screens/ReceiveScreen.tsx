@@ -1,31 +1,24 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import QRCode from "react-qr-code";
 
 type ReceiveScreenProps = {
   theme?: "dark" | "light";
   lang?: string;
+  address: string;
 };
 
 export default function ReceiveScreen({
   theme = "dark",
   lang = "en",
+  address,
 }: ReceiveScreenProps) {
   const isLight = theme === "light";
-
-  const walletAddress = useMemo(() => {
-    return (
-      localStorage.getItem("wallet_address_demo") ||
-      "0x119B51608D139342baB20bFF0654F275FFbbaAD0"
-    );
-  }, []);
-
   const [message, setMessage] = useState("");
-
   const text = getText(lang);
 
   async function copyAddress() {
     try {
-      await navigator.clipboard.writeText(walletAddress);
+      await navigator.clipboard.writeText(address);
       setMessage(text.copied);
       setTimeout(() => setMessage(""), 2200);
     } catch {
@@ -58,7 +51,7 @@ export default function ReceiveScreen({
           placeItems: "center",
         }}
       >
-        <QRCode value={walletAddress} size={180} />
+        <QRCode value={address || "0x"} size={180} />
       </div>
 
       <div
@@ -73,7 +66,7 @@ export default function ReceiveScreen({
           fontSize: 13,
         }}
       >
-        {walletAddress}
+        {address}
       </div>
 
       <button
