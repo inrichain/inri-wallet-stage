@@ -36,7 +36,8 @@ export default function BottomNav({
         background: isLight ? "rgba(255,255,255,.96)" : "rgba(15,20,32,.96)",
         borderTop: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
         backdropFilter: "blur(12px)",
-        padding: "8px 8px calc(8px + env(safe-area-inset-bottom))",
+        padding: "8px 8px calc(10px + env(safe-area-inset-bottom))",
+        boxSizing: "border-box",
       }}
     >
       <div
@@ -44,9 +45,11 @@ export default function BottomNav({
           display: "flex",
           gap: 8,
           overflowX: "auto",
+          overflowY: "hidden",
           WebkitOverflowScrolling: "touch",
           scrollbarWidth: "none",
           msOverflowStyle: "none",
+          paddingBottom: 2,
         }}
       >
         {items.map((item) => {
@@ -58,7 +61,7 @@ export default function BottomNav({
               onClick={() => setTab(item.id)}
               style={{
                 flex: "0 0 auto",
-                minWidth: 92,
+                minWidth: 96,
                 padding: "12px 14px",
                 borderRadius: 16,
                 border: active
@@ -76,6 +79,7 @@ export default function BottomNav({
                 fontSize: 14,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
+                boxSizing: "border-box",
               }}
             >
               {item.label}
@@ -83,6 +87,12 @@ export default function BottomNav({
           );
         })}
       </div>
+
+      <style>{`
+        nav div::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
     </nav>
   );
 }
