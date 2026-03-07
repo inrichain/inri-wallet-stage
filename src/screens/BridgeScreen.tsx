@@ -1,21 +1,42 @@
-import React, { useMemo, useState } from "react";
-import { DEFAULT_TOKENS } from "../lib/inri";
+import React, { useEffect, useMemo, useState } from "react";
+import { DEFAULT_TOKENS, loadAllBalances } from "../lib/inri";
 
 export default function BridgeScreen({
   theme = "dark",
   lang = "en",
+  address,
 }: {
   theme?: "dark" | "light";
   lang?: string;
+  address: string;
 }) {
   const isLight = theme === "light";
   const t = getText(lang);
 
-  const tokenOptions = DEFAULT_TOKENS.filter((x) => x.symbol === "iUSD");
+  const tokenOptions = DEFAULT_TOKENS.filter((x) => x.symbol === "iUSD" || x.symbol === "INRI");
   const [fromNetwork, setFromNetwork] = useState("Polygon");
   const [toNetwork, setToNetwork] = useState("INRI CHAIN");
   const [amount, setAmount] = useState("");
   const [token, setToken] = useState("iUSD");
+  const [balances, setBalances] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      const next = await loadAllBalances(address, tokenOptions);
+      if (!active) return;
+      setBalances(next);
+    }
+
+    load();
+    const timer = setInterval(load, 8000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [address]);
 
   const estimated = useMemo(() => {
     const n = Number(amount || "0");
@@ -75,10 +96,15 @@ export default function BridgeScreen({
       <div style={{ ...panel(isLight), marginTop: 12 }}>
         <div style={label(isLight)}>{t.token}</div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <img src={currentToken.logo} alt={currentToken.symbol} style={{ width: 34, height: 34, borderRadius: 17 }} />
-            <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{currentToken.symbol}</strong>
+            <div>
+              <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{currentToken.symbol}</strong>
+              <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>
+                {t.balance}: {balances[currentToken.symbol] || "0.000000"}
+              </div>
+            </div>
           </div>
 
           <select value={token} onChange={(e) => setToken(e.target.value)} style={selectStyle(isLight)}>
@@ -135,6 +161,7 @@ function getText(lang: string) {
       fromNetwork: "From network",
       toNetwork: "To network",
       token: "Token",
+      balance: "Balance",
       estimatedReceive: "Estimated receive",
       previewFee: "Bridge fee preview: 0.2%",
     },
@@ -143,80 +170,9 @@ function getText(lang: string) {
       fromNetwork: "Da rede",
       toNetwork: "Para a rede",
       token: "Token",
+      balance: "Saldo",
       estimatedReceive: "Recebimento estimado",
       previewFee: "Prévia da taxa de bridge: 0,2%",
-    },
-    es: {
-      bridge: "Bridge",
-      fromNetwork: "Desde la red",
-      toNetwork: "Hacia la red",
-      token: "Token",
-      estimatedReceive: "Recepción estimada",
-      previewFee: "Vista previa de comisión bridge: 0,2%",
-    },
-    fr: {
-      bridge: "Bridge",
-      fromNetwork: "Depuis le réseau",
-      toNetwork: "Vers le réseau",
-      token: "Token",
-      estimatedReceive: "Réception estimée",
-      previewFee: "Aperçu des frais bridge : 0,2%",
-    },
-    de: {
-      bridge: "Bridge",
-      fromNetwork: "Vom Netzwerk",
-      toNetwork: "Zum Netzwerk",
-      token: "Token",
-      estimatedReceive: "Geschätzter Erhalt",
-      previewFee: "Bridge-Gebühr Vorschau: 0,2%",
-    },
-    it: {
-      bridge: "Bridge",
-      fromNetwork: "Dalla rete",
-      toNetwork: "Alla rete",
-      token: "Token",
-      estimatedReceive: "Ricezione stimata",
-      previewFee: "Anteprima commissione bridge: 0,2%",
-    },
-    ru: {
-      bridge: "Bridge",
-      fromNetwork: "Из сети",
-      toNetwork: "В сеть",
-      token: "Токен",
-      estimatedReceive: "Ожидаемое получение",
-      previewFee: "Предпросмотр комиссии bridge: 0,2%",
-    },
-    zh: {
-      bridge: "跨链",
-      fromNetwork: "从网络",
-      toNetwork: "到网络",
-      token: "代币",
-      estimatedReceive: "预计收到",
-      previewFee: "跨链费用预览：0.2%",
-    },
-    ja: {
-      bridge: "ブリッジ",
-      fromNetwork: "元ネットワーク",
-      toNetwork: "先ネットワーク",
-      token: "トークン",
-      estimatedReceive: "受取予想",
-      previewFee: "ブリッジ手数料の目安: 0.2%",
-    },
-    ko: {
-      bridge: "브리지",
-      fromNetwork: "출발 네트워크",
-      toNetwork: "도착 네트워크",
-      token: "토큰",
-      estimatedReceive: "예상 수령량",
-      previewFee: "브리지 수수료 미리보기: 0.2%",
-    },
-    tr: {
-      bridge: "Bridge",
-      fromNetwork: "Ağdan",
-      toNetwork: "Ağa",
-      token: "Token",
-      estimatedReceive: "Tahmini alınacak",
-      previewFee: "Bridge ücret önizlemesi: %0,2",
     },
   };
   return map[lang] || map.en;
