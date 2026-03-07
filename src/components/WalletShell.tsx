@@ -12,11 +12,13 @@ import BridgeScreen from "../screens/BridgeScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 
 const BASE = "/inri-wallet-stage/";
-const VAULTS_KEY = "wallet_vaults_demo";
-const CURRENT_WALLET_KEY = "wallet_current_id";
-const CURRENT_ADDRESS_KEY = "wallet_address_demo";
-const LANG_KEY = "wallet_lang";
-const THEME_KEY = "wallet_theme";
+const RPC_URL = "https://rpc-chain.inri.life";
+const CHAIN_ID = 3777;
+
+const VAULTS_KEY = "inri_wallet_vaults_v2";
+const CURRENT_WALLET_KEY = "inri_wallet_current_id";
+const LANG_KEY = "inri_wallet_lang";
+const THEME_KEY = "inri_wallet_theme";
 
 export type Tab =
   | "dashboard"
@@ -31,13 +33,26 @@ export type Tab =
 type View = "auth" | "wallet";
 type AuthMode = "unlock" | "create" | "import";
 
-type WalletItem = {
+type WalletVault = {
   id: string;
   name: string;
-  password: string;
-  mnemonic: string;
   address: string;
+  encryptedJson: string;
+  createdAt: number;
 };
+
+type UnlockedWallet = {
+  id: string;
+  name: string;
+  address: string;
+  mnemonic: string;
+  privateKey: string;
+};
+
+const provider = new ethers.JsonRpcProvider(RPC_URL, {
+  name: "INRI",
+  chainId: CHAIN_ID,
+});
 
 export default function WalletShell() {
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -49,30 +64,39 @@ export default function WalletShell() {
   );
   const [lang, setLang] = useState(() => localStorage.getItem(LANG_KEY) || "en");
 
-  const [wallets, setWallets] = useState<WalletItem[]>([]);
+  const [wallets, setWallets] = useState<WalletVault[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState("");
   const [unlockPassword, setUnlockPassword] = useState("");
 
   const [createName, setCreateName] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [generatedSeed, setGeneratedSeed] = useState("");
+  const [confirmSeedSaved, setConfirmSeedSaved] = useState(false);
 
   const [importName, setImportName] = useState("");
   const [importPassword, setImportPassword] = useState("");
   const [importSeed, setImportSeed] = useState("");
 
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const [unlockedWallet, setUnlockedWallet] = useState<UnlockedWallet | null>(null);
 
   const t = getText(lang);
 
   useEffect(() => {
     const saved = localStorage.getItem(VAULTS_KEY);
+    const currentId = localStorage.getItem(CURRENT_WALLET_KEY);
+
     if (saved) {
       try {
-        const parsed = JSON.parse(saved) as WalletItem[];
+        const parsed = JSON.parse(saved) as WalletVault[];
         setWallets(parsed);
+
         if (parsed.length > 0) {
-          setSelectedWalletId(parsed[0].id);
+          const found =
+            parsed.find((w) => w.id === currentId)?.id || parsed[0].id || "";
+          setSelectedWalletId(found);
         }
       } catch {
         setWallets([]);
@@ -90,89 +114,157 @@ export default function WalletShell() {
         : "linear-gradient(180deg,#0b0b0f 0%, #101625 100%)";
 
     document.body.style.color = theme === "light" ? "#10131a" : "#ffffff";
+    document.body.style.margin = "0";
+    document.body.style.fontFamily =
+      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+    ensureFavicon();
   }, [theme, lang]);
 
-  function saveWallets(next: WalletItem[]) {
+  function ensureFavicon() {
+    let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+
+    link.type = "image/png";
+    link.href = `${BASE}favicon.png`;
+  }
+
+  function saveWallets(next: WalletVault[]) {
     setWallets(next);
     localStorage.setItem(VAULTS_KEY, JSON.stringify(next));
   }
 
   function showMessage(text: string) {
     setMessage(text);
-    setTimeout(() => setMessage(""), 2600);
+    window.setTimeout(() => setMessage(""), 2800);
   }
 
   function generateSeedPhrase() {
-    const wallet = ethers.Wallet.createRandom();
-    const phrase = wallet.mnemonic?.phrase || "";
-    setGeneratedSeed(phrase);
+    try {
+      const wallet = ethers.Wallet.createRandom();
+      const phrase = wallet.mnemonic?.phrase || "";
+      setGeneratedSeed(phrase);
+      setConfirmSeedSaved(false);
+    } catch {
+      showMessage(t.seedGenerateError);
+    }
   }
 
-  function createWallet() {
+  async function createWallet() {
     if (!generatedSeed.trim()) {
       showMessage(t.generateSeedFirst);
       return;
     }
 
-    if (!createPassword.trim() || createPassword.trim().length < 4) {
+    if (!confirmSeedSaved) {
+      showMessage(t.confirmSeedSaveFirst);
+      return;
+    }
+
+    if (!createPassword.trim() || createPassword.trim().length < 6) {
       showMessage(t.passwordShort);
       return;
     }
 
-    try {
-      const wallet = ethers.Wallet.fromPhrase(generatedSeed.trim());
+    setLoading(true);
 
-      const item: WalletItem = {
+    try {
+      const baseWallet = ethers.Wallet.fromPhrase(generatedSeed.trim());
+      const encryptedJson = await baseWallet.encrypt(createPassword.trim());
+
+      const item: WalletVault = {
         id: "wallet_" + Date.now(),
         name: createName.trim() || `Wallet ${wallets.length + 1}`,
-        password: createPassword.trim(),
-        mnemonic: generatedSeed.trim(),
-        address: wallet.address,
+        address: baseWallet.address,
+        encryptedJson,
+        createdAt: Date.now(),
       };
 
       const next = [...wallets, item];
       saveWallets(next);
       setSelectedWalletId(item.id);
       localStorage.setItem(CURRENT_WALLET_KEY, item.id);
-      localStorage.setItem(CURRENT_ADDRESS_KEY, item.address);
+
+      setUnlockedWallet({
+        id: item.id,
+        name: item.name,
+        address: baseWallet.address,
+        mnemonic: generatedSeed.trim(),
+        privateKey: baseWallet.privateKey,
+      });
 
       setCreateName("");
       setCreatePassword("");
       setGeneratedSeed("");
+      setConfirmSeedSaved(false);
       setView("wallet");
       showMessage(t.walletCreated);
     } catch {
       showMessage(t.createFailed);
+    } finally {
+      setLoading(false);
     }
   }
 
-  function importWallet() {
+  async function importWallet() {
     if (!importSeed.trim()) {
       showMessage(t.pasteSeed);
       return;
     }
 
-    if (!importPassword.trim() || importPassword.trim().length < 4) {
+    if (!createOrImportSeedLooksValid(importSeed.trim())) {
+      showMessage(t.invalidSeed);
+      return;
+    }
+
+    if (!importPassword.trim() || importPassword.trim().length < 6) {
       showMessage(t.passwordShort);
       return;
     }
 
-    try {
-      const wallet = ethers.Wallet.fromPhrase(importSeed.trim());
+    setLoading(true);
 
-      const item: WalletItem = {
+    try {
+      const baseWallet = ethers.Wallet.fromPhrase(normalizeSeed(importSeed.trim()));
+      const encryptedJson = await baseWallet.encrypt(importPassword.trim());
+
+      const alreadyExists = wallets.some(
+        (w) => w.address.toLowerCase() === baseWallet.address.toLowerCase()
+      );
+
+      if (alreadyExists) {
+        showMessage(t.walletAlreadyExists);
+        setLoading(false);
+        return;
+      }
+
+      const seedNormalized = normalizeSeed(importSeed.trim());
+
+      const item: WalletVault = {
         id: "wallet_" + Date.now(),
         name: importName.trim() || `Wallet ${wallets.length + 1}`,
-        password: importPassword.trim(),
-        mnemonic: importSeed.trim(),
-        address: wallet.address,
+        address: baseWallet.address,
+        encryptedJson,
+        createdAt: Date.now(),
       };
 
       const next = [...wallets, item];
       saveWallets(next);
       setSelectedWalletId(item.id);
       localStorage.setItem(CURRENT_WALLET_KEY, item.id);
-      localStorage.setItem(CURRENT_ADDRESS_KEY, item.address);
+
+      setUnlockedWallet({
+        id: item.id,
+        name: item.name,
+        address: baseWallet.address,
+        mnemonic: seedNormalized,
+        privateKey: baseWallet.privateKey,
+      });
 
       setImportName("");
       setImportPassword("");
@@ -181,39 +273,81 @@ export default function WalletShell() {
       showMessage(t.walletImported);
     } catch {
       showMessage(t.invalidSeed);
+    } finally {
+      setLoading(false);
     }
   }
 
-  function unlockWallet() {
-    const wallet = wallets.find((w) => w.id === selectedWalletId);
-    if (!wallet) {
+  async function unlockWallet() {
+    const vault = wallets.find((w) => w.id === selectedWalletId);
+
+    if (!vault) {
       showMessage(t.noWallet);
       return;
     }
 
-    if (wallet.password !== unlockPassword.trim()) {
-      showMessage(t.wrongPassword);
+    if (!unlockPassword.trim()) {
+      showMessage(t.enterPassword);
       return;
     }
 
-    localStorage.setItem(CURRENT_WALLET_KEY, wallet.id);
-    localStorage.setItem(CURRENT_ADDRESS_KEY, wallet.address);
-    setView("wallet");
-    setUnlockPassword("");
-    showMessage(t.unlocked);
+    setLoading(true);
+
+    try {
+      const decrypted = await ethers.Wallet.fromEncryptedJson(
+        vault.encryptedJson,
+        unlockPassword.trim()
+      );
+
+      const mnemonic = decrypted.mnemonic?.phrase || "";
+
+      setUnlockedWallet({
+        id: vault.id,
+        name: vault.name,
+        address: decrypted.address,
+        mnemonic,
+        privateKey: decrypted.privateKey,
+      });
+
+      localStorage.setItem(CURRENT_WALLET_KEY, vault.id);
+      setView("wallet");
+      setUnlockPassword("");
+      showMessage(t.unlocked);
+    } catch {
+      showMessage(t.wrongPassword);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function lockWallet() {
+    setUnlockedWallet(null);
     setView("auth");
+    setUnlockPassword("");
     showMessage(t.locked);
   }
 
-  const currentWallet = useMemo(() => {
+  function logoutAndLock() {
+    lockWallet();
+  }
+
+  const currentWalletMeta = useMemo(() => {
+    if (unlockedWallet) {
+      return {
+        id: unlockedWallet.id,
+        name: unlockedWallet.name,
+        address: unlockedWallet.address,
+      };
+    }
+
     const currentId = localStorage.getItem(CURRENT_WALLET_KEY);
-    return wallets.find((w) => w.id === currentId) || wallets[0];
-  }, [wallets, view]);
+    return wallets.find((w) => w.id === currentId) || wallets[0] || null;
+  }, [wallets, unlockedWallet]);
 
   const renderTab = () => {
+    const address = unlockedWallet?.address || currentWalletMeta?.address || "";
+    const mnemonic = unlockedWallet?.mnemonic || "";
+
     switch (tab) {
       case "dashboard":
         return (
@@ -221,46 +355,53 @@ export default function WalletShell() {
             setTab={setTab}
             theme={theme}
             lang={lang}
-            address={currentWallet?.address || ""}
+            address={address}
           />
         );
+
       case "send":
         return (
           <SendScreen
             theme={theme}
             lang={lang}
-            address={currentWallet?.address || ""}
-            mnemonic={currentWallet?.mnemonic || ""}
+            address={address}
+            mnemonic={mnemonic}
           />
         );
+
       case "receive":
         return (
           <ReceiveScreen
             theme={theme}
             lang={lang}
-            address={currentWallet?.address || ""}
+            address={address}
           />
         );
+
       case "tokens":
         return (
           <TokensScreen
             theme={theme}
             lang={lang}
-            address={currentWallet?.address || ""}
+            address={address}
           />
         );
+
       case "activity":
         return (
           <ActivityScreen
             theme={theme}
             lang={lang}
-            address={currentWallet?.address || ""}
+            address={address}
           />
         );
+
       case "swap":
         return <SwapScreen />;
+
       case "bridge":
         return <BridgeScreen />;
+
       case "settings":
         return (
           <SettingsScreen
@@ -270,13 +411,14 @@ export default function WalletShell() {
             setLang={setLang}
           />
         );
+
       default:
         return (
           <DashboardScreen
             setTab={setTab}
             theme={theme}
             lang={lang}
-            address={currentWallet?.address || ""}
+            address={address}
           />
         );
     }
@@ -290,7 +432,7 @@ export default function WalletShell() {
           background:
             theme === "light"
               ? "linear-gradient(180deg,#eef3fb 0%, #f7f9fd 100%)"
-              : "linear-gradient(180deg,#0b0b0f 0%, #06070b 100%)",
+              : "radial-gradient(circle at top, rgba(63,124,255,.12) 0%, rgba(11,11,15,1) 38%, rgba(6,7,11,1) 100%)",
           color: theme === "light" ? "#10131a" : "#ffffff",
           padding: 20,
           display: "flex",
@@ -298,18 +440,21 @@ export default function WalletShell() {
           justifyContent: "center",
         }}
       >
-        <div style={{ width: "min(420px, 100%)" }}>
-          <div style={{ textAlign: "center", marginBottom: 26 }}>
+        <div style={{ width: "min(460px, 100%)" }}>
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
             <img
               src={BASE + "token-inri.png"}
               alt="INRI"
               style={{
-                width: 140,
-                height: 140,
+                width: 154,
+                height: 154,
                 objectFit: "contain",
                 margin: "0 auto 18px",
                 display: "block",
-                filter: "drop-shadow(0 12px 30px rgba(63,124,255,.25))",
+                filter:
+                  theme === "light"
+                    ? "drop-shadow(0 16px 40px rgba(63,124,255,.20))"
+                    : "drop-shadow(0 18px 44px rgba(63,124,255,.38))",
               }}
             />
 
@@ -319,6 +464,7 @@ export default function WalletShell() {
                 fontWeight: 900,
                 lineHeight: 1,
                 marginBottom: 12,
+                letterSpacing: "-0.03em",
               }}
             >
               INRI Wallet
@@ -337,13 +483,17 @@ export default function WalletShell() {
           <div
             style={{
               border: `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
-              borderRadius: 28,
-              background: theme === "light" ? "#ffffff" : "#121621",
+              borderRadius: 30,
+              background:
+                theme === "light"
+                  ? "rgba(255,255,255,.94)"
+                  : "rgba(18,22,33,.92)",
               padding: 18,
               boxShadow:
                 theme === "light"
                   ? "0 18px 40px rgba(20,30,60,.08)"
                   : "0 18px 40px rgba(0,0,0,.28)",
+              backdropFilter: "blur(16px)",
             }}
           >
             <div
@@ -354,13 +504,22 @@ export default function WalletShell() {
                 marginBottom: 16,
               }}
             >
-              <button onClick={() => setAuthMode("unlock")} style={tabButtonStyle(authMode === "unlock")}>
+              <button
+                onClick={() => setAuthMode("unlock")}
+                style={tabButtonStyle(authMode === "unlock", theme)}
+              >
                 {t.unlock}
               </button>
-              <button onClick={() => setAuthMode("create")} style={tabButtonStyle(authMode === "create")}>
+              <button
+                onClick={() => setAuthMode("create")}
+                style={tabButtonStyle(authMode === "create", theme)}
+              >
                 {t.create}
               </button>
-              <button onClick={() => setAuthMode("import")} style={tabButtonStyle(authMode === "import")}>
+              <button
+                onClick={() => setAuthMode("import")}
+                style={tabButtonStyle(authMode === "import", theme)}
+              >
                 {t.import}
               </button>
             </div>
@@ -377,7 +536,7 @@ export default function WalletShell() {
                   ) : (
                     wallets.map((wallet) => (
                       <option key={wallet.id} value={wallet.id}>
-                        {wallet.name}
+                        {wallet.name} — {shortAddress(wallet.address)}
                       </option>
                     ))
                   )}
@@ -391,8 +550,12 @@ export default function WalletShell() {
                   style={inputStyle(theme)}
                 />
 
-                <button onClick={unlockWallet} style={mainButtonStyle()}>
-                  {t.unlock}
+                <button
+                  onClick={unlockWallet}
+                  style={mainButtonStyle()}
+                  disabled={loading || wallets.length === 0}
+                >
+                  {loading ? t.processing : t.unlock}
                 </button>
               </div>
             ) : null}
@@ -413,20 +576,43 @@ export default function WalletShell() {
                   style={textareaStyle(theme)}
                 />
 
-                <button onClick={generateSeedPhrase} style={secondaryButtonStyle()}>
+                <button onClick={generateSeedPhrase} style={secondaryButtonStyle(theme)}>
                   {t.generateSeed}
                 </button>
+
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    fontSize: 13,
+                    color: theme === "light" ? "#42506a" : "#a7b0c4",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={confirmSeedSaved}
+                    onChange={(e) => setConfirmSeedSaved(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>{t.seedBackupConfirm}</span>
+                </label>
 
                 <input
                   type="password"
                   value={createPassword}
                   onChange={(e) => setCreatePassword(e.target.value)}
-                  placeholder={t.password}
+                  placeholder={t.passwordCreate}
                   style={inputStyle(theme)}
                 />
 
-                <button onClick={createWallet} style={mainButtonStyle()}>
-                  {t.createWallet}
+                <button
+                  onClick={createWallet}
+                  style={mainButtonStyle()}
+                  disabled={loading}
+                >
+                  {loading ? t.processing : t.createWallet}
                 </button>
               </div>
             ) : null}
@@ -451,12 +637,16 @@ export default function WalletShell() {
                   type="password"
                   value={importPassword}
                   onChange={(e) => setImportPassword(e.target.value)}
-                  placeholder={t.password}
+                  placeholder={t.passwordCreate}
                   style={inputStyle(theme)}
                 />
 
-                <button onClick={importWallet} style={mainButtonStyle()}>
-                  {t.importWallet}
+                <button
+                  onClick={importWallet}
+                  style={mainButtonStyle()}
+                  disabled={loading}
+                >
+                  {loading ? t.processing : t.importWallet}
                 </button>
               </div>
             ) : null}
@@ -472,6 +662,21 @@ export default function WalletShell() {
                 }}
               >
                 {message}
+              </div>
+            ) : null}
+
+            {wallets.length > 0 ? (
+              <div
+                style={{
+                  marginTop: 18,
+                  paddingTop: 14,
+                  borderTop: `1px solid ${theme === "light" ? "#e7edf7" : "#252b39"}`,
+                  color: theme === "light" ? "#5b6578" : "#97a0b3",
+                  fontSize: 12,
+                  textAlign: "center",
+                }}
+              >
+                {wallets.length} {wallets.length === 1 ? t.walletStored : t.walletsStored}
               </div>
             ) : null}
           </div>
@@ -491,11 +696,11 @@ export default function WalletShell() {
             : "linear-gradient(180deg,#0b0b0f 0%, #101625 100%)",
       }}
     >
-      <Header walletName={currentWallet?.name || "INRI Wallet"} theme={theme} />
+      <Header walletName={currentWalletMeta?.name || "INRI Wallet"} theme={theme} />
 
       <main style={{ padding: "16px", maxWidth: 900, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-          <button onClick={lockWallet} style={secondaryButtonStyle()}>
+          <button onClick={logoutAndLock} style={secondaryButtonStyle(theme)}>
             {t.lock}
           </button>
         </div>
@@ -508,6 +713,21 @@ export default function WalletShell() {
   );
 }
 
+function normalizeSeed(seed: string) {
+  return seed.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function createOrImportSeedLooksValid(seed: string) {
+  const normalized = normalizeSeed(seed);
+  const parts = normalized.split(" ").filter(Boolean);
+  return [12, 15, 18, 21, 24].includes(parts.length);
+}
+
+function shortAddress(address: string) {
+  if (!address) return "";
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 function getText(lang: string) {
   const map: Record<string, any> = {
     en: {
@@ -516,6 +736,7 @@ function getText(lang: string) {
       create: "Create",
       import: "Import",
       password: "Enter your password",
+      passwordCreate: "Create a password (min. 6 chars)",
       walletName: "Wallet name",
       generatedSeed: "Generated seed phrase",
       generateSeed: "Generate Seed",
@@ -523,7 +744,8 @@ function getText(lang: string) {
       importWallet: "Import Wallet",
       pasteSeed: "Paste seed phrase",
       generateSeedFirst: "Generate seed first.",
-      passwordShort: "Password must be at least 4 chars.",
+      confirmSeedSaveFirst: "Confirm that you saved your seed phrase.",
+      passwordShort: "Password must be at least 6 characters.",
       walletCreated: "Wallet created.",
       walletImported: "Wallet imported.",
       wrongPassword: "Wrong password.",
@@ -534,13 +756,22 @@ function getText(lang: string) {
       lock: "Lock",
       invalidSeed: "Invalid seed phrase.",
       createFailed: "Could not create wallet.",
+      seedGenerateError: "Could not generate seed phrase.",
+      processing: "Processing...",
+      enterPassword: "Enter your password.",
+      seedBackupConfirm: "I wrote down my seed phrase and stored it somewhere safe. I understand that losing it means losing access to my wallet.",
+      walletAlreadyExists: "This wallet already exists on this device.",
+      walletStored: "wallet stored",
+      walletsStored: "wallets stored",
     },
+
     pt: {
       authSubtitle: "Crie, importe ou desbloqueie sua carteira",
       unlock: "Desbloquear",
       create: "Criar",
       import: "Importar",
       password: "Digite sua senha",
+      passwordCreate: "Crie uma senha (mín. 6 caracteres)",
       walletName: "Nome da carteira",
       generatedSeed: "Seed phrase gerada",
       generateSeed: "Gerar Seed",
@@ -548,7 +779,8 @@ function getText(lang: string) {
       importWallet: "Importar Carteira",
       pasteSeed: "Cole a seed phrase",
       generateSeedFirst: "Gere a seed primeiro.",
-      passwordShort: "A senha deve ter pelo menos 4 caracteres.",
+      confirmSeedSaveFirst: "Confirme que você salvou sua seed phrase.",
+      passwordShort: "A senha deve ter pelo menos 6 caracteres.",
       walletCreated: "Carteira criada.",
       walletImported: "Carteira importada.",
       wrongPassword: "Senha incorreta.",
@@ -559,13 +791,22 @@ function getText(lang: string) {
       lock: "Travar",
       invalidSeed: "Seed phrase inválida.",
       createFailed: "Não foi possível criar a carteira.",
+      seedGenerateError: "Não foi possível gerar a seed phrase.",
+      processing: "Processando...",
+      enterPassword: "Digite sua senha.",
+      seedBackupConfirm: "Eu anotei minha seed phrase e guardei em um lugar seguro. Entendo que perder essa frase significa perder o acesso à minha carteira.",
+      walletAlreadyExists: "Essa carteira já existe neste dispositivo.",
+      walletStored: "carteira salva",
+      walletsStored: "carteiras salvas",
     },
+
     es: {
       authSubtitle: "Crea, importa o desbloquea tu billetera",
       unlock: "Desbloquear",
       create: "Crear",
       import: "Importar",
       password: "Ingresa tu contraseña",
+      passwordCreate: "Crea una contraseña (mín. 6 caracteres)",
       walletName: "Nombre de la billetera",
       generatedSeed: "Seed phrase generada",
       generateSeed: "Generar Seed",
@@ -573,7 +814,8 @@ function getText(lang: string) {
       importWallet: "Importar Billetera",
       pasteSeed: "Pega la seed phrase",
       generateSeedFirst: "Primero genera la seed.",
-      passwordShort: "La contraseña debe tener al menos 4 caracteres.",
+      confirmSeedSaveFirst: "Confirma que guardaste tu seed phrase.",
+      passwordShort: "La contraseña debe tener al menos 6 caracteres.",
       walletCreated: "Billetera creada.",
       walletImported: "Billetera importada.",
       wrongPassword: "Contraseña incorrecta.",
@@ -584,19 +826,312 @@ function getText(lang: string) {
       lock: "Bloquear",
       invalidSeed: "Seed phrase inválida.",
       createFailed: "No se pudo crear la billetera.",
+      seedGenerateError: "No se pudo generar la seed phrase.",
+      processing: "Procesando...",
+      enterPassword: "Ingresa tu contraseña.",
+      seedBackupConfirm: "Escribí mi seed phrase y la guardé en un lugar seguro. Entiendo que perderla significa perder el acceso a mi billetera.",
+      walletAlreadyExists: "Esta billetera ya existe en este dispositivo.",
+      walletStored: "billetera guardada",
+      walletsStored: "billeteras guardadas",
+    },
+
+    fr: {
+      authSubtitle: "Créez, importez ou déverrouillez votre portefeuille",
+      unlock: "Déverrouiller",
+      create: "Créer",
+      import: "Importer",
+      password: "Entrez votre mot de passe",
+      passwordCreate: "Créez un mot de passe (min. 6 caractères)",
+      walletName: "Nom du portefeuille",
+      generatedSeed: "Phrase seed générée",
+      generateSeed: "Générer la Seed",
+      createWallet: "Créer le Portefeuille",
+      importWallet: "Importer le Portefeuille",
+      pasteSeed: "Collez la phrase seed",
+      generateSeedFirst: "Générez d'abord la seed.",
+      confirmSeedSaveFirst: "Confirmez que vous avez sauvegardé votre phrase seed.",
+      passwordShort: "Le mot de passe doit contenir au moins 6 caractères.",
+      walletCreated: "Portefeuille créé.",
+      walletImported: "Portefeuille importé.",
+      wrongPassword: "Mot de passe incorrect.",
+      noWallet: "Aucun portefeuille trouvé.",
+      noWalletsYet: "Aucun portefeuille pour le moment",
+      unlocked: "Déverrouillé.",
+      locked: "Verrouillé.",
+      lock: "Verrouiller",
+      invalidSeed: "Phrase seed invalide.",
+      createFailed: "Impossible de créer le portefeuille.",
+      seedGenerateError: "Impossible de générer la phrase seed.",
+      processing: "Traitement...",
+      enterPassword: "Entrez votre mot de passe.",
+      seedBackupConfirm: "J’ai noté ma phrase seed et je l’ai conservée en lieu sûr. Je comprends que la perdre signifie perdre l’accès à mon portefeuille.",
+      walletAlreadyExists: "Ce portefeuille existe déjà sur cet appareil.",
+      walletStored: "portefeuille enregistré",
+      walletsStored: "portefeuilles enregistrés",
+    },
+
+    de: {
+      authSubtitle: "Erstellen, importieren oder entsperren Sie Ihre Wallet",
+      unlock: "Entsperren",
+      create: "Erstellen",
+      import: "Importieren",
+      password: "Passwort eingeben",
+      passwordCreate: "Passwort erstellen (mind. 6 Zeichen)",
+      walletName: "Wallet-Name",
+      generatedSeed: "Generierte Seed-Phrase",
+      generateSeed: "Seed generieren",
+      createWallet: "Wallet erstellen",
+      importWallet: "Wallet importieren",
+      pasteSeed: "Seed-Phrase einfügen",
+      generateSeedFirst: "Bitte zuerst eine Seed generieren.",
+      confirmSeedSaveFirst: "Bestätigen Sie, dass Sie Ihre Seed-Phrase gespeichert haben.",
+      passwordShort: "Das Passwort muss mindestens 6 Zeichen haben.",
+      walletCreated: "Wallet erstellt.",
+      walletImported: "Wallet importiert.",
+      wrongPassword: "Falsches Passwort.",
+      noWallet: "Keine Wallet gefunden.",
+      noWalletsYet: "Noch keine Wallets",
+      unlocked: "Entsperrt.",
+      locked: "Gesperrt.",
+      lock: "Sperren",
+      invalidSeed: "Ungültige Seed-Phrase.",
+      createFailed: "Wallet konnte nicht erstellt werden.",
+      seedGenerateError: "Seed-Phrase konnte nicht generiert werden.",
+      processing: "Wird verarbeitet...",
+      enterPassword: "Passwort eingeben.",
+      seedBackupConfirm: "Ich habe meine Seed-Phrase notiert und sicher aufbewahrt. Ich verstehe, dass ich ohne sie den Zugriff auf meine Wallet verliere.",
+      walletAlreadyExists: "Diese Wallet existiert bereits auf diesem Gerät.",
+      walletStored: "Wallet gespeichert",
+      walletsStored: "Wallets gespeichert",
+    },
+
+    it: {
+      authSubtitle: "Crea, importa o sblocca il tuo wallet",
+      unlock: "Sblocca",
+      create: "Crea",
+      import: "Importa",
+      password: "Inserisci la password",
+      passwordCreate: "Crea una password (min. 6 caratteri)",
+      walletName: "Nome del wallet",
+      generatedSeed: "Seed phrase generata",
+      generateSeed: "Genera Seed",
+      createWallet: "Crea Wallet",
+      importWallet: "Importa Wallet",
+      pasteSeed: "Incolla la seed phrase",
+      generateSeedFirst: "Genera prima la seed.",
+      confirmSeedSaveFirst: "Conferma di aver salvato la seed phrase.",
+      passwordShort: "La password deve contenere almeno 6 caratteri.",
+      walletCreated: "Wallet creato.",
+      walletImported: "Wallet importato.",
+      wrongPassword: "Password errata.",
+      noWallet: "Nessun wallet trovato.",
+      noWalletsYet: "Nessun wallet ancora",
+      unlocked: "Sbloccato.",
+      locked: "Bloccato.",
+      lock: "Blocca",
+      invalidSeed: "Seed phrase non valida.",
+      createFailed: "Impossibile creare il wallet.",
+      seedGenerateError: "Impossibile generare la seed phrase.",
+      processing: "Elaborazione...",
+      enterPassword: "Inserisci la password.",
+      seedBackupConfirm: "Ho scritto la mia seed phrase e l'ho conservata in un posto sicuro. Capisco che perderla significa perdere l'accesso al wallet.",
+      walletAlreadyExists: "Questo wallet esiste già su questo dispositivo.",
+      walletStored: "wallet salvato",
+      walletsStored: "wallet salvati",
+    },
+
+    ru: {
+      authSubtitle: "Создайте, импортируйте или разблокируйте кошелек",
+      unlock: "Разблокировать",
+      create: "Создать",
+      import: "Импорт",
+      password: "Введите пароль",
+      passwordCreate: "Создайте пароль (мин. 6 символов)",
+      walletName: "Название кошелька",
+      generatedSeed: "Сгенерированная seed-фраза",
+      generateSeed: "Сгенерировать Seed",
+      createWallet: "Создать кошелек",
+      importWallet: "Импортировать кошелек",
+      pasteSeed: "Вставьте seed-фразу",
+      generateSeedFirst: "Сначала сгенерируйте seed-фразу.",
+      confirmSeedSaveFirst: "Подтвердите, что вы сохранили seed-фразу.",
+      passwordShort: "Пароль должен содержать не менее 6 символов.",
+      walletCreated: "Кошелек создан.",
+      walletImported: "Кошелек импортирован.",
+      wrongPassword: "Неверный пароль.",
+      noWallet: "Кошелек не найден.",
+      noWalletsYet: "Кошельков пока нет",
+      unlocked: "Разблокировано.",
+      locked: "Заблокировано.",
+      lock: "Заблокировать",
+      invalidSeed: "Недействительная seed-фраза.",
+      createFailed: "Не удалось создать кошелек.",
+      seedGenerateError: "Не удалось сгенерировать seed-фразу.",
+      processing: "Обработка...",
+      enterPassword: "Введите пароль.",
+      seedBackupConfirm: "Я записал seed-фразу и сохранил её в безопасном месте. Я понимаю, что потеря этой фразы означает потерю доступа к кошельку.",
+      walletAlreadyExists: "Этот кошелек уже существует на этом устройстве.",
+      walletStored: "кошелек сохранен",
+      walletsStored: "кошельков сохранено",
+    },
+
+    zh: {
+      authSubtitle: "创建、导入或解锁您的钱包",
+      unlock: "解锁",
+      create: "创建",
+      import: "导入",
+      password: "输入密码",
+      passwordCreate: "创建密码（至少 6 位）",
+      walletName: "钱包名称",
+      generatedSeed: "已生成助记词",
+      generateSeed: "生成助记词",
+      createWallet: "创建钱包",
+      importWallet: "导入钱包",
+      pasteSeed: "粘贴助记词",
+      generateSeedFirst: "请先生成助记词。",
+      confirmSeedSaveFirst: "请确认您已保存助记词。",
+      passwordShort: "密码至少需要 6 位字符。",
+      walletCreated: "钱包已创建。",
+      walletImported: "钱包已导入。",
+      wrongPassword: "密码错误。",
+      noWallet: "未找到钱包。",
+      noWalletsYet: "还没有钱包",
+      unlocked: "已解锁。",
+      locked: "已锁定。",
+      lock: "锁定",
+      invalidSeed: "助记词无效。",
+      createFailed: "无法创建钱包。",
+      seedGenerateError: "无法生成助记词。",
+      processing: "处理中...",
+      enterPassword: "请输入密码。",
+      seedBackupConfirm: "我已写下助记词并安全保存。我明白丢失助记词将意味着失去钱包访问权限。",
+      walletAlreadyExists: "此钱包已存在于此设备中。",
+      walletStored: "已保存钱包",
+      walletsStored: "已保存钱包",
+    },
+
+    ja: {
+      authSubtitle: "ウォレットを作成、インポート、またはロック解除",
+      unlock: "ロック解除",
+      create: "作成",
+      import: "インポート",
+      password: "パスワードを入力",
+      passwordCreate: "パスワードを作成（6文字以上）",
+      walletName: "ウォレット名",
+      generatedSeed: "生成されたシードフレーズ",
+      generateSeed: "シード生成",
+      createWallet: "ウォレット作成",
+      importWallet: "ウォレットをインポート",
+      pasteSeed: "シードフレーズを貼り付け",
+      generateSeedFirst: "先にシードを生成してください。",
+      confirmSeedSaveFirst: "シードフレーズを保存したことを確認してください。",
+      passwordShort: "パスワードは6文字以上必要です。",
+      walletCreated: "ウォレットを作成しました。",
+      walletImported: "ウォレットをインポートしました。",
+      wrongPassword: "パスワードが正しくありません。",
+      noWallet: "ウォレットが見つかりません。",
+      noWalletsYet: "まだウォレットがありません",
+      unlocked: "ロック解除しました。",
+      locked: "ロックされました。",
+      lock: "ロック",
+      invalidSeed: "無効なシードフレーズです。",
+      createFailed: "ウォレットを作成できませんでした。",
+      seedGenerateError: "シードフレーズを生成できませんでした。",
+      processing: "処理中...",
+      enterPassword: "パスワードを入力してください。",
+      seedBackupConfirm: "シードフレーズを書き留めて安全な場所に保管しました。これを失うとウォレットにアクセスできなくなることを理解しています。",
+      walletAlreadyExists: "このウォレットはこのデバイスに既に存在します。",
+      walletStored: "保存済みウォレット",
+      walletsStored: "保存済みウォレット",
+    },
+
+    ko: {
+      authSubtitle: "지갑을 생성, 가져오기 또는 잠금 해제하세요",
+      unlock: "잠금 해제",
+      create: "생성",
+      import: "가져오기",
+      password: "비밀번호 입력",
+      passwordCreate: "비밀번호 생성(최소 6자)",
+      walletName: "지갑 이름",
+      generatedSeed: "생성된 시드 구문",
+      generateSeed: "시드 생성",
+      createWallet: "지갑 생성",
+      importWallet: "지갑 가져오기",
+      pasteSeed: "시드 구문 붙여넣기",
+      generateSeedFirst: "먼저 시드를 생성하세요.",
+      confirmSeedSaveFirst: "시드 구문을 저장했는지 확인하세요.",
+      passwordShort: "비밀번호는 최소 6자 이상이어야 합니다.",
+      walletCreated: "지갑이 생성되었습니다.",
+      walletImported: "지갑을 가져왔습니다.",
+      wrongPassword: "비밀번호가 올바르지 않습니다.",
+      noWallet: "지갑을 찾을 수 없습니다.",
+      noWalletsYet: "아직 지갑이 없습니다",
+      unlocked: "잠금 해제되었습니다.",
+      locked: "잠겼습니다.",
+      lock: "잠그기",
+      invalidSeed: "유효하지 않은 시드 구문입니다.",
+      createFailed: "지갑을 생성할 수 없습니다.",
+      seedGenerateError: "시드 구문을 생성할 수 없습니다.",
+      processing: "처리 중...",
+      enterPassword: "비밀번호를 입력하세요.",
+      seedBackupConfirm: "시드 구문을 적어 안전한 곳에 보관했습니다. 이를 잃어버리면 지갑 접근 권한을 잃는다는 것을 이해합니다.",
+      walletAlreadyExists: "이 지갑은 이미 이 기기에 존재합니다.",
+      walletStored: "저장된 지갑",
+      walletsStored: "저장된 지갑",
+    },
+
+    tr: {
+      authSubtitle: "Cüzdanınızı oluşturun, içe aktarın veya kilidini açın",
+      unlock: "Kilidi Aç",
+      create: "Oluştur",
+      import: "İçe Aktar",
+      password: "Şifrenizi girin",
+      passwordCreate: "Bir şifre oluşturun (en az 6 karakter)",
+      walletName: "Cüzdan adı",
+      generatedSeed: "Oluşturulan seed phrase",
+      generateSeed: "Seed Oluştur",
+      createWallet: "Cüzdan Oluştur",
+      importWallet: "Cüzdanı İçe Aktar",
+      pasteSeed: "Seed phrase yapıştırın",
+      generateSeedFirst: "Önce seed oluşturun.",
+      confirmSeedSaveFirst: "Seed phrase'i kaydettiğinizi onaylayın.",
+      passwordShort: "Şifre en az 6 karakter olmalıdır.",
+      walletCreated: "Cüzdan oluşturuldu.",
+      walletImported: "Cüzdan içe aktarıldı.",
+      wrongPassword: "Yanlış şifre.",
+      noWallet: "Cüzdan bulunamadı.",
+      noWalletsYet: "Henüz cüzdan yok",
+      unlocked: "Kilidi açıldı.",
+      locked: "Kilitlendi.",
+      lock: "Kilitle",
+      invalidSeed: "Geçersiz seed phrase.",
+      createFailed: "Cüzdan oluşturulamadı.",
+      seedGenerateError: "Seed phrase oluşturulamadı.",
+      processing: "İşleniyor...",
+      enterPassword: "Şifrenizi girin.",
+      seedBackupConfirm: "Seed phrase'imi yazdım ve güvenli bir yerde sakladım. Bunu kaybetmenin cüzdanıma erişimi kaybetmek anlamına geldiğini anlıyorum.",
+      walletAlreadyExists: "Bu cüzdan bu cihazda zaten موجود.",
+      walletStored: "cüzdan kaydedildi",
+      walletsStored: "cüzdan kaydedildi",
     },
   };
 
   return map[lang] || map.en;
 }
 
-function tabButtonStyle(active: boolean): React.CSSProperties {
+function tabButtonStyle(active: boolean, theme: "dark" | "light"): React.CSSProperties {
   return {
     padding: "10px 12px",
     borderRadius: 14,
-    border: active ? "1px solid #4d7ef2" : "1px solid #252b39",
-    background: active ? "#3f7cff" : "#141927",
-    color: "#fff",
+    border: active
+      ? "1px solid #4d7ef2"
+      : `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
+    background: active
+      ? "#3f7cff"
+      : theme === "light"
+      ? "#f3f6fc"
+      : "#141927",
+    color: active ? "#fff" : theme === "light" ? "#10131a" : "#ffffff",
     cursor: "pointer",
     fontWeight: 800,
   };
@@ -611,13 +1146,14 @@ function inputStyle(theme: "dark" | "light"): React.CSSProperties {
     background: theme === "light" ? "#f6f8fc" : "#0d111b",
     color: theme === "light" ? "#10131a" : "#ffffff",
     outline: "none",
+    boxSizing: "border-box",
   };
 }
 
 function textareaStyle(theme: "dark" | "light"): React.CSSProperties {
   return {
     width: "100%",
-    minHeight: 96,
+    minHeight: 110,
     padding: 13,
     borderRadius: 14,
     border: `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
@@ -625,6 +1161,7 @@ function textareaStyle(theme: "dark" | "light"): React.CSSProperties {
     color: theme === "light" ? "#10131a" : "#ffffff",
     outline: "none",
     resize: "vertical",
+    boxSizing: "border-box",
   };
 }
 
@@ -642,13 +1179,13 @@ function mainButtonStyle(): React.CSSProperties {
   };
 }
 
-function secondaryButtonStyle(): React.CSSProperties {
+function secondaryButtonStyle(theme: "dark" | "light"): React.CSSProperties {
   return {
     padding: "10px 14px",
     borderRadius: 12,
-    border: "1px solid #252b39",
-    background: "#1b2741",
-    color: "#fff",
+    border: `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
+    background: theme === "light" ? "#ffffff" : "#1b2741",
+    color: theme === "light" ? "#10131a" : "#fff",
     cursor: "pointer",
     fontWeight: 700,
   };
