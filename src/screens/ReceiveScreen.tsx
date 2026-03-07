@@ -1,34 +1,64 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
+import QRCode from "react-qr-code";
 
-const walletAddress = "0x119B51608D139342baB20bFF0654F275FFbbaAD0";
+type ReceiveScreenProps = {
+  theme?: "dark" | "light";
+  lang?: string;
+};
 
-export default function ReceiveScreen() {
+export default function ReceiveScreen({
+  theme = "dark",
+  lang = "en",
+}: ReceiveScreenProps) {
+  const isLight = theme === "light";
+
+  const walletAddress = useMemo(() => {
+    return (
+      localStorage.getItem("wallet_address_demo") ||
+      "0x119B51608D139342baB20bFF0654F275FFbbaAD0"
+    );
+  }, []);
+
+  const [message, setMessage] = useState("");
+
+  const text = getText(lang);
+
+  async function copyAddress() {
+    try {
+      await navigator.clipboard.writeText(walletAddress);
+      setMessage(text.copied);
+      setTimeout(() => setMessage(""), 2200);
+    } catch {
+      setMessage(text.copyFail);
+      setTimeout(() => setMessage(""), 2200);
+    }
+  }
+
   return (
     <div
       style={{
-        border: "1px solid #252b39",
+        border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
         borderRadius: 20,
-        background: "#121621",
+        background: isLight ? "#ffffff" : "#121621",
         padding: 16,
       }}
     >
-      <h2 style={{ marginTop: 0 }}>Receive</h2>
+      <h2 style={{ marginTop: 0, color: isLight ? "#10131a" : "#ffffff" }}>
+        {text.receive}
+      </h2>
 
       <div
         style={{
           width: 220,
-          height: 220,
           margin: "0 auto",
-          borderRadius: 20,
+          borderRadius: 22,
           background: "#ffffff",
+          padding: 16,
           display: "grid",
           placeItems: "center",
-          color: "#111",
-          fontWeight: 800,
-          fontSize: 28,
         }}
       >
-        QR
+        <QRCode value={walletAddress} size={180} />
       </div>
 
       <div
@@ -36,10 +66,10 @@ export default function ReceiveScreen() {
           marginTop: 16,
           padding: 12,
           borderRadius: 14,
-          background: "#0d111b",
-          border: "1px solid #252b39",
+          border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+          background: isLight ? "#f6f8fc" : "#0d111b",
+          color: isLight ? "#4a5568" : "#97a0b3",
           wordBreak: "break-all",
-          color: "#97a0b3",
           fontSize: 13,
         }}
       >
@@ -47,9 +77,9 @@ export default function ReceiveScreen() {
       </div>
 
       <button
-        onClick={() => navigator.clipboard.writeText(walletAddress)}
+        onClick={copyAddress}
         style={{
-          marginTop: 12,
+          marginTop: 14,
           width: "100%",
           padding: "12px 16px",
           borderRadius: 12,
@@ -57,11 +87,50 @@ export default function ReceiveScreen() {
           background: "#3f7cff",
           color: "#fff",
           cursor: "pointer",
-          fontWeight: 700,
+          fontWeight: 800,
         }}
       >
-        Copy Address
+        {text.copyAddress}
       </button>
+
+      {message ? (
+        <div
+          style={{
+            marginTop: 10,
+            color: "#3f7cff",
+            fontSize: 13,
+            textAlign: "center",
+            fontWeight: 700,
+          }}
+        >
+          {message}
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function getText(lang: string) {
+  const map: Record<string, any> = {
+    en: {
+      receive: "Receive",
+      copyAddress: "Copy Address",
+      copied: "Address copied.",
+      copyFail: "Copy failed.",
+    },
+    pt: {
+      receive: "Receber",
+      copyAddress: "Copiar endereço",
+      copied: "Endereço copiado.",
+      copyFail: "Falha ao copiar.",
+    },
+    es: {
+      receive: "Recibir",
+      copyAddress: "Copiar dirección",
+      copied: "Dirección copiada.",
+      copyFail: "Error al copiar.",
+    },
+  };
+
+  return map[lang] || map.en;
 }
