@@ -1,56 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ethers } from "ethers";
+import { DEFAULT_TOKENS, TokenItem, loadAllBalances } from "../lib/inri";
 
 const BASE = "/inri-wallet-stage/";
-const RPC_URL = "https://rpc-chain.inri.life";
 const CUSTOM_TOKENS_KEY = "wallet_custom_tokens";
 
-type TokenItem = {
-  symbol: string;
-  subtitle: string;
+type ViewToken = TokenItem & {
   balance: string;
-  logo: string;
-  isDefault: boolean;
-  address?: string;
-  decimals?: number;
 };
-
-const DEFAULT_TOKENS: TokenItem[] = [
-  {
-    symbol: "INRI",
-    subtitle: "native coin • pays gas",
-    balance: "0.000000",
-    logo: BASE + "token-inri.png",
-    isDefault: true,
-  },
-  {
-    symbol: "iUSD",
-    subtitle: "stable token",
-    balance: "0.000000",
-    logo: BASE + "token-iusd.png",
-    isDefault: true,
-    address: "0x116b2fF23e062A52E2c0ea12dF7e2638b62Fa0FC",
-    decimals: 6,
-  },
-  {
-    symbol: "WINRI",
-    subtitle: "token",
-    balance: "0.000000",
-    logo: BASE + "token-winri.png",
-    isDefault: true,
-    address: "0x8731F1709745173470821eAeEd9BC600EEC9A3D1",
-    decimals: 18,
-  },
-  {
-    symbol: "DNR",
-    subtitle: "token",
-    balance: "0.000000",
-    logo: BASE + "token-dnr.png",
-    isDefault: true,
-    address: "0xDa9541bB01d9EC1991328516C71B0E539a97d27f",
-    decimals: 18,
-  },
-];
 
 export default function TokensScreen({
   theme = "dark",
@@ -62,12 +18,13 @@ export default function TokensScreen({
   address: string;
 }) {
   const isLight = theme === "light";
-  const [customTokens, setCustomTokens] = useState<TokenItem[]>([]);
+  const [customTokens, setCustomTokens] = useState<ViewToken[]>([]);
   const [symbol, setSymbol] = useState("");
   const [tokenAddress, setTokenAddress] = useState("");
   const [decimals, setDecimals] = useState("18");
   const [logo, setLogo] = useState("");
   const [message, setMessage] = useState("");
+  const [balances, setBalances] = useState<Record<string, string>>({});
   const t = getText(lang);
 
   useEffect(() => {
@@ -86,51 +43,28 @@ export default function TokensScreen({
   }, [customTokens]);
 
   const tokens = useMemo(() => {
-    return [...DEFAULT_TOKENS, ...customTokens];
+    return [
+      ...DEFAULT_TOKENS.map((item) => ({ ...item, balance: "0.000000" })),
+      ...customTokens,
+    ];
   }, [customTokens]);
-
-  const [balances, setBalances] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
 
-    async function loadBalances() {
-      if (!address) return;
-
+    async function refresh() {
       try {
-        const provider = new ethers.JsonRpcProvider(RPC_URL);
-        const next: Record<string, string> = {};
-
-        const nativeRaw = await provider.getBalance(address);
-        next["INRI"] = Number(ethers.formatEther(nativeRaw)).toFixed(6);
-
-        const abi = ["function balanceOf(address) view returns (uint256)"];
-
-        for (const token of tokens) {
-          if (token.symbol === "INRI") continue;
-          if (!token.address) {
-            next[token.symbol] = "0.000000";
-            continue;
-          }
-
-          try {
-            const contract = new ethers.Contract(token.address, abi, provider);
-            const raw = await contract.balanceOf(address);
-            next[token.symbol] = Number(
-              ethers.formatUnits(raw, token.decimals || 18)
-            ).toFixed(6);
-          } catch {
-            next[token.symbol] = "0.000000";
-          }
-        }
-
+        const next = await loadAllBalances(address, tokens);
         if (!active) return;
         setBalances(next);
-      } catch {}
+      } catch {
+        if (!active) return;
+        setBalances({});
+      }
     }
 
-    loadBalances();
-    const timer = setInterval(loadBalances, 12000);
+    refresh();
+    const timer = setInterval(refresh, 12000);
 
     return () => {
       active = false;
@@ -180,7 +114,7 @@ export default function TokensScreen({
       return;
     }
 
-    const newToken: TokenItem = {
+    const newToken: ViewToken = {
       symbol: cleanSymbol,
       subtitle: `custom token • ${cleanAddress.slice(0, 6)}...${cleanAddress.slice(-4)}`,
       balance: "0.000000",
@@ -258,7 +192,14 @@ export default function TokensScreen({
         </button>
 
         {message ? (
-          <div style={{ color: "#3f7cff", fontSize: 13, fontWeight: 700 }}>
+          <div
+            style={{
+              color: "#3f7cff",
+              fontWeight: 700,
+              fontSize: 13,
+              textAlign: "center",
+            }}
+          >
             {message}
           </div>
         ) : null}
@@ -267,47 +208,44 @@ export default function TokensScreen({
       <div style={{ display: "grid", gap: 12 }}>
         {tokens.map((token) => (
           <div
-            key={`${token.symbol}-${token.address || "default"}`}
+            key={token.symbol + (token.address || "")}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
+              display: "grid",
+              gridTemplateColumns: "1fr auto auto",
+              gap: 12,
               alignItems: "center",
               padding: "12px 0",
-              borderBottom: `1px solid ${isLight ? "rgba(20,30,60,.08)" : "rgba(255,255,255,.06)"}`,
-              gap: 12,
+              borderBottom: `1px solid ${isLight ? "#edf1f7" : "#202635"}`,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <img
                 src={token.logo}
                 alt={token.symbol}
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 17,
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
                   objectFit: "cover",
-                  background: "#0d111b",
-                  flexShrink: 0,
+                  background: isLight ? "#f4f7fc" : "#0d111b",
                 }}
               />
 
-              <div style={{ minWidth: 0 }}>
+              <div>
                 <div
                   style={{
-                    fontWeight: 800,
+                    fontWeight: 900,
                     color: isLight ? "#10131a" : "#ffffff",
+                    fontSize: 16,
                   }}
                 >
                   {token.symbol}
                 </div>
+
                 <div
                   style={{
-                    color: isLight ? "#5b6578" : "#97a0b3",
                     fontSize: 12,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: 180,
+                    color: isLight ? "#5b6578" : "#97a0b3",
                   }}
                 >
                   {token.subtitle}
@@ -315,35 +253,34 @@ export default function TokensScreen({
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
+            <div
+              style={{
+                fontWeight: 900,
+                color: isLight ? "#10131a" : "#ffffff",
+                fontSize: 16,
+              }}
+            >
+              {balances[token.symbol] || "0.000000"}
+            </div>
+
+            {token.isDefault ? (
               <div
                 style={{
-                  fontWeight: 800,
-                  color: isLight ? "#10131a" : "#ffffff",
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  background: isLight ? "#eef3fb" : "#1b2232",
+                  color: isLight ? "#304260" : "#a9b3c8",
+                  fontSize: 12,
+                  fontWeight: 700,
                 }}
               >
-                {balances[token.symbol] ?? "0.000000"}
+                {t.fixed}
               </div>
-
-              {token.isDefault ? (
-                <div
-                  style={{
-                    background: isLight ? "#eef2f8" : "#1e2433",
-                    color: isLight ? "#4a5568" : "#97a0b3",
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  {t.fixed}
-                </div>
-              ) : (
-                <button onClick={() => removeToken(token.symbol)} style={removeButtonStyle()}>
-                  {t.remove}
-                </button>
-              )}
-            </div>
+            ) : (
+              <button onClick={() => removeToken(token.symbol)} style={removeButtonStyle()}>
+                {t.remove}
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -359,15 +296,15 @@ function getText(lang: string) {
       tokenAddress: "Token address",
       logoOptional: "Logo URL (optional)",
       addToken: "Add Token",
-      remove: "Remove",
-      fixed: "Fixed",
       symbolRequired: "Token symbol is required.",
       addressRequired: "Token address is required.",
       invalidAddress: "Invalid token address.",
       invalidDecimals: "Invalid decimals.",
-      tokenExists: "Token already exists.",
+      tokenExists: "Token already added.",
       tokenAdded: "Token added.",
       tokenRemoved: "Token removed.",
+      fixed: "Fixed",
+      remove: "Remove",
     },
     pt: {
       tokens: "Tokens",
@@ -375,15 +312,15 @@ function getText(lang: string) {
       tokenAddress: "Endereço do token",
       logoOptional: "URL da logo (opcional)",
       addToken: "Adicionar Token",
-      remove: "Remover",
-      fixed: "Fixo",
-      symbolRequired: "Símbolo obrigatório.",
-      addressRequired: "Endereço do token obrigatório.",
-      invalidAddress: "Endereço do token inválido.",
+      symbolRequired: "O símbolo do token é obrigatório.",
+      addressRequired: "O endereço do token é obrigatório.",
+      invalidAddress: "Endereço de token inválido.",
       invalidDecimals: "Decimais inválidos.",
-      tokenExists: "Token já existe.",
+      tokenExists: "Token já adicionado.",
       tokenAdded: "Token adicionado.",
       tokenRemoved: "Token removido.",
+      fixed: "Fixo",
+      remove: "Remover",
     },
     es: {
       tokens: "Tokens",
@@ -391,15 +328,15 @@ function getText(lang: string) {
       tokenAddress: "Dirección del token",
       logoOptional: "URL del logo (opcional)",
       addToken: "Agregar Token",
-      remove: "Eliminar",
-      fixed: "Fijo",
-      symbolRequired: "Símbolo obligatorio.",
-      addressRequired: "Dirección del token obligatoria.",
+      symbolRequired: "El símbolo del token es obligatorio.",
+      addressRequired: "La dirección del token es obligatoria.",
       invalidAddress: "Dirección del token inválida.",
       invalidDecimals: "Decimales inválidos.",
-      tokenExists: "El token ya existe.",
+      tokenExists: "El token ya fue agregado.",
       tokenAdded: "Token agregado.",
       tokenRemoved: "Token eliminado.",
+      fixed: "Fijo",
+      remove: "Eliminar",
     },
   };
 
@@ -413,31 +350,33 @@ function inputStyle(isLight: boolean): React.CSSProperties {
     borderRadius: 12,
     border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
     background: isLight ? "#f6f8fc" : "#0d111b",
-    color: isLight ? "#10131a" : "#fff",
+    color: isLight ? "#10131a" : "#ffffff",
     outline: "none",
+    boxSizing: "border-box",
   };
 }
 
 function mainButtonStyle(): React.CSSProperties {
   return {
     width: "100%",
-    padding: "12px 16px",
-    borderRadius: 12,
+    padding: "14px 16px",
+    borderRadius: 14,
     border: "none",
     background: "#3f7cff",
     color: "#fff",
     cursor: "pointer",
     fontWeight: 800,
+    fontSize: 16,
   };
 }
 
 function removeButtonStyle(): React.CSSProperties {
   return {
-    background: "#ff4d4d",
-    border: "none",
-    color: "#fff",
-    padding: "6px 10px",
-    borderRadius: 8,
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: "1px solid #c23b4b",
+    background: "transparent",
+    color: "#ff7585",
     cursor: "pointer",
     fontWeight: 700,
   };
