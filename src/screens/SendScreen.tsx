@@ -61,7 +61,7 @@ export default function SendScreen({
     }
 
     loadBalances();
-    const timer = setInterval(loadBalances, 12000);
+    const timer = setInterval(loadBalances, 8000);
 
     return () => {
       active = false;
@@ -90,6 +90,16 @@ export default function SendScreen({
   function saveActivity(entry: any) {
     const current = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]");
     localStorage.setItem(ACTIVITY_KEY, JSON.stringify([entry, ...current]));
+  }
+
+  async function refreshBalances() {
+    const balances = await loadAllBalances(address, tokens);
+    setTokens((prev) =>
+      prev.map((item) => ({
+        ...item,
+        balance: balances[item.symbol] || "0.000000",
+      }))
+    );
   }
 
   async function handleSend() {
@@ -154,13 +164,7 @@ export default function SendScreen({
       setAmount("");
       setToAddress("");
 
-      const balances = await loadAllBalances(address, tokens);
-      setTokens((prev) =>
-        prev.map((item) => ({
-          ...item,
-          balance: balances[item.symbol] || "0.000000",
-        }))
-      );
+      await refreshBalances();
     } catch (e: any) {
       showMessage(e?.shortMessage || e?.message || t.sendFailed);
     } finally {
@@ -306,7 +310,7 @@ export default function SendScreen({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
               gap: 10,
               marginTop: 12,
             }}
@@ -351,7 +355,7 @@ export default function SendScreen({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
               gap: 10,
               marginTop: 12,
             }}
@@ -524,36 +528,6 @@ function getText(lang: string) {
       cameraFail: "Não foi possível abrir a câmera.",
       cameraUnavailable: "Câmera indisponível.",
     },
-    es: {
-      send: "Enviar",
-      token: "Token",
-      balance: "Saldo",
-      recipient: "Dirección del destinatario",
-      amount: "Cantidad",
-      yourAddress: "Tu dirección",
-      openCamera: "Abrir Cámara",
-      useMyAddress: "Usar Mi Dirección",
-      copyAddress: "Copiar Dirección",
-      showQr: "Mostrar QR",
-      hideQr: "Ocultar QR",
-      copied: "Copiado.",
-      copyFail: "No se pudo copiar.",
-      noWallet: "Primero desbloquea tu billetera.",
-      invalidAddress: "Dirección del destinatario inválida.",
-      invalidAmount: "Cantidad inválida.",
-      insufficientBalance: "Saldo insuficiente.",
-      sending: "Enviando...",
-      sent: "Enviado",
-      sendFailed: "La transacción falló.",
-      nativeInfo: "INRI es el token nativo de la red y paga las comisiones.",
-      tokenInfo: "Transferencia de token ERC20 por la red INRI.",
-      scanQr: "Escanear QR",
-      close: "Cerrar",
-      scanHint: "Apunta tu cámara a un código QR que contenga una dirección.",
-      qrCaptured: "Dirección capturada desde el QR.",
-      cameraFail: "No se pudo abrir la cámara.",
-      cameraUnavailable: "Cámara no disponible.",
-    },
   };
 
   return map[lang] || map.en;
@@ -632,6 +606,7 @@ const tokenPreviewStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: 12,
+  flexWrap: "wrap",
 };
 
 const tokenLeftStyle: React.CSSProperties = {
