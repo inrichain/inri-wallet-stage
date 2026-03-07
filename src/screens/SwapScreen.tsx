@@ -1,12 +1,14 @@
-import React, { useMemo, useState } from "react";
-import { DEFAULT_TOKENS } from "../lib/inri";
+import React, { useEffect, useMemo, useState } from "react";
+import { DEFAULT_TOKENS, loadAllBalances } from "../lib/inri";
 
 export default function SwapScreen({
   theme = "dark",
   lang = "en",
+  address,
 }: {
   theme?: "dark" | "light";
   lang?: string;
+  address: string;
 }) {
   const isLight = theme === "light";
   const t = getText(lang);
@@ -16,6 +18,25 @@ export default function SwapScreen({
   const [fromToken, setFromToken] = useState("INRI");
   const [toToken, setToToken] = useState("iUSD");
   const [amount, setAmount] = useState("");
+  const [balances, setBalances] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      const next = await loadAllBalances(address, tokenOptions);
+      if (!active) return;
+      setBalances(next);
+    }
+
+    load();
+    const timer = setInterval(load, 8000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [address]);
 
   const estimated = useMemo(() => {
     const n = Number(amount || "0");
@@ -45,7 +66,12 @@ export default function SwapScreen({
         <div style={row}>
           <div style={tokenBox}>
             <img src={from.logo} alt={from.symbol} style={logoStyle} />
-            <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{from.symbol}</strong>
+            <div>
+              <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{from.symbol}</strong>
+              <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>
+                {t.balance}: {balances[from.symbol] || "0.000000"}
+              </div>
+            </div>
           </div>
 
           <select
@@ -99,7 +125,12 @@ export default function SwapScreen({
         <div style={row}>
           <div style={tokenBox}>
             <img src={to.logo} alt={to.symbol} style={logoStyle} />
-            <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{to.symbol}</strong>
+            <div>
+              <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{to.symbol}</strong>
+              <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>
+                {t.balance}: {balances[to.symbol] || "0.000000"}
+              </div>
+            </div>
           </div>
 
           <select
@@ -160,17 +191,8 @@ export default function SwapScreen({
 
 function getText(lang: string) {
   const map: Record<string, any> = {
-    en: { swap: "Swap", from: "From", to: "To", previewFee: "Preview only. Estimated 0.3% swap fee." },
-    pt: { swap: "Swap", from: "De", to: "Para", previewFee: "Apenas visualização. Taxa estimada de swap: 0,3%." },
-    es: { swap: "Swap", from: "De", to: "Para", previewFee: "Vista previa. Tarifa estimada de swap: 0,3%." },
-    fr: { swap: "Swap", from: "De", to: "Vers", previewFee: "Aperçu uniquement. Frais estimés de 0,3%." },
-    de: { swap: "Swap", from: "Von", to: "Zu", previewFee: "Nur Vorschau. Geschätzte Swap-Gebühr: 0,3%." },
-    it: { swap: "Swap", from: "Da", to: "A", previewFee: "Solo anteprima. Commissione stimata: 0,3%." },
-    ru: { swap: "Swap", from: "От", to: "К", previewFee: "Только предпросмотр. Комиссия swap: 0,3%." },
-    zh: { swap: "兑换", from: "从", to: "到", previewFee: "仅预览。预计 0.3% 兑换费。" },
-    ja: { swap: "スワップ", from: "元", to: "先", previewFee: "プレビューのみ。推定手数料 0.3%." },
-    ko: { swap: "스왑", from: "보내는 토큰", to: "받는 토큰", previewFee: "미리보기 전용. 예상 수수료 0.3%." },
-    tr: { swap: "Swap", from: "Kimden", to: "Kime", previewFee: "Sadece önizleme. Tahmini swap ücreti %0,3." },
+    en: { swap: "Swap", from: "From", to: "To", balance: "Balance", previewFee: "Preview only. Estimated 0.3% swap fee." },
+    pt: { swap: "Swap", from: "De", to: "Para", balance: "Saldo", previewFee: "Apenas visualização. Taxa estimada de swap: 0,3%." },
   };
   return map[lang] || map.en;
 }
@@ -197,6 +219,7 @@ const row: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: 12,
+  flexWrap: "wrap",
 };
 
 const tokenBox: React.CSSProperties = {
