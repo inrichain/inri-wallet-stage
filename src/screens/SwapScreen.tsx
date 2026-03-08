@@ -1,545 +1,79 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
+import { DEFAULT_NETWORK_ID, getNetworkById } from "../lib/networks";
+import { getDefaultTokens, withRpcFallback, formatTokenAmount } from "../lib/inri";
 
-type Props = {
-  theme: "dark" | "light";
-  lang: string;
-  address: string;
-};
-
-type Asset = {
-  symbol: string;
-  name: string;
-  type: "native" | "erc20";
-  address?: string;
-  decimals: number;
-};
-
-const TOKENS: Asset[] = [
-  { symbol: "INRI", name: "INRI", type: "native", decimals: 18 },
-  {
-    symbol: "iUSD",
-    name: "iUSD",
-    type: "erc20",
-    decimals: 18,
-    address: "0x116b2fF23e062A52E2c0ea12dF7e2638b62Fa0FC",
-  },
-  {
-    symbol: "wINRI",
-    name: "Wrapped INRI",
-    type: "erc20",
-    decimals: 18,
-    address: "0x0000000000000000000000000000000000000001",
-  },
-];
-
-const INRI_RPC = "https://rpc.inri.life";
-const INRI_RPC_FALLBACK = "https://rpc-chain.inri.life";
-const ERC20_ABI = [
-  "function balanceOf(address owner) view returns (uint256)",
-  "function decimals() view returns (uint8)",
-];
-
-export default function SwapScreen({ theme, lang, address }: Props) {
+export default function SwapScreen({ theme, lang, address, activeNetworkId = DEFAULT_NETWORK_ID }: { theme: "dark" | "light"; lang: string; address: string; activeNetworkId?: string; }) {
+  const isLight = theme === "light";
   const t = getText(lang);
-
+  const network = getNetworkById(activeNetworkId);
+  const tokens = useMemo(() => getDefaultTokens(network.id), [network.id]);
   const [fromIndex, setFromIndex] = useState(0);
-  const [toIndex, setToIndex] = useState(1);
+  const [toIndex, setToIndex] = useState(Math.min(1, tokens.length - 1));
   const [amountIn, setAmountIn] = useState("");
   const [balanceIn, setBalanceIn] = useState("0");
   const [previewOut, setPreviewOut] = useState("0");
-  const [priceImpact, setPriceImpact] = useState("0.20%");
-  const [fee, setFee] = useState("0.30%");
-  const [route, setRoute] = useState("Direct");
-  const [rpcLabel, setRpcLabel] = useState("Main RPC");
+  const [rpcLabel, setRpcLabel] = useState("RPC ready");
+  const fromToken = tokens[fromIndex] || tokens[0];
+  const toToken = tokens[toIndex] || tokens[0];
 
-  const fromToken = TOKENS[fromIndex];
-  const toToken = TOKENS[toIndex];
-
-  const provider = useMemo(() => {
-    try {
-      return new ethers.JsonRpcProvider(INRI_RPC, { name: "INRI", chainId: 3777 });
-    } catch {
-      return null;
-    }
-  }, []);
+  useEffect(() => { setToIndex((prev) => (prev === fromIndex ? (fromIndex + 1) % Math.max(tokens.length, 1) : prev)); }, [fromIndex, tokens.length]);
 
   useEffect(() => {
     let mounted = true;
-
     async function loadBalance() {
-      if (!address) {
-        if (mounted) setBalanceIn("0");
-        return;
-      }
-
+      if (!address || !fromToken) return;
       try {
-        const active =
-          provider ||
-          new ethers.JsonRpcProvider(INRI_RPC, { name: "INRI", chainId: 3777 });
-        const result = await readBalance(active, address, fromToken);
-        if (!mounted) return;
-        setBalanceIn(result);
-        setRpcLabel("Main RPC");
+        const value = await withRpcFallback(network, async (provider, rpcUrl) => {
+          if (fromToken.isNative) {
+            const bal = await provider.getBalance(address);
+            setRpcLabel(rpcUrl.includes("rpc-chain") ? "Fallback RPC" : "Main RPC");
+            return ethers.formatUnits(bal, fromToken.decimals || network.nativeCurrency.decimals);
+          }
+          if (!fromToken.address) return "0";
+          const contract = new ethers.Contract(fromToken.address, ["function balanceOf(address) view returns (uint256)"], provider);
+          const bal = await contract.balanceOf(address);
+          setRpcLabel(rpcUrl.includes("rpc-chain") ? "Fallback RPC" : "Main RPC");
+          return ethers.formatUnits(bal, fromToken.decimals || 18);
+        });
+        if (mounted) setBalanceIn(formatTokenAmount(value));
       } catch {
-        try {
-          const fallback = new ethers.JsonRpcProvider(INRI_RPC_FALLBACK, {
-            name: "INRI",
-            chainId: 3777,
-          });
-          const result = await readBalance(fallback, address, fromToken);
-          if (!mounted) return;
-          setBalanceIn(result);
-          setRpcLabel("Fallback RPC");
-        } catch {
-          if (!mounted) return;
-          setBalanceIn("0");
-          setRpcLabel("RPC unavailable");
-        }
+        if (mounted) setBalanceIn("0");
       }
     }
-
     loadBalance();
-    return () => {
-      mounted = false;
-    };
-  }, [address, fromToken, provider]);
+    return () => { mounted = false; };
+  }, [address, fromToken, network]);
 
   useEffect(() => {
-    const inNum = Number(amountIn || "0");
-    if (!Number.isFinite(inNum) || inNum <= 0) {
-      setPreviewOut("0");
-      return;
-    }
-
-    const rate = estimateRate(fromToken.symbol, toToken.symbol);
-    const gross = inNum * rate;
-    const net = gross * 0.997;
-    setPreviewOut(formatAmount(String(net)));
-
-    if (
-      (fromToken.symbol === "INRI" && toToken.symbol === "iUSD") ||
-      (fromToken.symbol === "iUSD" && toToken.symbol === "INRI")
-    ) {
-      setRoute("INRI ↔ iUSD");
-      setFee("0.30%");
-      setPriceImpact(inNum > 1000 ? "1.20%" : inNum > 250 ? "0.55%" : "0.20%");
-    } else {
-      setRoute("Preview route");
-      setFee("0.30%");
-      setPriceImpact(inNum > 1000 ? "1.40%" : inNum > 250 ? "0.65%" : "0.25%");
-    }
+    const num = Number(amountIn || 0);
+    if (!Number.isFinite(num) || num <= 0) return setPreviewOut("0");
+    const out = num * 0.997;
+    setPreviewOut(formatTokenAmount(String(out)));
   }, [amountIn, fromToken, toToken]);
 
-  function flipTokens() {
-    setFromIndex(toIndex);
-    setToIndex(fromIndex);
-  }
+  function flip() { setFromIndex(toIndex); setToIndex(fromIndex); }
 
-  return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <section style={panel(theme)}>
-        <div style={headerRow}>
-          <div>
-            <div style={titleStyle(theme)}>{t.swapPreview}</div>
-            <div style={subtitleStyle(theme)}>{t.professionalUxPreview}</div>
-          </div>
-          <div style={badge(theme)}>{rpcLabel}</div>
-        </div>
-      </section>
-
-      <section style={panel(theme)}>
-        <TokenBox
-          theme={theme}
-          label={t.from}
-          token={fromToken}
-          amount={amountIn}
-          onAmountChange={setAmountIn}
-          tokenIndex={fromIndex}
-          onTokenIndexChange={setFromIndex}
-          balance={balanceIn}
-          tokens={TOKENS}
-        />
-
-        <div style={{ display: "flex", justifyContent: "center", margin: "10px 0" }}>
-          <button onClick={flipTokens} style={flipButton(theme)}>
-            ⇅
-          </button>
-        </div>
-
-        <TokenBox
-          theme={theme}
-          label={t.to}
-          token={toToken}
-          amount={previewOut}
-          onAmountChange={() => {}}
-          tokenIndex={toIndex}
-          onTokenIndexChange={setToIndex}
-          balance="-"
-          tokens={TOKENS}
-          readOnly
-        />
-      </section>
-
-      <section style={panel(theme)}>
-        <div style={titleStyle(theme)}>{t.tradePreview}</div>
-        <SummaryRow theme={theme} label={t.route} value={route} />
-        <SummaryRow theme={theme} label={t.networkFee} value={fee} />
-        <SummaryRow theme={theme} label={t.priceImpact} value={priceImpact} />
-        <SummaryRow theme={theme} label={t.minReceived} value={`${previewOut} ${toToken.symbol}`} />
-
-        <button style={mainButtonStyle()}>{t.swapComingSoon}</button>
-      </section>
-    </div>
-  );
+  return <div style={{ display: "grid", gap: 16 }}>
+    <section style={panel(isLight)}><div style={title(isLight)}>{t.swap}</div><div style={sub(isLight)}>{network.name} • {rpcLabel}</div></section>
+    <section style={panel(isLight)}>
+      <TokenCard isLight={isLight} label={t.from} token={fromToken} amount={amountIn} setAmount={setAmountIn} tokenIndex={fromIndex} setTokenIndex={setFromIndex} tokens={tokens} balance={balanceIn} />
+      <div style={{ display: "flex", justifyContent: "center", margin: "10px 0" }}><button onClick={flip} style={flipBtn(isLight)}>⇅</button></div>
+      <TokenCard isLight={isLight} label={t.to} token={toToken} amount={previewOut} setAmount={() => {}} tokenIndex={toIndex} setTokenIndex={setToIndex} tokens={tokens} balance="-" readOnly />
+    </section>
+    <section style={panel(isLight)}>
+      <Row isLight={isLight} label={t.route} value={`${fromToken?.symbol || "-"} → ${toToken?.symbol || "-"}`} />
+      <Row isLight={isLight} label={t.networkFee} value="0.30%" />
+      <Row isLight={isLight} label={t.priceImpact} value={Number(amountIn || 0) > 1000 ? "1.20%" : "0.20%"} />
+      <button style={primary}>{t.comingSoon}</button>
+    </section>
+  </div>;
 }
-
-function TokenBox({
-  theme,
-  label,
-  token,
-  amount,
-  onAmountChange,
-  tokenIndex,
-  onTokenIndexChange,
-  balance,
-  tokens,
-  readOnly,
-}: {
-  theme: "dark" | "light";
-  label: string;
-  token: Asset;
-  amount: string;
-  onAmountChange: (value: string) => void;
-  tokenIndex: number;
-  onTokenIndexChange: (value: number) => void;
-  balance: string;
-  tokens: Asset[];
-  readOnly?: boolean;
-}) {
-  return (
-    <div
-      style={{
-        borderRadius: 20,
-        padding: 16,
-        border: `1px solid ${theme === "light" ? "#dbe2f0" : "#253047"}`,
-        background: theme === "light" ? "#f8fafc" : "#101827",
-      }}
-    >
-      <div style={topRow}>
-        <div style={{ color: theme === "light" ? "#64748b" : "#94a3b8", fontSize: 12, fontWeight: 800 }}>
-          {label}
-        </div>
-        <div style={{ color: theme === "light" ? "#64748b" : "#94a3b8", fontSize: 12, fontWeight: 800 }}>
-          Balance: {balance}
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 150px",
-          gap: 12,
-          marginTop: 12,
-        }}
-      >
-        <input
-          value={amount}
-          onChange={(e) => onAmountChange(e.target.value)}
-          placeholder="0.00"
-          readOnly={readOnly}
-          style={inputStyle(theme, !!readOnly)}
-          inputMode="decimal"
-        />
-
-        <select
-          value={tokenIndex}
-          onChange={(e) => onTokenIndexChange(Number(e.target.value))}
-          style={selectStyle(theme)}
-        >
-          {tokens.map((item, index) => (
-            <option key={`${item.symbol}-${index}`} value={index}>
-              {item.symbol}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
-  );
-}
-
-async function readBalance(
-  provider: ethers.JsonRpcProvider,
-  address: string,
-  token: Asset
-) {
-  if (token.type === "native") {
-    const raw = await provider.getBalance(address);
-    return formatAmount(ethers.formatEther(raw));
-  }
-
-  if (!token.address || token.address === "0x0000000000000000000000000000000000000001") {
-    return "0";
-  }
-
-  const contract = new ethers.Contract(token.address, ERC20_ABI, provider);
-  const [bal, dec] = await Promise.all([
-    contract.balanceOf(address),
-    contract.decimals().catch(() => token.decimals),
-  ]);
-  return formatAmount(ethers.formatUnits(bal, Number(dec)));
-}
-
-function estimateRate(from: string, to: string) {
-  if (from === to) return 1;
-  if (from === "INRI" && to === "iUSD") return 1;
-  if (from === "iUSD" && to === "INRI") return 1;
-  if (from === "INRI" && to === "wINRI") return 1;
-  if (from === "wINRI" && to === "INRI") return 1;
-  if (from === "iUSD" && to === "wINRI") return 1;
-  if (from === "wINRI" && to === "iUSD") return 1;
-  return 1;
-}
-
-const topRow: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 10,
-  flexWrap: "wrap",
-};
-
-function SummaryRow({
-  theme,
-  label,
-  value,
-}: {
-  theme: "dark" | "light";
-  label: string;
-  value: string;
-}) {
-  return (
-    <div style={{ ...topRow, padding: "8px 0" }}>
-      <div style={{ color: theme === "light" ? "#64748b" : "#94a3b8", fontSize: 13, fontWeight: 800 }}>
-        {label}
-      </div>
-      <div style={{ color: theme === "light" ? "#0f172a" : "#ffffff", fontSize: 13, fontWeight: 900 }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function panel(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    borderRadius: 24,
-    padding: 18,
-    border: `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
-    background: theme === "light" ? "rgba(255,255,255,.94)" : "rgba(18,22,33,.94)",
-    boxShadow:
-      theme === "light"
-        ? "0 12px 30px rgba(30,40,70,.06)"
-        : "0 12px 30px rgba(0,0,0,.22)",
-  };
-}
-
-const headerRow: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  alignItems: "center",
-  flexWrap: "wrap",
-};
-
-function titleStyle(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    fontSize: 16,
-    fontWeight: 900,
-    color: theme === "light" ? "#0f172a" : "#ffffff",
-  };
-}
-
-function subtitleStyle(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    fontSize: 13,
-    marginTop: 6,
-    color: theme === "light" ? "#64748b" : "#94a3b8",
-    fontWeight: 700,
-  };
-}
-
-function badge(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    padding: "8px 12px",
-    borderRadius: 999,
-    background: theme === "light" ? "#eef4ff" : "#12203e",
-    color: "#3f7cff",
-    fontWeight: 900,
-    fontSize: 12,
-    border: `1px solid ${theme === "light" ? "#cfe0ff" : "#23407d"}`,
-  };
-}
-
-function inputStyle(theme: "dark" | "light", readOnly: boolean): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: 14,
-    borderRadius: 16,
-    border: `1px solid ${theme === "light" ? "#dbe2f0" : "#253047"}`,
-    background: readOnly
-      ? theme === "light"
-        ? "#eef2f7"
-        : "#0e1422"
-      : theme === "light"
-      ? "#ffffff"
-      : "#0f1726",
-    color: theme === "light" ? "#0f172a" : "#ffffff",
-    outline: "none",
-    boxSizing: "border-box",
-    fontWeight: 900,
-    fontSize: 18,
-  };
-}
-
-function selectStyle(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: 14,
-    borderRadius: 16,
-    border: `1px solid ${theme === "light" ? "#dbe2f0" : "#253047"}`,
-    background: theme === "light" ? "#ffffff" : "#0f1726",
-    color: theme === "light" ? "#0f172a" : "#ffffff",
-    outline: "none",
-    boxSizing: "border-box",
-    fontWeight: 900,
-  };
-}
-
-function flipButton(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    width: 46,
-    height: 46,
-    borderRadius: 999,
-    border: `1px solid ${theme === "light" ? "#dbe2f0" : "#253047"}`,
-    background: theme === "light" ? "#ffffff" : "#101827",
-    color: theme === "light" ? "#0f172a" : "#ffffff",
-    cursor: "pointer",
-    fontSize: 18,
-    fontWeight: 900,
-  };
-}
-
-function mainButtonStyle(): React.CSSProperties {
-  return {
-    width: "100%",
-    marginTop: 12,
-    padding: "15px 16px",
-    borderRadius: 16,
-    border: "none",
-    background: "#3f7cff",
-    color: "#ffffff",
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 15,
-  };
-}
-
-function formatAmount(value: string) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "0";
-  if (num === 0) return "0";
-  if (num < 0.0001) return num.toFixed(8);
-  if (num < 1) return num.toFixed(4);
-  if (num < 1000) return num.toFixed(3);
-  return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-function getText(lang: string) {
-  const map: Record<string, Record<string, string>> = {
-    en: {
-      swapPreview: "Swap",
-      professionalUxPreview: "Professional swap preview and routing UX",
-      from: "From",
-      to: "To",
-      tradePreview: "Trade preview",
-      route: "Route",
-      networkFee: "Swap fee",
-      priceImpact: "Price impact",
-      minReceived: "Minimum received",
-      swapComingSoon: "Swap execution coming soon",
-    },
-    pt: {
-      swapPreview: "Swap",
-      professionalUxPreview: "Prévia profissional de swap e roteamento",
-      from: "De",
-      to: "Para",
-      tradePreview: "Prévia da troca",
-      route: "Rota",
-      networkFee: "Taxa do swap",
-      priceImpact: "Impacto no preço",
-      minReceived: "Mínimo recebido",
-      swapComingSoon: "Execução do swap em breve",
-    },
-    es: {
-      swapPreview: "Swap",
-      professionalUxPreview: "Vista previa profesional de swap y ruta",
-      from: "De",
-      to: "A",
-      tradePreview: "Vista previa",
-      route: "Ruta",
-      networkFee: "Tarifa del swap",
-      priceImpact: "Impacto del precio",
-      minReceived: "Mínimo recibido",
-      swapComingSoon: "Ejecución del swap próximamente",
-    },
-    fr: {
-      swapPreview: "Swap",
-      professionalUxPreview: "Aperçu professionnel du swap et du routage",
-      from: "De",
-      to: "Vers",
-      tradePreview: "Aperçu de l'échange",
-      route: "Route",
-      networkFee: "Frais du swap",
-      priceImpact: "Impact prix",
-      minReceived: "Minimum reçu",
-      swapComingSoon: "Exécution du swap bientôt disponible",
-    },
-    de: {
-      swapPreview: "Swap",
-      professionalUxPreview: "Professionelle Swap-Vorschau und Routing-UX",
-      from: "Von",
-      to: "Zu",
-      tradePreview: "Tauschvorschau",
-      route: "Route",
-      networkFee: "Swap-Gebühr",
-      priceImpact: "Preiseffekt",
-      minReceived: "Mindestens erhalten",
-      swapComingSoon: "Swap-Ausführung kommt bald",
-    },
-    ja: {
-      swapPreview: "スワップ",
-      professionalUxPreview: "プロ仕様のスワッププレビューとルーティングUX",
-      from: "元",
-      to: "先",
-      tradePreview: "取引プレビュー",
-      route: "ルート",
-      networkFee: "スワップ手数料",
-      priceImpact: "価格影響",
-      minReceived: "最小受取額",
-      swapComingSoon: "スワップ実行は近日対応",
-    },
-    zh: {
-      swapPreview: "兑换",
-      professionalUxPreview: "专业级兑换预览与路由体验",
-      from: "从",
-      to: "到",
-      tradePreview: "交易预览",
-      route: "路径",
-      networkFee: "兑换手续费",
-      priceImpact: "价格影响",
-      minReceived: "最少收到",
-      swapComingSoon: "兑换执行即将上线",
-    },
-  };
-
-  return map[lang] || map.en;
-}
+function TokenCard({ isLight, label, token, amount, setAmount, tokenIndex, setTokenIndex, tokens, balance, readOnly }: any) { return <div style={{ border: `1px solid ${isLight ? "#dbe3f2" : "#22314f"}`, borderRadius: 20, padding: 16, background: isLight ? "#f8fbff" : "#0c1422" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div style={{ color: isLight ? "#64748f" : "#90a3c7", fontWeight: 800, fontSize: 12 }}>{label}</div><div style={{ color: isLight ? "#64748f" : "#90a3c7", fontWeight: 800, fontSize: 12 }}>Balance: {balance}</div></div><div style={{ display: "grid", gridTemplateColumns: "1fr 170px", gap: 12, marginTop: 12 }}><input value={amount} onChange={(e) => setAmount(e.target.value)} readOnly={readOnly} placeholder="0.00" style={{ width: "100%", padding: 14, borderRadius: 16, border: `1px solid ${isLight ? "#dbe3f2" : "#22314f"}`, background: isLight ? "#fff" : "#101827", color: isLight ? "#09111f" : "#fff", fontWeight: 900, fontSize: 18, boxSizing: "border-box" }} /><select value={tokenIndex} onChange={(e) => setTokenIndex(Number(e.target.value))} style={{ width: "100%", padding: 12, borderRadius: 16, border: `1px solid ${isLight ? "#dbe3f2" : "#22314f"}`, background: isLight ? "#fff" : "#101827", color: isLight ? "#09111f" : "#fff" }}>{tokens.map((item: any, idx: number) => <option key={idx} value={idx}>{item.symbol}</option>)}</select></div><div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}><img src={token?.logo} alt={token?.symbol} style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 12, background: isLight ? "#fff" : "#101827", padding: 5 }} /><div><div style={{ color: isLight ? "#0f172a" : "#fff", fontWeight: 900 }}>{token?.symbol}</div><div style={{ color: isLight ? "#64748f" : "#90a3c7", fontSize: 12 }}>{token?.name}</div></div></div></div>; }
+function Row({ isLight, label, value }: any) { return <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "8px 0" }}><div style={{ color: isLight ? "#64748f" : "#90a3c7", fontWeight: 700, fontSize: 13 }}>{label}</div><div style={{ color: isLight ? "#09111f" : "#fff", fontWeight: 900, fontSize: 13 }}>{value}</div></div>; }
+function getText(lang: string) { const map: Record<string, any> = { en: { swap: "Swap", from: "From", to: "To", route: "Route", networkFee: "Swap fee", priceImpact: "Price impact", comingSoon: "Swap execution coming soon" }, pt: { swap: "Swap", from: "De", to: "Para", route: "Rota", networkFee: "Taxa do swap", priceImpact: "Impacto no preço", comingSoon: "Execução do swap em breve" } }; return map[lang] || map.en; }
+function panel(isLight: boolean): React.CSSProperties { return { border: `1px solid ${isLight ? "#dbe3f2" : "#22314f"}`, borderRadius: 24, background: isLight ? "#fff" : "#101827", padding: 18 }; }
+function title(isLight: boolean): React.CSSProperties { return { color: isLight ? "#09111f" : "#fff", fontWeight: 900, fontSize: 18 }; }
+function sub(isLight: boolean): React.CSSProperties { return { color: isLight ? "#64748f" : "#90a3c7", fontSize: 13, marginTop: 6 }; }
+function flipBtn(isLight: boolean): React.CSSProperties { return { width: 46, height: 46, borderRadius: 999, border: `1px solid ${isLight ? "#dbe3f2" : "#22314f"}`, background: isLight ? "#fff" : "#101827", color: isLight ? "#09111f" : "#fff", cursor: "pointer", fontWeight: 900, fontSize: 18 }; }
+const primary: React.CSSProperties = { width: "100%", marginTop: 12, padding: "14px 16px", borderRadius: 16, border: "none", background: "linear-gradient(180deg,#26a6ff 0%, #4f7cff 100%)", color: "#fff", cursor: "pointer", fontWeight: 900 };
