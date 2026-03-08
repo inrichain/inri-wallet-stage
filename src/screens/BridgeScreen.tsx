@@ -38,6 +38,11 @@ export default function BridgeScreen({
     };
   }, [address]);
 
+  function reverseNetworks() {
+    setFromNetwork(toNetwork);
+    setToNetwork(fromNetwork);
+  }
+
   const estimated = useMemo(() => {
     const n = Number(amount || "0");
     if (!Number.isFinite(n) || n <= 0) return "0.000000";
@@ -47,17 +52,8 @@ export default function BridgeScreen({
   const currentToken = tokenOptions.find((x) => x.symbol === token) || tokenOptions[0];
 
   return (
-    <div
-      style={{
-        border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-        borderRadius: 20,
-        background: isLight ? "#ffffff" : "#121621",
-        padding: 16,
-      }}
-    >
-      <h2 style={{ marginTop: 0, color: isLight ? "#10131a" : "#ffffff" }}>
-        {t.bridge}
-      </h2>
+    <div style={wrap(isLight)}>
+      <h2 style={title(isLight)}>{t.bridge}</h2>
 
       <div style={panel(isLight)}>
         <div style={label(isLight)}>{t.fromNetwork}</div>
@@ -68,21 +64,9 @@ export default function BridgeScreen({
       </div>
 
       <div style={{ display: "grid", placeItems: "center", margin: "12px 0" }}>
-        <div
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: "50%",
-            display: "grid",
-            placeItems: "center",
-            background: isLight ? "#edf3ff" : "#1b2741",
-            color: "#3f7cff",
-            fontSize: 22,
-            fontWeight: 900,
-          }}
-        >
+        <button onClick={reverseNetworks} style={swapButtonStyle(isLight)} title={t.reverse}>
           ⇅
-        </div>
+        </button>
       </div>
 
       <div style={panel(isLight)}>
@@ -96,12 +80,12 @@ export default function BridgeScreen({
       <div style={{ ...panel(isLight), marginTop: 12 }}>
         <div style={label(isLight)}>{t.token}</div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img src={currentToken.logo} alt={currentToken.symbol} style={{ width: 34, height: 34, borderRadius: 17 }} />
+        <div style={row}>
+          <div style={tokenBox}>
+            <img src={currentToken.logo} alt={currentToken.symbol} style={logoStyle} />
             <div>
               <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{currentToken.symbol}</strong>
-              <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>
+              <div style={hint(isLight)}>
                 {t.balance}: {balances[currentToken.symbol] || "0.000000"}
               </div>
             </div>
@@ -126,30 +110,13 @@ export default function BridgeScreen({
 
       <div style={{ ...panel(isLight), marginTop: 12 }}>
         <div style={label(isLight)}>{t.estimatedReceive}</div>
-        <div style={{ fontWeight: 900, fontSize: 18, color: isLight ? "#10131a" : "#fff" }}>
+        <div style={estimatedStyle(isLight)}>
           {estimated} {token}
         </div>
-        <div style={{ marginTop: 8, color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>
-          {t.previewFee}
-        </div>
+        <div style={foot(isLight)}>{t.previewFee}</div>
       </div>
 
-      <button
-        style={{
-          width: "100%",
-          marginTop: 14,
-          padding: "14px 16px",
-          borderRadius: 14,
-          border: "none",
-          background: "#3f7cff",
-          color: "#fff",
-          cursor: "pointer",
-          fontWeight: 800,
-          fontSize: 16,
-        }}
-      >
-        {t.bridge}
-      </button>
+      <button style={mainButtonStyle()}>{t.bridge}</button>
     </div>
   );
 }
@@ -163,7 +130,8 @@ function getText(lang: string) {
       token: "Token",
       balance: "Balance",
       estimatedReceive: "Estimated receive",
-      previewFee: "Bridge fee preview: 0.2%",
+      reverse: "Reverse networks",
+      previewFee: "Preview only. Real bridge needs bridge contracts/API integration.",
     },
     pt: {
       bridge: "Bridge",
@@ -172,12 +140,24 @@ function getText(lang: string) {
       token: "Token",
       balance: "Saldo",
       estimatedReceive: "Recebimento estimado",
-      previewFee: "Prévia da taxa de bridge: 0,2%",
+      reverse: "Inverter redes",
+      previewFee: "Somente prévia. O bridge real precisa de contratos/API do bridge.",
     },
   };
   return map[lang] || map.en;
 }
 
+function wrap(isLight: boolean): React.CSSProperties {
+  return {
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    borderRadius: 20,
+    background: isLight ? "#ffffff" : "#121621",
+    padding: 16,
+  };
+}
+function title(isLight: boolean): React.CSSProperties {
+  return { marginTop: 0, color: isLight ? "#10131a" : "#ffffff" };
+}
 function panel(isLight: boolean): React.CSSProperties {
   return {
     border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
@@ -186,15 +166,30 @@ function panel(isLight: boolean): React.CSSProperties {
     padding: 14,
   };
 }
-
 function label(isLight: boolean): React.CSSProperties {
-  return {
-    marginBottom: 10,
-    fontSize: 13,
-    color: isLight ? "#5b6578" : "#97a0b3",
-  };
+  return { marginBottom: 10, fontSize: 13, color: isLight ? "#5b6578" : "#97a0b3" };
 }
-
+function hint(isLight: boolean): React.CSSProperties {
+  return { fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" };
+}
+const row: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  flexWrap: "wrap",
+};
+const tokenBox: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+const logoStyle: React.CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: 17,
+  objectFit: "cover",
+};
 function selectStyle(isLight: boolean): React.CSSProperties {
   return {
     width: "100%",
@@ -206,7 +201,6 @@ function selectStyle(isLight: boolean): React.CSSProperties {
     outline: "none",
   };
 }
-
 function inputStyle(isLight: boolean): React.CSSProperties {
   return {
     width: "100%",
@@ -218,5 +212,48 @@ function inputStyle(isLight: boolean): React.CSSProperties {
     color: isLight ? "#10131a" : "#ffffff",
     outline: "none",
     boxSizing: "border-box",
+  };
+}
+function estimatedStyle(isLight: boolean): React.CSSProperties {
+  return {
+    fontWeight: 900,
+    fontSize: 18,
+    color: isLight ? "#10131a" : "#fff",
+  };
+}
+function foot(isLight: boolean): React.CSSProperties {
+  return {
+    marginTop: 8,
+    color: isLight ? "#5b6578" : "#97a0b3",
+    fontSize: 13,
+  };
+}
+function mainButtonStyle(): React.CSSProperties {
+  return {
+    width: "100%",
+    marginTop: 14,
+    padding: "14px 16px",
+    borderRadius: 14,
+    border: "none",
+    background: "#3f7cff",
+    color: "#fff",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 16,
+  };
+}
+function swapButtonStyle(isLight: boolean): React.CSSProperties {
+  return {
+    width: 52,
+    height: 52,
+    borderRadius: "50%",
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    display: "grid",
+    placeItems: "center",
+    background: isLight ? "#edf3ff" : "#1b2741",
+    color: "#3f7cff",
+    fontSize: 22,
+    fontWeight: 900,
+    cursor: "pointer",
   };
 }
