@@ -6,6 +6,20 @@ export const projectId = "3ec8f1c2261a7eb46e33e0368a6be0e8";
 
 let walletKitInstance: Awaited<ReturnType<typeof WalletKit.init>> | null = null;
 
+function getWalletMetadata() {
+  const origin = window.location.origin;
+  const base = "/inri-wallet-stage/";
+  const walletUrl = `${origin}${base}`;
+  const iconUrl = `${origin}${base}token-inri.png`;
+
+  return {
+    name: "INRI Wallet",
+    description: "Secure wallet for INRI ecosystem",
+    url: walletUrl,
+    icons: [iconUrl],
+  };
+}
+
 export async function initWalletConnect(address: string) {
   if (!address) return null;
   if (walletKitInstance) return walletKitInstance;
@@ -16,12 +30,7 @@ export async function initWalletConnect(address: string) {
 
   walletKitInstance = await WalletKit.init({
     core,
-    metadata: {
-      name: "INRI Wallet",
-      description: "INRI ecosystem wallet",
-      url: "https://iusd.inri.life",
-      icons: ["https://iusd.inri.life/token-inri.png"],
-    },
+    metadata: getWalletMetadata(),
   });
 
   walletKitInstance.on("session_proposal", async (proposal) => {
@@ -63,12 +72,12 @@ export async function initWalletConnect(address: string) {
         },
       });
 
-      await walletKitInstance!.approveSession({
+      await walletKitInstance.approveSession({
         id: proposal.id,
         namespaces: approvedNamespaces,
       });
     } catch (error) {
-      await walletKitInstance!.rejectSession({
+      await walletKitInstance.rejectSession({
         id: proposal.id,
         reason: getSdkError("USER_REJECTED_METHODS"),
       });
@@ -81,41 +90,6 @@ export async function initWalletConnect(address: string) {
     const method = params.request.method;
 
     try {
-      if (
-        method === "eth_sign" ||
-        method === "personal_sign" ||
-        method === "eth_signTypedData" ||
-        method === "eth_signTypedData_v4"
-      ) {
-        await walletKitInstance!.respondSessionRequest({
-          topic,
-          response: {
-            id,
-            jsonrpc: "2.0",
-            error: {
-              code: 4001,
-              message: "Signing flow not connected yet in this build.",
-            },
-          },
-        });
-        return;
-      }
-
-      if (method === "eth_sendTransaction" || method === "eth_signTransaction") {
-        await walletKitInstance!.respondSessionRequest({
-          topic,
-          response: {
-            id,
-            jsonrpc: "2.0",
-            error: {
-              code: 4001,
-              message: "WalletConnect transaction approval UI not connected yet in this build.",
-            },
-          },
-        });
-        return;
-      }
-
       await walletKitInstance!.respondSessionRequest({
         topic,
         response: {
@@ -123,7 +97,7 @@ export async function initWalletConnect(address: string) {
           jsonrpc: "2.0",
           error: {
             code: 4200,
-            message: `Unsupported method: ${method}`,
+            message: `Method not connected yet in this build: ${method}`,
           },
         },
       });
