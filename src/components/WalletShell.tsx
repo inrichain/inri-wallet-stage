@@ -1,6 +1,6 @@
-import { initWalletConnect } from "../lib/walletconnect";
 import React, { useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
+import { initWalletConnect } from "../lib/walletconnect";
 import Header from "./Header";
 import BottomNav from "./BottomNav";
 import DashboardScreen from "../screens/DashboardScreen";
@@ -344,7 +344,17 @@ export default function WalletShell() {
     return wallets.find((w) => w.id === currentId) || wallets[0] || null;
   }, [wallets, unlockedWallet]);
 
-  const  = () => {
+  const activeAddress = unlockedWallet?.address || currentWalletMeta?.address || "";
+
+  useEffect(() => {
+    if (!activeAddress) return;
+
+    initWalletConnect(activeAddress).catch((err) => {
+      console.error("WalletConnect init failed:", err);
+    });
+  }, [activeAddress]);
+
+  const renderTab = () => {
     const address = unlockedWallet?.address || currentWalletMeta?.address || "";
     const mnemonic = unlockedWallet?.mnemonic || "";
 
@@ -726,15 +736,7 @@ export default function WalletShell() {
             {t.lock}
           </button>
         </div>
-  const activeAddress = unlockedWallet?.address || currentWalletMeta?.address || "";
 
-  useEffect(() => {
-    if (!activeAddress) return;
-
-    initWalletConnect(activeAddress).catch((err) => {
-      console.error("WalletConnect init failed:", err);
-    });
-  }, [activeAddress]);
         {renderTab()}
       </main>
 
