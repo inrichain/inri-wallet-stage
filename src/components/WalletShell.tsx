@@ -5,13 +5,8 @@ import Header from "./Header";
 import BottomNav from "./BottomNav";
 import DashboardScreen from "../screens/DashboardScreen";
 import SendScreen from "../screens/SendScreen";
-import ReceiveScreen from "../screens/ReceiveScreen";
 import TokensScreen from "../screens/TokensScreen";
-import ActivityScreen from "../screens/ActivityScreen";
-import SwapScreen from "../screens/SwapScreen";
-import BridgeScreen from "../screens/BridgeScreen";
 import SettingsScreen from "../screens/SettingsScreen";
-import NFTsScreen from "../screens/NFTsScreen";
 import {
   getMnemonicFromWallet,
   isValidSeedPhrase,
@@ -28,13 +23,13 @@ const THEME_KEY = "wallet_theme";
 export type Tab =
   | "dashboard"
   | "send"
-  | "receive"
   | "tokens"
+  | "settings"
+  | "receive"
   | "nfts"
   | "activity"
   | "swap"
-  | "bridge"
-  | "settings";
+  | "bridge";
 
 type View = "auth" | "wallet";
 type AuthMode = "unlock" | "create" | "import";
@@ -354,10 +349,44 @@ export default function WalletShell() {
     });
   }, [activeAddress]);
 
-  const renderTab = () => {
-    const address = unlockedWallet?.address || currentWalletMeta?.address || "";
-    const mnemonic = unlockedWallet?.mnemonic || "";
+  const address = unlockedWallet?.address || currentWalletMeta?.address || "";
+  const mnemonic = unlockedWallet?.mnemonic || "";
 
+  const renderPlaceholder = (title: string, subtitle: string) => (
+    <div
+      style={{
+        borderRadius: 24,
+        padding: 20,
+        border: `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
+        background: theme === "light" ? "rgba(255,255,255,.94)" : "rgba(18,22,33,.94)",
+        boxShadow:
+          theme === "light"
+            ? "0 12px 30px rgba(30,40,70,.06)"
+            : "0 12px 30px rgba(0,0,0,.22)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 900,
+          marginBottom: 10,
+          color: theme === "light" ? "#0f172a" : "#ffffff",
+        }}
+      >
+        {title}
+      </div>
+      <div
+        style={{
+          fontSize: 14,
+          color: theme === "light" ? "#64748b" : "#94a3b8",
+        }}
+      >
+        {subtitle}
+      </div>
+    </div>
+  );
+
+  const renderTab = () => {
     switch (tab) {
       case "dashboard":
         return (
@@ -379,54 +408,9 @@ export default function WalletShell() {
           />
         );
 
-      case "receive":
-        return (
-          <ReceiveScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
-
       case "tokens":
         return (
           <TokensScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
-
-      case "nfts":
-        return (
-          <NFTsScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
-
-      case "activity":
-        return (
-          <ActivityScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
-
-      case "swap":
-        return (
-          <SwapScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
-
-      case "bridge":
-        return (
-          <BridgeScreen
             theme={theme}
             lang={lang}
             address={address}
@@ -442,6 +426,21 @@ export default function WalletShell() {
             setLang={setLang}
           />
         );
+
+      case "receive":
+        return renderPlaceholder(t.receive, t.screenComingSoon);
+
+      case "nfts":
+        return renderPlaceholder("NFTs", t.screenComingSoon);
+
+      case "activity":
+        return renderPlaceholder(t.activity, t.screenComingSoon);
+
+      case "swap":
+        return renderPlaceholder("Swap", t.screenComingSoon);
+
+      case "bridge":
+        return renderPlaceholder("Bridge", t.screenComingSoon);
 
       default:
         return (
@@ -779,6 +778,9 @@ function getText(lang: string) {
       seedBackupConfirm:
         "I wrote down my seed phrase and stored it somewhere safe. I understand that losing it means losing access to my wallet.",
       walletAlreadyExists: "This wallet already exists on this device.",
+      receive: "Receive",
+      activity: "Activity",
+      screenComingSoon: "This screen will be restored in the next step.",
     },
     pt: {
       authSubtitle: "Crie, importe ou desbloqueie sua carteira",
@@ -812,6 +814,9 @@ function getText(lang: string) {
       seedBackupConfirm:
         "Eu anotei minha seed phrase e guardei em um lugar seguro. Entendo que perder essa frase significa perder o acesso à minha carteira.",
       walletAlreadyExists: "Essa carteira já existe neste dispositivo.",
+      receive: "Receber",
+      activity: "Atividade",
+      screenComingSoon: "Esta tela será restaurada no próximo passo.",
     },
   };
 
