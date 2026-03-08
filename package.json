@@ -1,27 +1,23 @@
 {
-  "name": "inri-wallet",
+  "name": "inri-wallet-stage",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
-
   "dependencies": {
+    "@reown/walletkit": "^1.16.1",
+    "@walletconnect/core": "^2.21.4",
+    "@walletconnect/utils": "^2.21.4",
+    "@zxing/browser": "^0.1.5",
     "ethers": "^6.13.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-qr-code": "^2.0.15",
-    "@zxing/browser": "^0.1.5",
-
-    "@walletconnect/core": "^2.21.4",
-    "@reown/walletkit": "^1.16.1",
-    "@walletconnect/utils": "^2.21.4"
+    "react-qr-code": "^2.0.15"
   },
-
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
     "typescript": "^5.5.4",
