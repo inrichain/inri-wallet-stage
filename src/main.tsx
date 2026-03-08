@@ -2,6 +2,18 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./styles.css";
+import { registerSW } from "virtual:pwa-register";
+
+registerSW({
+  immediate: true,
+  onRegistered(reg) {
+    if (reg) {
+      setInterval(() => {
+        reg.update();
+      }, 60 * 1000);
+    }
+  },
+});
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
