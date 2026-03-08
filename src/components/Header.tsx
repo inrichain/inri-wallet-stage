@@ -7,10 +7,16 @@ export default function Header({
   walletName,
   theme = "dark",
   subtitle,
+  networkName = "INRI Chain",
+  chainIdLabel = "3777",
+  networkIcon = BASE + "token-inri.png",
 }: {
   walletName: string;
   theme?: "dark" | "light";
   subtitle?: string;
+  networkName?: string;
+  chainIdLabel?: string;
+  networkIcon?: string;
 }) {
   const isLight = theme === "light";
   const avatar = localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR;
@@ -39,8 +45,8 @@ export default function Header({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
           <img
-            src={BASE + "token-inri.png"}
-            alt="INRI"
+            src={networkIcon}
+            alt={networkName}
             style={{
               width: 52,
               height: 52,
@@ -75,7 +81,7 @@ export default function Header({
                 textOverflow: "ellipsis",
               }}
             >
-              {subtitle || "INRI Wallet • Mainnet ready"}
+              {subtitle || `${networkName} • Ready`}
             </div>
           </div>
         </div>
@@ -92,7 +98,7 @@ export default function Header({
               fontSize: 13,
             }}
           >
-            3777
+            {chainIdLabel}
           </div>
 
           <img
