@@ -1,114 +1,68 @@
 import { Core } from "@walletconnect/core";
-import { WalletKit } from "@reown/walletkit";
-import { buildApprovedNamespaces, getSdkError } from "@walletconnect/utils";
+import { Web3Wallet } from "@walletconnect/web3wallet";
+import { buildApprovedNamespaces } from "@walletconnect/utils";
 
 export const projectId = "3ec8f1c2261a7eb46e33e0368a6be0e8";
 
-let walletKitInstance: Awaited<ReturnType<typeof WalletKit.init>> | null = null;
-
-function getWalletMetadata() {
-  const origin = window.location.origin;
-  const base = "/inri-wallet-stage/";
-  const walletUrl = `${origin}${base}`;
-  const iconUrl = `${origin}${base}token-inri.png`;
-
-  return {
-    name: "INRI Wallet",
-    description: "Secure wallet for INRI ecosystem",
-    url: walletUrl,
-    icons: [iconUrl],
-  };
-}
+let web3wallet: any = null;
 
 export async function initWalletConnect(address: string) {
   if (!address) return null;
-  if (walletKitInstance) return walletKitInstance;
+  if (web3wallet) return web3wallet;
 
   const core = new Core({
     projectId,
   });
 
-  walletKitInstance = await WalletKit.init({
+  web3wallet = await Web3Wallet.init({
     core,
-    metadata: getWalletMetadata(),
+    metadata: {
+      name: "INRI Wallet",
+      description: "Secure wallet for INRI ecosystem",
+      url: window.location.origin,
+      icons: [`${window.location.origin}/inri-wallet-stage/token-inri.png`],
+    },
   });
 
-  walletKitInstance.on("session_proposal", async (proposal) => {
-    try {
-      const approvedNamespaces = buildApprovedNamespaces({
-        proposal,
-        supportedNamespaces: {
-          eip155: {
-            chains: [
-              "eip155:1",
-              "eip155:10",
-              "eip155:56",
-              "eip155:137",
-              "eip155:8453",
-              "eip155:42161",
-              "eip155:43114",
-              "eip155:3777",
-            ],
-            methods: [
-              "eth_sendTransaction",
-              "eth_signTransaction",
-              "eth_sign",
-              "personal_sign",
-              "eth_signTypedData",
-              "eth_signTypedData_v4",
-            ],
-            events: ["accountsChanged", "chainChanged"],
-            accounts: [
-              `eip155:1:${address}`,
-              `eip155:10:${address}`,
-              `eip155:56:${address}`,
-              `eip155:137:${address}`,
-              `eip155:8453:${address}`,
-              `eip155:42161:${address}`,
-              `eip155:43114:${address}`,
-              `eip155:3777:${address}`,
-            ],
-          },
+  web3wallet.on("session_proposal", async (proposal: any) => {
+    const approvedNamespaces = buildApprovedNamespaces({
+      proposal,
+      supportedNamespaces: {
+        eip155: {
+          chains: [
+            "eip155:1",
+            "eip155:10",
+            "eip155:56",
+            "eip155:137",
+            "eip155:8453",
+            "eip155:42161",
+            "eip155:3777",
+          ],
+          methods: [
+            "eth_sendTransaction",
+            "eth_sign",
+            "personal_sign",
+            "eth_signTypedData",
+          ],
+          events: ["accountsChanged", "chainChanged"],
+          accounts: [
+            `eip155:1:${address}`,
+            `eip155:10:${address}`,
+            `eip155:56:${address}`,
+            `eip155:137:${address}`,
+            `eip155:8453:${address}`,
+            `eip155:42161:${address}`,
+            `eip155:3777:${address}`,
+          ],
         },
-      });
+      },
+    });
 
-      await walletKitInstance.approveSession({
-        id: proposal.id,
-        namespaces: approvedNamespaces,
-      });
-    } catch (error) {
-      await walletKitInstance.rejectSession({
-        id: proposal.id,
-        reason: getSdkError("USER_REJECTED_METHODS"),
-      });
-      console.error("WalletConnect session proposal failed:", error);
-    }
+    await web3wallet.approveSession({
+      id: proposal.id,
+      namespaces: approvedNamespaces,
+    });
   });
 
-  walletKitInstance.on("session_request", async (event) => {
-    const { topic, params, id } = event;
-    const method = params.request.method;
-
-    try {
-      await walletKitInstance!.respondSessionRequest({
-        topic,
-        response: {
-          id,
-          jsonrpc: "2.0",
-          error: {
-            code: 4200,
-            message: `Method not connected yet in this build: ${method}`,
-          },
-        },
-      });
-    } catch (error) {
-      console.error("WalletConnect session request failed:", error);
-    }
-  });
-
-  return walletKitInstance;
-}
-
-export function getWalletConnectInstance() {
-  return walletKitInstance;
+  return web3wallet;
 }
