@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
+import { ACTIVE_NETWORK_KEY, getEnabledNetworks } from "../lib/networks";
 
 const BASE = "/inri-wallet-stage/";
 const DEFAULT_AVATAR = BASE + "avatar.png";
@@ -9,17 +10,22 @@ export default function SettingsScreen({
   setTheme,
   lang,
   setLang,
+  activeNetworkId,
+  setActiveNetworkId,
 }: {
   theme: "dark" | "light";
   setTheme: (value: "dark" | "light") => void;
   lang: string;
   setLang: (value: string) => void;
+  activeNetworkId: string;
+  setActiveNetworkId: (value: string) => void;
 }) {
   const isLight = theme === "light";
   const [avatar, setAvatar] = useState(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
   const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const t = getText(lang);
+  const networks = useMemo(() => getEnabledNetworks(), []);
 
   const wcLogCount = useMemo(() => {
     try {
@@ -35,7 +41,6 @@ export default function SettingsScreen({
   function onAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = () => {
       const result = String(reader.result || "");
@@ -60,6 +65,11 @@ export default function SettingsScreen({
     } catch {
       setCopied(false);
     }
+  }
+
+  function changeNetwork(value: string) {
+    localStorage.setItem(ACTIVE_NETWORK_KEY, value);
+    setActiveNetworkId(value);
   }
 
   return (
@@ -100,9 +110,18 @@ export default function SettingsScreen({
       </section>
 
       <section style={cardStyle(isLight)}>
+        <div style={labelStyle(isLight)}>{t.network}</div>
+        <div style={subLabelStyle(isLight)}>{t.networkHelp}</div>
+        <select value={activeNetworkId} onChange={(e) => changeNetwork(e.target.value)} style={selectStyle(isLight)}>
+          {networks.map((network) => (
+            <option key={network.id} value={network.id}>{network.name} • {network.chainId}</option>
+          ))}
+        </select>
+      </section>
+
+      <section style={cardStyle(isLight)}>
         <div style={labelStyle(isLight)}>{t.avatar}</div>
         <div style={subLabelStyle(isLight)}>{t.avatarHelp}</div>
-
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <img
             src={avatar}
@@ -112,20 +131,23 @@ export default function SettingsScreen({
             }}
             style={{ width: 84, height: 84, borderRadius: 24, objectFit: "cover", border: `2px solid ${isLight ? "#d9e3f3" : "#22314f"}` }}
           />
-
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button onClick={() => fileRef.current?.click()} style={primaryButton}>{t.changeAvatar}</button>
             <button onClick={removeAvatar} style={secondaryButton(isLight)}>{t.removeAvatar}</button>
           </div>
         </div>
-
         <input ref={fileRef} type="file" accept="image/*" onChange={onAvatarChange} style={{ display: "none" }} />
+      </section>
+
+      <section style={cardStyle(isLight)}>
+        <div style={labelStyle(isLight)}>{t.installPwa}</div>
+        <div style={subLabelStyle(isLight)}>{t.installHelp}</div>
+        <div style={badge(isLight)}>{t.installBadge}</div>
       </section>
 
       <section style={cardStyle(isLight)}>
         <div style={labelStyle(isLight)}>{t.walletConnect}</div>
         <div style={subLabelStyle(isLight)}>{t.walletConnectHelp}</div>
-
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={badge(isLight)}>{wcLogCount} {t.logs}</div>
           <button onClick={copyLogs} style={secondaryButton(isLight)}>
@@ -142,17 +164,22 @@ function getText(lang: string) {
     en: {
       section: "Preferences",
       settings: "Settings",
-      subtitle: "Language, look and wallet personalization.",
+      subtitle: "Language, look, network and wallet personalization.",
       language: "Language",
       languageHelp: "Choose the default app language.",
       theme: "Theme",
       themeHelp: "Switch between dark and light mode.",
       dark: "Dark",
       light: "Light",
+      network: "Active network",
+      networkHelp: "Base multi-network support for INRI and other EVM chains.",
       avatar: "Avatar",
       avatarHelp: "Pick a profile image stored on this device.",
       changeAvatar: "Change avatar",
       removeAvatar: "Remove avatar",
+      installPwa: "Install app",
+      installHelp: "Use your browser install option to save the wallet like a real app on mobile and desktop.",
+      installBadge: "PWA ready • standalone mode enabled",
       walletConnect: "WalletConnect",
       walletConnectHelp: "Use logs to debug sessions and pairings.",
       logs: "logs",
@@ -162,17 +189,22 @@ function getText(lang: string) {
     pt: {
       section: "Preferências",
       settings: "Configurações",
-      subtitle: "Idioma, aparência e personalização da carteira.",
+      subtitle: "Idioma, aparência, rede e personalização da carteira.",
       language: "Idioma",
       languageHelp: "Escolha o idioma padrão do aplicativo.",
       theme: "Tema",
       themeHelp: "Alterne entre modo escuro e claro.",
       dark: "Escuro",
       light: "Claro",
+      network: "Rede ativa",
+      networkHelp: "Base inicial multi-rede para INRI e outras redes EVM.",
       avatar: "Avatar",
       avatarHelp: "Escolha uma imagem salva neste dispositivo.",
       changeAvatar: "Trocar avatar",
       removeAvatar: "Remover avatar",
+      installPwa: "Instalar app",
+      installHelp: "Use a opção de instalar do navegador para salvar a wallet como app real no celular e no PC.",
+      installBadge: "PWA pronto • modo standalone ativado",
       walletConnect: "WalletConnect",
       walletConnectHelp: "Use os logs para depurar sessões e pareamentos.",
       logs: "logs",
