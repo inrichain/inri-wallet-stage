@@ -5,6 +5,7 @@ const BASE = "/inri-wallet-stage/";
 export const RPC_URL = "https://rpc.inri.life";
 export const RPC_FALLBACK_URL = "https://rpc-chain.inri.life";
 export const CHAIN_ID = 3777;
+export const CUSTOM_TOKENS_KEY = "wallet_custom_tokens";
 
 export const provider = new ethers.JsonRpcProvider(RPC_URL, {
   name: "INRI",
@@ -24,6 +25,7 @@ export type TokenItem = {
   isNative?: boolean;
   address?: string;
   decimals?: number;
+  name?: string;
 };
 
 export const DEFAULT_TOKENS: TokenItem[] = [
@@ -34,6 +36,7 @@ export const DEFAULT_TOKENS: TokenItem[] = [
     isDefault: true,
     isNative: true,
     decimals: 18,
+    name: "INRI",
   },
   {
     symbol: "iUSD",
@@ -42,14 +45,16 @@ export const DEFAULT_TOKENS: TokenItem[] = [
     isDefault: true,
     address: "0x116b2fF23e062A52E2c0ea12dF7e2638b62Fa0FC",
     decimals: 6,
+    name: "iUSD",
   },
   {
     symbol: "WINRI",
-    subtitle: "token",
+    subtitle: "wrapped INRI",
     logo: BASE + "token-winri.png",
     isDefault: true,
     address: "0x8731F1709745173470821eAeEd9BC600EEC9A3D1",
     decimals: 18,
+    name: "Wrapped INRI",
   },
   {
     symbol: "DNR",
@@ -58,6 +63,7 @@ export const DEFAULT_TOKENS: TokenItem[] = [
     isDefault: true,
     address: "0xDa9541bB01d9EC1991328516C71B0E539a97d27f",
     decimals: 18,
+    name: "DNR",
   },
 ];
 
@@ -69,17 +75,16 @@ export const ERC20_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)",
 ];
 
-async function rpcCall(url: string, method: string, params: any[]) {
+export async function rpcCall(url: string, method: string, params: any[]) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method,
-      params,
-    }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   });
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
 
   const data = await res.json();
 
@@ -88,6 +93,14 @@ async function rpcCall(url: string, method: string, params: any[]) {
   }
 
   return data.result;
+}
+
+async function withRpcFallback<T>(fn: (active: ethers.JsonRpcProvider) => Promise<T>) {
+  try {
+    return await fn(provider);
+  } catch {
+    return await fn(fallbackProvider);
+  }
 }
 
 async function getNativeBalanceRaw(address: string) {
@@ -104,15 +117,10 @@ export async function getNativeBalance(address: string) {
   if (!address) return "0.000000";
 
   try {
-    const raw = await provider.getBalance(address);
+    const raw = await withRpcFallback((active) => active.getBalance(address));
     return Number(ethers.formatEther(raw)).toFixed(6);
   } catch {
-    try {
-      const raw = await fallbackProvider.getBalance(address);
-      return Number(ethers.formatEther(raw)).toFixed(6);
-    } catch {
-      return await getNativeBalanceRaw(address);
-    }
+    return await getNativeBalanceRaw(address);
   }
 }
 
@@ -150,6 +158,81 @@ export async function getTokenBalance(
   }
 }
 
+export async function readTokenMetadata(tokenAddress: string): Promise<TokenItem> {
+  const cleanAddress = ethers.getAddress(tokenAddress.trim());
+
+  return await withRpcFallback(async (active) => {
+    const contract = new ethers.Contract(cleanAddress, ERC20_ABI, active);
+    const [name, symbol, decimals] = await Promise.all([
+      contract.name().catch(() => "Token"),
+      contract.symbol().catch(() => "TKN"),
+      contract.decimals().catch(() => 18),
+    ]);
+
+    return {
+      symbol: String(symbol || "TKN").toUpperCase(),
+      name: String(name || symbol || "Token"),
+      subtitle: `token • ${cleanAddress.slice(0, 6)}...${cleanAddress.slice(-4)}`,
+      logo: BASE + "token-inri.png",
+      isDefault: false,
+      address: cleanAddress,
+      decimals: Number(decimals) || 18,
+    };
+  });
+}
+
+export async function discoverKnownTokens(address: string, extraCandidates: TokenItem[] = []) {
+  if (!address) return [] as TokenItem[];
+
+  const merged = dedupeTokens([...DEFAULT_TOKENS, ...extraCandidates]).filter(
+    (item) => !item.isNative && item.address
+  );
+
+  const hits = await Promise.all(
+    merged.map(async (token) => {
+      try {
+        const balance = await getTokenBalance(token.address || "", address, token.decimals || 18);
+        const numeric = Number(balance);
+        if (Number.isFinite(numeric) && numeric > 0) {
+          return token;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return hits.filter(Boolean) as TokenItem[];
+}
+
+export function dedupeTokens(tokens: TokenItem[]) {
+  const map = new Map<string, TokenItem>();
+
+  for (const token of tokens) {
+    const key = token.address ? token.address.toLowerCase() : token.symbol.toUpperCase();
+    if (!map.has(key)) map.set(key, token);
+  }
+
+  return Array.from(map.values());
+}
+
+export function getStoredCustomTokens(): TokenItem[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_TOKENS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch {
+    return [];
+  }
+}
+
+export function storeCustomTokens(tokens: TokenItem[]) {
+  localStorage.setItem(CUSTOM_TOKENS_KEY, JSON.stringify(tokens));
+}
+
 export async function loadAllBalances(address: string, tokens: TokenItem[]) {
   const balances: Record<string, string> = {};
 
@@ -165,12 +248,10 @@ export async function loadAllBalances(address: string, tokens: TokenItem[]) {
   await Promise.all(
     tokens.map(async (token) => {
       if (token.symbol === "INRI") return;
-
       if (!token.address) {
         balances[token.symbol] = "0.000000";
         return;
       }
-
       balances[token.symbol] = await getTokenBalance(
         token.address,
         address,
@@ -180,6 +261,17 @@ export async function loadAllBalances(address: string, tokens: TokenItem[]) {
   );
 
   return balances;
+}
+
+export function formatTokenAmount(value: string | number, maxDigits = 6) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return "0";
+  if (numeric === 0) return "0";
+  if (numeric < 0.000001) return "< 0.000001";
+  return numeric.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxDigits,
+  });
 }
 
 export function normalizeSeed(seed: string) {
