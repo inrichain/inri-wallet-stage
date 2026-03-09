@@ -5,6 +5,8 @@ const BASE = "/inri-wallet-stage/";
 export const RPC_URL = "https://rpc.inri.life";
 export const RPC_FALLBACK_URL = "https://rpc-chain.inri.life";
 export const CHAIN_ID = 3777;
+export const EXPLORER_ADDRESS_URL = "https://explorer.inri.life/address/";
+export const EXPLORER_TX_URL = "https://explorer.inri.life/tx/";
 
 export const provider = new ethers.JsonRpcProvider(RPC_URL, {
   name: "INRI",
@@ -204,3 +206,4 @@ export function getMnemonicFromWallet(
   }
   return "";
 }
+
