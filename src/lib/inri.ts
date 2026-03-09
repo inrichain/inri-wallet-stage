@@ -252,6 +252,13 @@ export async function detectWalletTokens(
   });
 }
 
+export async function autoDetectKnownTokens(
+  address: string,
+  networkId?: string
+): Promise<TokenItem[]> {
+  return detectWalletTokens(address, networkId);
+}
+
 export function getNetworkLogo(networkId?: string) {
   return getNetworkById(networkId || getActiveNetwork().id).logo;
 }
