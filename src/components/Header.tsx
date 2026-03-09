@@ -60,35 +60,93 @@ export default function Header({
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <div
             style={{
               fontWeight: 1000,
-              fontSize: 34,
+              fontSize: 42,
               lineHeight: 1,
-              letterSpacing: "-0.05em",
+              letterSpacing: "-0.06em",
               color: "#5c8dff",
               textShadow: isLight ? "none" : "0 0 18px rgba(92,141,255,.18)",
+              flexShrink: 0,
             }}
           >
             WI
           </div>
-          <div>
-            <div style={{ fontWeight: 900, fontSize: 18, color: isLight ? "#10131a" : "#ffffff" }}>{walletName}</div>
-            <div style={{ fontSize: 13, color: isLight ? "#5b6578" : "#97a0b3" }}>Professional multichain wallet for the INRI ecosystem</div>
+
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontWeight: 900,
+                fontSize: 18,
+                color: isLight ? "#10131a" : "#ffffff",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {walletName}
+            </div>
+
+            <div
+              style={{
+                fontSize: 13,
+                color: isLight ? "#5b6578" : "#97a0b3",
+                lineHeight: 1.35,
+              }}
+            >
+              Professional multichain wallet for the INRI ecosystem
+            </div>
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 999, border: "1px solid rgba(63,124,255,.35)", background: "rgba(63,124,255,.12)", color: "#3f7cff", fontWeight: 800, fontSize: 14 }}>
-            <img src={network.logo} alt={network.name} style={{ width: 20, height: 20, borderRadius: 10, objectFit: "cover" }} />
-            <span>{network.name} • {network.chainId}</span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 14px",
+              borderRadius: 999,
+              border: "1px solid rgba(63,124,255,.35)",
+              background: "rgba(63,124,255,.12)",
+              color: "#3f7cff",
+              fontWeight: 800,
+              fontSize: 14,
+              minWidth: 0,
+            }}
+          >
+            <img
+              src={network.logo}
+              alt={network.name}
+              style={{ width: 20, height: 20, borderRadius: 10, objectFit: "cover", flexShrink: 0 }}
+            />
+            <span
+              style={{
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {network.name} • {network.chainId}
+            </span>
           </div>
+
           <img
             src={avatar}
             alt="avatar"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR; }}
-            style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `2px solid ${isLight ? "#dbe2f0" : "#2b3650"}` }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR;
+            }}
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: `2px solid ${isLight ? "#dbe2f0" : "#2b3650"}`,
+              flexShrink: 0,
+            }}
           />
         </div>
       </div>
