@@ -16,6 +16,8 @@ const DEFAULT_AVATAR = `data:image/svg+xml;utf8,${encodeURIComponent(`
 </svg>
 `)}`;
 
+const BRAND_LOGO = "/brand-inri.png";
+
 export default function Header({
   walletName,
   theme = "dark",
@@ -61,19 +63,20 @@ export default function Header({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <div
-            style={{
-              fontWeight: 1000,
-              fontSize: 42,
-              lineHeight: 1,
-              letterSpacing: "-0.06em",
-              color: "#5c8dff",
-              textShadow: isLight ? "none" : "0 0 18px rgba(92,141,255,.18)",
-              flexShrink: 0,
+          <img
+            src={BRAND_LOGO}
+            alt="INRI"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
             }}
-          >
-            WI
-          </div>
+            style={{
+              width: 54,
+              height: 54,
+              objectFit: "contain",
+              flexShrink: 0,
+              filter: isLight ? "none" : "drop-shadow(0 0 18px rgba(92,141,255,.18))",
+            }}
+          />
 
           <div style={{ minWidth: 0 }}>
             <div
