@@ -1,22 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { getStoredNetwork, type NetworkItem } from "../lib/network";
 
-const DEFAULT_AVATAR = `data:image/svg+xml;utf8,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#3f7cff"/>
-      <stop offset="100%" stop-color="#8b5cf6"/>
-    </linearGradient>
-  </defs>
-  <rect width="120" height="120" rx="60" fill="#0f172a"/>
-  <circle cx="60" cy="44" r="22" fill="#ffffff" opacity="0.95"/>
-  <path d="M24 102c7-18 21-28 36-28s29 10 36 28" fill="#ffffff" opacity="0.95"/>
-  <circle cx="60" cy="60" r="54" fill="none" stroke="url(#g)" stroke-width="6"/>
-</svg>
-`)}`;
-
-const BRAND_LOGO = "/brand-inri.png";
+const DEFAULT_AVATAR = "/avatar.png";
+const BRAND_LOGO = "/favicon.png"; // troque para /brand-inri.png quando subir esse arquivo
 
 export default function Header({
   walletName,
@@ -67,14 +53,14 @@ export default function Header({
             src={BRAND_LOGO}
             alt="INRI"
             onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
+              (e.currentTarget as HTMLImageElement).src = "/favicon.png";
             }}
             style={{
               width: 54,
               height: 54,
               objectFit: "contain",
               flexShrink: 0,
-              filter: isLight ? "none" : "drop-shadow(0 0 18px rgba(92,141,255,.18))",
+              display: "block",
             }}
           />
 
@@ -123,6 +109,9 @@ export default function Header({
             <img
               src={network.logo}
               alt={network.name}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = "/favicon.png";
+              }}
               style={{ width: 20, height: 20, borderRadius: 10, objectFit: "cover", flexShrink: 0 }}
             />
             <span
@@ -140,7 +129,7 @@ export default function Header({
             src={avatar}
             alt="avatar"
             onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR;
+              (e.currentTarget as HTMLImageElement).src = "/avatar.png";
             }}
             style={{
               width: 46,
