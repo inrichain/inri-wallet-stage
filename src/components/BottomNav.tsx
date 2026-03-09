@@ -57,7 +57,7 @@ export default function BottomNav({
               key={item.id}
               onClick={() => setTab(item.id)}
               style={{
-                padding: "11px 8px",
+                padding: "10px 6px",
                 borderRadius: 14,
                 border: active
                   ? "1px solid #4d7ef2"
@@ -65,11 +65,16 @@ export default function BottomNav({
                 background: active ? "#3f7cff" : isLight ? "#f8f9ff" : "#12182a",
                 color: active ? "#ffffff" : isLight ? "#334155" : "#cfd6e4",
                 fontWeight: 800,
-                fontSize: 12,
+                fontSize: 11,
                 cursor: "pointer",
                 transition: "all .15s ease",
                 minHeight: 46,
+                minWidth: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
+              title={item.label}
             >
               {item.label}
             </button>
@@ -83,16 +88,17 @@ export default function BottomNav({
 function getText(lang: string) {
   const map: any = {
     en: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    pt: { home: "Início", send: "Enviar", receive: "Receber", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Config" },
-    es: { home: "Inicio", send: "Enviar", receive: "Recibir", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Ajustes" },
-    fr: { home: "Accueil", send: "Envoyer", receive: "Recevoir", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Réglages" },
-    de: { home: "Start", send: "Senden", receive: "Empfangen", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Einstellungen" },
-    it: { home: "Home", send: "Invia", receive: "Ricevi", tokens: "Token", swap: "Swap", bridge: "Bridge", settings: "Impostazioni" },
-    ru: { home: "Главная", send: "Отправить", receive: "Получить", tokens: "Токены", swap: "Swap", bridge: "Bridge", settings: "Настройки" },
-    zh: { home: "首页", send: "发送", receive: "接收", tokens: "代币", swap: "兑换", bridge: "桥接", settings: "设置" },
-    ja: { home: "ホーム", send: "送信", receive: "受信", tokens: "トークン", swap: "スワップ", bridge: "ブリッジ", settings: "設定" },
-    ko: { home: "홈", send: "전송", receive: "수신", tokens: "토큰", swap: "스왑", bridge: "브리지", settings: "설정" },
-    tr: { home: "Ana", send: "Gönder", receive: "Al", tokens: "Token", swap: "Swap", bridge: "Bridge", settings: "Ayarlar" },
+    pt: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
+    es: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
+    fr: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
+    de: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
+    it: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
+    ru: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
+    zh: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
+    ja: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
+    ko: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
+    tr: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
   };
+
   return map[lang] || map.en;
 }
