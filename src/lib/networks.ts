@@ -6,11 +6,22 @@ export type NetworkConfig = {
   rpcUrls: string[];
   explorerUrl: string;
   symbol: string;
+  nativeSymbol: string;
   logo: string;
+  icon: string;
+  nativeCurrency: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
   isTestnet?: boolean;
+  bridgeTargets?: string[];
 };
 
 const BASE = "/inri-wallet-stage/";
+
+export const DEFAULT_NETWORK_ID = "inri";
+export const ACTIVE_NETWORK_KEY = "wallet_active_network";
 
 export const NETWORKS: NetworkConfig[] = [
   {
@@ -18,13 +29,18 @@ export const NETWORKS: NetworkConfig[] = [
     id: "inri",
     name: "INRI CHAIN",
     chainId: 3777,
-    rpcUrls: [
-      "https://rpc.inri.life",
-      "https://rpc-chain.inri.life",
-    ],
+    rpcUrls: ["https://rpc.inri.life", "https://rpc-chain.inri.life"],
     explorerUrl: "https://explorer.inri.life",
     symbol: "INRI",
+    nativeSymbol: "INRI",
     logo: `${BASE}net-inri.png`,
+    icon: `${BASE}net-inri.png`,
+    nativeCurrency: {
+      name: "INRI",
+      symbol: "INRI",
+      decimals: 18,
+    },
+    bridgeTargets: ["polygon", "ethereum", "bsc", "arbitrum", "base"],
   },
   {
     key: "ethereum",
@@ -37,7 +53,15 @@ export const NETWORKS: NetworkConfig[] = [
     ],
     explorerUrl: "https://etherscan.io",
     symbol: "ETH",
+    nativeSymbol: "ETH",
     logo: `${BASE}net-ethereum.png`,
+    icon: `${BASE}net-ethereum.png`,
+    nativeCurrency: {
+      name: "Ether",
+      symbol: "ETH",
+      decimals: 18,
+    },
+    bridgeTargets: ["inri", "polygon", "arbitrum", "base"],
   },
   {
     key: "polygon",
@@ -50,7 +74,15 @@ export const NETWORKS: NetworkConfig[] = [
     ],
     explorerUrl: "https://polygonscan.com",
     symbol: "POL",
+    nativeSymbol: "POL",
     logo: `${BASE}net-polygon.png`,
+    icon: `${BASE}net-polygon.png`,
+    nativeCurrency: {
+      name: "POL",
+      symbol: "POL",
+      decimals: 18,
+    },
+    bridgeTargets: ["inri", "ethereum", "bsc", "arbitrum", "base"],
   },
   {
     key: "bsc",
@@ -63,7 +95,15 @@ export const NETWORKS: NetworkConfig[] = [
     ],
     explorerUrl: "https://bscscan.com",
     symbol: "BNB",
+    nativeSymbol: "BNB",
     logo: `${BASE}net-bsc.png`,
+    icon: `${BASE}net-bsc.png`,
+    nativeCurrency: {
+      name: "BNB",
+      symbol: "BNB",
+      decimals: 18,
+    },
+    bridgeTargets: ["inri", "polygon", "ethereum"],
   },
   {
     key: "arbitrum",
@@ -76,7 +116,15 @@ export const NETWORKS: NetworkConfig[] = [
     ],
     explorerUrl: "https://arbiscan.io",
     symbol: "ETH",
+    nativeSymbol: "ETH",
     logo: `${BASE}net-arbitrum.png`,
+    icon: `${BASE}net-arbitrum.png`,
+    nativeCurrency: {
+      name: "Ether",
+      symbol: "ETH",
+      decimals: 18,
+    },
+    bridgeTargets: ["inri", "ethereum", "polygon", "base"],
   },
   {
     key: "base",
@@ -89,12 +137,17 @@ export const NETWORKS: NetworkConfig[] = [
     ],
     explorerUrl: "https://basescan.org",
     symbol: "ETH",
+    nativeSymbol: "ETH",
     logo: `${BASE}net-base.png`,
+    icon: `${BASE}net-base.png`,
+    nativeCurrency: {
+      name: "Ether",
+      symbol: "ETH",
+      decimals: 18,
+    },
+    bridgeTargets: ["inri", "ethereum", "polygon", "arbitrum"],
   },
 ];
-
-export const DEFAULT_NETWORK_KEY = "inri";
-export const ACTIVE_NETWORK_KEY = "wallet_active_network";
 
 export function getAllNetworks(): NetworkConfig[] {
   return NETWORKS;
@@ -121,22 +174,28 @@ export function getActiveNetwork(): NetworkConfig {
       ? localStorage.getItem(ACTIVE_NETWORK_KEY)
       : null;
 
-  return getNetworkByKey(saved || DEFAULT_NETWORK_KEY);
+  return getNetworkById(saved || DEFAULT_NETWORK_ID);
 }
 
-export function setActiveNetwork(key: string) {
+export function setActiveNetwork(id: string) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(ACTIVE_NETWORK_KEY, key);
+  localStorage.setItem(ACTIVE_NETWORK_KEY, id);
 }
 
-export function getRpcUrls(networkKey?: string): string[] {
-  return getNetworkByKey(networkKey).rpcUrls;
+export function getRpcUrls(networkId?: string): string[] {
+  return getNetworkById(networkId).rpcUrls;
 }
 
-export function getPrimaryRpcUrl(networkKey?: string): string {
-  return getRpcUrls(networkKey)[0];
+export function getPrimaryRpcUrl(networkId?: string): string {
+  return getRpcUrls(networkId)[0];
 }
 
-export function getFallbackRpcUrl(networkKey?: string): string {
-  return getRpcUrls(networkKey)[1] || getRpcUrls(networkKey)[0];
+export function getFallbackRpcUrl(networkId?: string): string {
+  return getRpcUrls(networkId)[1] || getRpcUrls(networkId)[0];
+}
+
+export function getBridgeTargets(networkId?: string): NetworkConfig[] {
+  const source = getNetworkById(networkId);
+  const targetIds = source.bridgeTargets || [];
+  return NETWORKS.filter((n) => targetIds.includes(n.id));
 }
