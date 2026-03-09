@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import QRCode from "react-qr-code";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 
-const INRI_LOGO = "/brand-inri.png";
+const INRI_LOGO = "/favicon.png";
 
 export default function ReceiveScreen({
   theme = "dark",
@@ -15,17 +16,21 @@ export default function ReceiveScreen({
   const isLight = theme === "light";
   const t = getText(lang);
 
-  const fileRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
 
   const [scanResult, setScanResult] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [scanning, setScanning] = useState(false);
   const [cameraError, setCameraError] = useState("");
 
   useEffect(() => {
-    return () => stopCamera();
+    readerRef.current = new BrowserMultiFormatReader();
+    return () => {
+      try {
+        readerRef.current?.reset();
+      } catch {}
+    };
   }, []);
 
   async function copyAddress() {
@@ -37,107 +42,73 @@ export default function ReceiveScreen({
     }
   }
 
-  function stopCamera() {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setCameraOpen(false);
-    setScanning(false);
-  }
-
   async function openCameraQr() {
     setCameraError("");
     setScanResult("");
 
     try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        fileRef.current?.click();
-        return;
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-        },
-        audio: false,
-      });
-
-      streamRef.current = stream;
       setCameraOpen(true);
 
       setTimeout(async () => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-      }, 50);
+        try {
+          if (!videoRef.current || !readerRef.current) return;
 
-      if ("BarcodeDetector" in window && typeof (window as any).BarcodeDetector === "function") {
-        setScanning(true);
-        startLiveQrScan();
-      }
+          const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+          const backCamera =
+            devices.find((d) =>
+              d.label.toLowerCase().includes("back") ||
+              d.label.toLowerCase().includes("rear") ||
+              d.label.toLowerCase().includes("environment")
+            ) || devices[0];
+
+          if (!backCamera) {
+            setCameraError(t.noCamera);
+            setCameraOpen(false);
+            return;
+          }
+
+          const result = await readerRef.current.decodeOnceFromVideoDevice(
+            backCamera.deviceId,
+            videoRef.current
+          );
+
+          if (result?.getText()) {
+            setScanResult(result.getText());
+          }
+
+          closeCamera();
+        } catch {
+          setCameraError(t.cameraFail);
+        }
+      }, 150);
     } catch {
-      fileRef.current?.click();
+      setCameraError(t.cameraFail);
+      setCameraOpen(false);
     }
   }
 
-  async function startLiveQrScan() {
+  function closeCamera() {
     try {
-      const Detector = (window as any).BarcodeDetector;
-      const detector = new Detector({ formats: ["qr_code"] });
-
-      const tick = async () => {
-        if (!videoRef.current || !cameraOpen) return;
-
-        try {
-          const codes = await detector.detect(videoRef.current);
-          if (codes?.length) {
-            const value = String(codes[0].rawValue || "");
-            if (value) {
-              setScanResult(value);
-              stopCamera();
-              return;
-            }
-          }
-        } catch {}
-
-        requestAnimationFrame(tick);
-      };
-
-      requestAnimationFrame(tick);
-    } catch {
-      setScanning(false);
-    }
+      readerRef.current?.reset();
+    } catch {}
+    setCameraOpen(false);
   }
 
   async function onPickImage(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file || !readerRef.current) return;
 
     try {
-      if (
-        "BarcodeDetector" in window &&
-        typeof (window as any).BarcodeDetector === "function"
-      ) {
-        const imageBitmap = await createImageBitmap(file);
-        const Detector = (window as any).BarcodeDetector;
-        const detector = new Detector({ formats: ["qr_code"] });
-        const codes = await detector.detect(imageBitmap);
-
-        if (codes?.length) {
-          setScanResult(String(codes[0].rawValue || ""));
-        } else {
-          alert(t.noQrFound);
-        }
+      const url = URL.createObjectURL(file);
+      const result = await readerRef.current.decodeFromImageUrl(url);
+      if (result?.getText()) {
+        setScanResult(result.getText());
       } else {
-        alert(t.cameraNotSupported);
+        alert(t.noQrFound);
       }
+      URL.revokeObjectURL(url);
     } catch {
-      alert(t.cameraFail);
+      alert(t.noQrFound);
     } finally {
       event.target.value = "";
     }
@@ -175,21 +146,8 @@ export default function ReceiveScreen({
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          placeItems: "center",
-          margin: "24px 0",
-        }}
-      >
-        <div
-          style={{
-            background: "#fff",
-            padding: 16,
-            borderRadius: 20,
-            maxWidth: "100%",
-          }}
-        >
+      <div style={{ display: "grid", placeItems: "center", margin: "24px 0" }}>
+        <div style={{ background: "#fff", padding: 16, borderRadius: 20, maxWidth: "100%" }}>
           <QRCode value={address || "0x"} size={190} />
         </div>
       </div>
@@ -213,25 +171,21 @@ export default function ReceiveScreen({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
+          gridTemplateColumns: "1fr 1fr 1fr",
           gap: 12,
           marginTop: 14,
         }}
       >
-        <button
-          onClick={copyAddress}
-          style={mainBtn}
-        >
+        <button onClick={copyAddress} style={mainBtn}>
           {t.copyAddress}
         </button>
 
-        <button
-          onClick={openCameraQr}
-          style={{
-            ...ghostBtn(isLight),
-          }}
-        >
-          {cameraOpen ? t.cameraOpened : t.scanQr}
+        <button onClick={openCameraQr} style={ghostBtn(isLight)}>
+          {t.openCamera}
+        </button>
+
+        <button onClick={() => fileRef.current?.click()} style={ghostBtn(isLight)}>
+          {t.imageScan}
         </button>
       </div>
 
@@ -239,7 +193,6 @@ export default function ReceiveScreen({
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={onPickImage}
         style={{ display: "none" }}
       />
@@ -268,20 +221,10 @@ export default function ReceiveScreen({
             />
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              marginTop: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <button onClick={stopCamera} style={ghostBtn(isLight)}>
+          <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+            <button onClick={closeCamera} style={ghostBtn(isLight)}>
               {t.closeCamera}
             </button>
-            <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, alignSelf: "center" }}>
-              {scanning ? t.scanning : t.cameraReady}
-            </div>
           </div>
         </div>
       )}
@@ -355,35 +298,31 @@ function getText(lang: string) {
       receive: "Receive",
       receiveHint: "Wallet address and QR code",
       copyAddress: "Copy Address",
-      scanQr: "Open Camera",
-      cameraOpened: "Camera Open",
+      openCamera: "Open Camera",
       closeCamera: "Close Camera",
-      scanning: "Reading QR...",
-      cameraReady: "Point the camera at a QR code.",
+      imageScan: "Image QR",
       lastScan: "Last scanned QR",
       noScanYet: "No QR scanned yet.",
       copied: "Address copied.",
       copyFail: "Could not copy address.",
-      cameraFail: "Could not read the QR code.",
-      cameraNotSupported: "This browser does not support QR reading yet.",
       noQrFound: "No QR code was found in the image.",
+      noCamera: "No camera found on this device.",
+      cameraFail: "Could not open or read the camera.",
     },
     pt: {
       receive: "Receber",
       receiveHint: "Endereço da carteira e código QR",
       copyAddress: "Copiar Endereço",
-      scanQr: "Abrir Câmera",
-      cameraOpened: "Câmera Aberta",
+      openCamera: "Abrir Câmera",
       closeCamera: "Fechar Câmera",
-      scanning: "Lendo QR...",
-      cameraReady: "Aponte a câmera para um QR code.",
+      imageScan: "QR da Imagem",
       lastScan: "Último QR lido",
       noScanYet: "Nenhum QR lido ainda.",
       copied: "Endereço copiado.",
       copyFail: "Não foi possível copiar o endereço.",
-      cameraFail: "Não foi possível ler o QR code.",
-      cameraNotSupported: "Este navegador ainda não suporta leitura de QR.",
       noQrFound: "Nenhum QR code foi encontrado na imagem.",
+      noCamera: "Nenhuma câmera foi encontrada neste aparelho.",
+      cameraFail: "Não foi possível abrir ou ler a câmera.",
     },
   };
 
