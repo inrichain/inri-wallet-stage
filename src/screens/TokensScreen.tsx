@@ -2,57 +2,111 @@ import React, { useEffect, useState } from "react";
 import { getKnownTokens, loadAllBalances } from "../lib/inri";
 import { getActiveNetwork } from "../lib/networks";
 
-export default function TokensScreen({ address }: any) {
-
+export default function TokensScreen({
+  address,
+  lang = "en",
+}: {
+  address: string;
+  lang?: string;
+}) {
   const network = getActiveNetwork();
+  const t = getText(lang);
 
   const [tokens, setTokens] = useState<any[]>([]);
-  const [balances, setBalances] = useState<any>({});
+  const [balances, setBalances] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    const list = getKnownTokens(network.id);
+    setTokens(list);
 
-    const t = getKnownTokens(network.id);
-    setTokens(t);
-
-    loadAllBalances(network.id, address, t).then(setBalances);
-
+    loadAllBalances(network.id, address, list)
+      .then(setBalances)
+      .catch(() => setBalances({}));
   }, [address, network.id]);
 
   return (
-    <div className="p-4 text-white">
+    <div style={{ paddingBottom: 90 }}>
+      <div style={panel()}>
+        <div style={title()}>{t.title}</div>
+        <div style={subtitle()}>{network.name}</div>
+      </div>
 
-      <h2 className="text-xl font-bold mb-4">
-        Tokens
-      </h2>
+      <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+        {tokens.map((token) => (
+          <div key={`${token.symbol}-${token.networkId}`} style={tokenCard()}>
+            <img
+              src={token.logo}
+              alt={token.symbol}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 12,
+                objectFit: "contain",
+                flexShrink: 0,
+              }}
+            />
 
-      {tokens.map((t) => (
-        <div
-          key={t.symbol}
-          className="flex items-center gap-3 bg-[#0b0f1c] p-3 rounded-xl mb-2"
-        >
-
-          <img
-            src={t.logo}
-            className="w-8 h-8"
-          />
-
-          <div className="flex-1">
-            <div className="text-white">
-              {t.symbol}
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={tokenTitle()}>{token.symbol}</div>
+              <div style={tokenSub()}>{token.name}</div>
             </div>
 
-            <div className="text-gray-400 text-xs">
-              {t.name}
+            <div style={{ textAlign: "right" }}>
+              <div style={balanceText()}>
+                {balances[token.symbol] || "0.000000"}
+              </div>
+              <div style={tokenSub()}>{token.symbol}</div>
             </div>
           </div>
-
-          <div>
-            {balances[t.symbol] || "0.000000"}
-          </div>
-
-        </div>
-      ))}
-
+        ))}
+      </div>
     </div>
   );
+}
+
+function getText(lang: string) {
+  const map: Record<string, any> = {
+    en: { title: "Tokens" },
+    pt: { title: "Tokens" },
+  };
+  return map[lang] || map.en;
+}
+
+function panel(): React.CSSProperties {
+  return {
+    borderRadius: 24,
+    padding: 18,
+    background:
+      "linear-gradient(180deg, rgba(13,20,35,.96) 0%, rgba(8,14,26,.98) 100%)",
+    border: "1px solid rgba(79,116,201,.18)",
+    boxShadow: "0 16px 36px rgba(0,0,0,.24)",
+  };
+}
+function title(): React.CSSProperties {
+  return { color: "#fff", fontSize: 22, fontWeight: 900 };
+}
+function subtitle(): React.CSSProperties {
+  return { color: "#91a5cc", fontSize: 13, fontWeight: 700, marginTop: 6 };
+}
+function tokenCard(): React.CSSProperties {
+  return {
+    borderRadius: 20,
+    padding: 16,
+    background:
+      "linear-gradient(180deg, rgba(13,20,35,.96) 0%, rgba(8,14,26,.98) 100%)",
+    border: "1px solid rgba(79,116,201,.18)",
+    boxShadow: "0 12px 28px rgba(0,0,0,.20)",
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+  };
+}
+function tokenTitle(): React.CSSProperties {
+  return { color: "#fff", fontSize: 15, fontWeight: 900 };
+}
+function tokenSub(): React.CSSProperties {
+  return { color: "#8ea1c7", fontSize: 12, fontWeight: 700, marginTop: 4 };
+}
+function balanceText(): React.CSSProperties {
+  return { color: "#fff", fontSize: 15, fontWeight: 900 };
 }
