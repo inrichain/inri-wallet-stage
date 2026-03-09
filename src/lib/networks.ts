@@ -1,5 +1,6 @@
 export type NetworkConfig = {
   key: string;
+  id: string;
   name: string;
   chainId: number;
   rpcUrls: string[];
@@ -14,6 +15,7 @@ const BASE = "/inri-wallet-stage/";
 export const NETWORKS: NetworkConfig[] = [
   {
     key: "inri",
+    id: "inri",
     name: "INRI CHAIN",
     chainId: 3777,
     rpcUrls: [
@@ -26,6 +28,7 @@ export const NETWORKS: NetworkConfig[] = [
   },
   {
     key: "ethereum",
+    id: "ethereum",
     name: "Ethereum",
     chainId: 1,
     rpcUrls: [
@@ -38,6 +41,7 @@ export const NETWORKS: NetworkConfig[] = [
   },
   {
     key: "polygon",
+    id: "polygon",
     name: "Polygon",
     chainId: 137,
     rpcUrls: [
@@ -50,6 +54,7 @@ export const NETWORKS: NetworkConfig[] = [
   },
   {
     key: "bsc",
+    id: "bsc",
     name: "BNB Smart Chain",
     chainId: 56,
     rpcUrls: [
@@ -62,6 +67,7 @@ export const NETWORKS: NetworkConfig[] = [
   },
   {
     key: "arbitrum",
+    id: "arbitrum",
     name: "Arbitrum One",
     chainId: 42161,
     rpcUrls: [
@@ -74,6 +80,7 @@ export const NETWORKS: NetworkConfig[] = [
   },
   {
     key: "base",
+    id: "base",
     name: "Base",
     chainId: 8453,
     rpcUrls: [
@@ -96,6 +103,11 @@ export function getAllNetworks(): NetworkConfig[] {
 export function getNetworkByKey(key?: string | null): NetworkConfig {
   if (!key) return NETWORKS[0];
   return NETWORKS.find((n) => n.key === key) || NETWORKS[0];
+}
+
+export function getNetworkById(id?: string | null): NetworkConfig {
+  if (!id) return NETWORKS[0];
+  return NETWORKS.find((n) => n.id === id) || NETWORKS[0];
 }
 
 export function getNetworkByChainId(chainId?: number | null): NetworkConfig {
