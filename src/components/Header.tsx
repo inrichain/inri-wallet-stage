@@ -2,30 +2,79 @@ import React from "react";
 import { shortAddress } from "../lib/inri";
 import { getActiveNetwork } from "../lib/networks";
 
-export default function Header({ address }: { address: string }) {
+const BASE = "/inri-wallet-stage/";
+
+export default function Header({ address = "" }: { address?: string }) {
   const network = getActiveNetwork();
 
   return (
-    <div className="px-4 pt-4 pb-2">
-      <div className="flex items-center gap-3 bg-[#0b0f1c] rounded-2xl p-4 border border-[#1e263f]">
-        
+    <div
+      style={{
+        maxWidth: 980,
+        margin: "0 auto",
+        padding: "16px 16px 10px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          padding: 18,
+          borderRadius: 24,
+          background:
+            "linear-gradient(180deg, rgba(13,20,35,.96) 0%, rgba(8,14,26,.98) 100%)",
+          border: "1px solid rgba(79,116,201,.22)",
+          boxShadow: "0 18px 40px rgba(0,0,0,.28)",
+        }}
+      >
         <img
-          src={network.icon}
-          className="w-12 h-12 rounded-xl"
+          src={`${BASE}token-inri.png`}
+          alt="INRI"
+          style={{
+            width: 56,
+            height: 56,
+            objectFit: "contain",
+            flexShrink: 0,
+            filter: "drop-shadow(0 12px 28px rgba(63,124,255,.28))",
+          }}
         />
 
-        <div className="flex-1">
-          <div className="text-white text-lg font-bold">
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              color: "#ffffff",
+              fontSize: 16,
+              fontWeight: 900,
+              lineHeight: 1.1,
+              marginBottom: 4,
+            }}
+          >
             Wallet 1
           </div>
 
-          <div className="text-gray-400 text-sm">
+          <div
+            style={{
+              color: "#9fb0cf",
+              fontSize: 13,
+              fontWeight: 700,
+              lineHeight: 1.3,
+            }}
+          >
             {network.name} • Mainnet ready
           </div>
         </div>
 
-        <div className="text-xs text-gray-400">
-          {shortAddress(address)}
+        <div
+          style={{
+            color: "#7f93b9",
+            fontSize: 12,
+            fontWeight: 800,
+            textAlign: "right",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {address ? shortAddress(address) : ""}
         </div>
       </div>
     </div>
