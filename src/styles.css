@@ -1,0 +1,15 @@
+:root{
+  --bg:#0b0b0f;
+  --panel:#121621;
+  --line:#252b39;
+  --text:#ffffff;
+  --muted:#97a0b3;
+}
+*{box-sizing:border-box}
+html,body,#root{min-height:100%}
+body{
+  font-family: Inter, system-ui, Arial, sans-serif;
+  color:var(--text);
+  background:linear-gradient(180deg,#0b0b0f 0%, #101625 100%);
+}
+button,input,select{font:inherit}
