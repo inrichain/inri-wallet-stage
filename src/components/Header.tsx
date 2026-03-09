@@ -1,5 +1,4 @@
 import React from "react";
-
 const BASE = "/inri-wallet-stage/";
 
 export default function Header({
@@ -35,49 +34,13 @@ export default function Header({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <img
-            src={`${BASE}token-inri.png`}
-            alt="INRI"
-            style={{
-              width: 42,
-              height: 42,
-              objectFit: "contain",
-            }}
-          />
+          <img src={`${BASE}token-inri.png`} alt="INRI" style={{ width: 42, height: 42, objectFit: "contain" }} />
           <div>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 900,
-                color: isLight ? "#0f172a" : "#ffffff",
-              }}
-            >
-              {walletName || "INRI Wallet"}
-            </div>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: isLight ? "#64748b" : "#94a3b8",
-              }}
-            >
-              INRI Wallet • Mainnet ready
-            </div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff" }}>{walletName || "INRI Wallet"}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: isLight ? "#64748b" : "#94a3b8" }}>INRI Wallet • Mainnet ready</div>
           </div>
         </div>
-
-        <img
-          src={avatar}
-          alt="avatar"
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 999,
-            objectFit: "cover",
-            border: `1px solid ${isLight ? "#dbe2f0" : "#253047"}`,
-            background: isLight ? "#fff" : "#101827",
-          }}
-        />
+        <img src={avatar} alt="avatar" style={{ width: 38, height: 38, borderRadius: 999, objectFit: "cover", border: `1px solid ${isLight ? "#dbe2f0" : "#253047"}`, background: isLight ? "#fff" : "#101827" }} />
       </div>
     </header>
   );
