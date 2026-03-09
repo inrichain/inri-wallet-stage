@@ -1,29 +1,71 @@
 import React from "react";
 
-export default function BottomNav({ tab, setTab }: any) {
+export default function BottomNav({
+  tab,
+  setTab,
+}: {
+  tab: string;
+  setTab: (value: any) => void;
+}) {
   const items = [
-    ["dashboard", "Home"],
-    ["tokens", "Tokens"],
-    ["send", "Send"],
-    ["receive", "Receive"],
-    ["activity", "Activity"],
+    { id: "dashboard", label: "Home" },
+    { id: "tokens", label: "Tokens" },
+    { id: "send", label: "Send" },
+    { id: "receive", label: "Receive" },
+    { id: "activity", label: "Activity" },
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-[#0b0f1c] border-t border-[#1e263f] flex justify-around py-3">
+    <div
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 50,
+        padding: "10px 12px 14px",
+        background: "rgba(7,10,18,.92)",
+        backdropFilter: "blur(14px)",
+        borderTop: "1px solid rgba(79,116,201,.18)",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 760,
+          margin: "0 auto",
+          display: "grid",
+          gridTemplateColumns: "repeat(5, 1fr)",
+          gap: 8,
+        }}
+      >
+        {items.map((item) => {
+          const active = tab === item.id;
 
-      {items.map(([id, label]) => (
-        <button
-          key={id}
-          onClick={() => setTab(id)}
-          className={`text-sm ${
-            tab === id ? "text-blue-400" : "text-gray-500"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-
+          return (
+            <button
+              key={item.id}
+              onClick={() => setTab(item.id)}
+              style={{
+                height: 48,
+                borderRadius: 16,
+                border: active
+                  ? "1px solid rgba(77,126,242,1)"
+                  : "1px solid rgba(79,116,201,.18)",
+                background: active
+                  ? "linear-gradient(180deg,#3478ff 0%, #245ef5 100%)"
+                  : "linear-gradient(180deg, rgba(13,20,35,.96) 0%, rgba(8,14,26,.98) 100%)",
+                color: active ? "#ffffff" : "#93a7cd",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: "pointer",
+                boxShadow: active ? "0 10px 24px rgba(52,120,255,.22)" : "none",
+              }}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
