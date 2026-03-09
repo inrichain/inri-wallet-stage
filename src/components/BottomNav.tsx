@@ -1,28 +1,35 @@
 import React from "react";
-import type { Tab } from "./WalletShell";
+
+export type Tab =
+  | "dashboard"
+  | "send"
+  | "receive"
+  | "tokens"
+  | "activity"
+  | "swap"
+  | "bridge"
+  | "settings";
 
 export default function BottomNav({
   tab,
   setTab,
   theme = "dark",
-  lang = "en",
 }: {
   tab: Tab;
   setTab: (tab: Tab) => void;
   theme?: "dark" | "light";
-  lang?: string;
 }) {
   const isLight = theme === "light";
-  const t = getText(lang);
 
   const items: { id: Tab; label: string }[] = [
-    { id: "dashboard", label: t.home },
-    { id: "send", label: t.send },
-    { id: "receive", label: t.receive },
-    { id: "tokens", label: t.tokens },
-    { id: "swap", label: t.swap },
-    { id: "bridge", label: t.bridge },
-    { id: "settings", label: t.settings },
+    { id: "dashboard", label: "Home" },
+    { id: "send", label: "Send" },
+    { id: "receive", label: "Receive" },
+    { id: "tokens", label: "Tokens" },
+    { id: "activity", label: "Activity" },
+    { id: "swap", label: "Swap" },
+    { id: "bridge", label: "Bridge" },
+    { id: "settings", label: "Settings" },
   ];
 
   return (
@@ -45,7 +52,7 @@ export default function BottomNav({
           maxWidth: 980,
           margin: "0 auto",
           display: "grid",
-          gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(8, minmax(0, 1fr))",
           gap: 8,
         }}
       >
@@ -67,14 +74,12 @@ export default function BottomNav({
                 fontWeight: 800,
                 fontSize: 11,
                 cursor: "pointer",
-                transition: "all .15s ease",
                 minHeight: 46,
                 minWidth: 0,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
               }}
-              title={item.label}
             >
               {item.label}
             </button>
@@ -83,22 +88,4 @@ export default function BottomNav({
       </div>
     </nav>
   );
-}
-
-function getText(lang: string) {
-  const map: any = {
-    en: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    pt: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    es: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    fr: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    de: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    it: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    ru: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    zh: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    ja: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    ko: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-    tr: { home: "Home", send: "Send", receive: "Receive", tokens: "Tokens", swap: "Swap", bridge: "Bridge", settings: "Settings" },
-  };
-
-  return map[lang] || map.en;
 }
