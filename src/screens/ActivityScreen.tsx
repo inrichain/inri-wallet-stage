@@ -1,10 +1,18 @@
-import React, { useEffect, useState } from "react";
-import { getHealthyProvider } from "../lib/inri";
-import { getNetworkById } from "../lib/networks";
-import { ethers } from "ethers";
-const ACTIVITY_KEY="wallet_activity_demo";
-export default function ActivityScreen({theme="dark",lang="en",address,activeNetworkId="inri"}:{theme?:"dark"|"light";lang?:string;address:string;activeNetworkId?:string;}){const isLight=theme==="light"; const t=getText(lang); const [items,setItems]=useState<any[]>([]); const network=getNetworkById(activeNetworkId);
-useEffect(()=>{let active=true; async function load(){ const local=(JSON.parse(localStorage.getItem(ACTIVITY_KEY)||"[]") as any[]).filter((item)=>item.networkId===activeNetworkId&&(item.from?.toLowerCase()===address.toLowerCase()||item.to?.toLowerCase()===address.toLowerCase())); try{ const provider=await getHealthyProvider(activeNetworkId); const current=await provider.getBlockNumber(); const found:any[]=[]; for(let i=current;i>Math.max(0,current-8);i--){ const block=await provider.getBlock(i,true); if(!block?.transactions) continue; for(const tx of block.transactions){ if(typeof tx==='string') continue; if((tx.from||'').toLowerCase()===address.toLowerCase()||(tx.to||'').toLowerCase()===address.toLowerCase()){ found.push({hash:tx.hash, amount:ethers.formatEther(tx.value||0n), symbol:network.nativeSymbol, from:tx.from, to:tx.to, createdAt:new Date(Number(block.timestamp)*1000).toISOString(), status:'confirmed'}); } } if(found.length>=12) break; } const byHash=new Map<string,any>(); [...local,...found].forEach((item)=>byHash.set(item.hash,item)); if(active) setItems(Array.from(byHash.values()).slice(0,12)); }catch{ if(active) setItems(local);} }
-load(); return ()=>{active=false};},[address,activeNetworkId]);
-return <div style={{border:`1px solid ${isLight?"#dbe2f0":"#252b39"}`,borderRadius:20,background:isLight?"#ffffff":"#121621",padding:16}}><h2 style={{marginTop:0,color:isLight?"#10131a":"#ffffff"}}>{t.activity}</h2><div style={{color:isLight?"#5b6578":"#97a0b3",marginBottom:16}}>{network.name}</div>{items.length===0?<div style={{color:isLight?"#5b6578":"#97a0b3"}}>{t.empty}</div>:<div style={{display:"grid",gap:12}}>{items.map((item,index)=>{const out=item.from?.toLowerCase()===address.toLowerCase(); return <div key={item.hash||index} style={{border:`1px solid ${isLight?"#dbe2f0":"#252b39"}`,borderRadius:16,background:isLight?"#f8faff":"#0d111b",padding:14}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}><div style={{fontWeight:800,color:isLight?"#10131a":"#ffffff"}}>{out?t.sent:t.received}</div><div style={{padding:"6px 10px",borderRadius:999,background:isLight?"#edf3ff":"#18233e",color:"#3f7cff",fontSize:12,fontWeight:800}}>{item.status || t.confirmed}</div></div><div style={{marginTop:10,fontWeight:900,color:isLight?"#10131a":"#ffffff",fontSize:18}}>{Number(item.amount||0).toFixed(6)} {item.symbol}</div><div style={{marginTop:8,color:isLight?"#5b6578":"#97a0b3",fontSize:13,wordBreak:"break-all"}}>{out?`${t.to}: ${item.to}`:`${t.from}: ${item.from}`}</div><div style={{marginTop:6,color:isLight?"#5b6578":"#97a0b3",fontSize:12,wordBreak:"break-all"}}>{item.hash}</div><div style={{marginTop:6,color:"#3f7cff",fontSize:12,fontWeight:700}}>{new Date(item.createdAt).toLocaleString()}</div></div>})}</div>}</div>}
-function getText(lang:string){const map:any={en:{activity:"Activity",empty:"No activity yet.",sent:"Sent",received:"Received",to:"To",from:"From",confirmed:"confirmed"},pt:{activity:"Atividade",empty:"Ainda não há atividade.",sent:"Enviado",received:"Recebido",to:"Para",from:"De",confirmed:"confirmado"},es:{activity:"Actividad",empty:"Aún no hay actividad.",sent:"Enviado",received:"Recibido",to:"Para",from:"De",confirmed:"confirmado"},fr:{activity:"Activité",empty:"Aucune activité pour le moment.",sent:"Envoyé",received:"Reçu",to:"À",from:"De",confirmed:"confirmé"},de:{activity:"Aktivität",empty:"Noch keine Aktivität.",sent:"Gesendet",received:"Empfangen",to:"An",from:"Von",confirmed:"bestätigt"}}; return map[lang]||map.en;}
+import React from "react";
+
+export default function ActivityScreen() {
+
+  return (
+    <div className="p-4 text-white">
+
+      <h2 className="text-xl font-bold mb-4">
+        Activity
+      </h2>
+
+      <div className="text-gray-400 text-sm">
+        Transactions will appear here.
+      </div>
+
+    </div>
+  );
+}
