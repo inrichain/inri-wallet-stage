@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 
 const INRI_LOGO = "/brand-inri.png";
@@ -14,9 +14,19 @@ export default function ReceiveScreen({
 }) {
   const isLight = theme === "light";
   const t = getText(lang);
+
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
   const [scanResult, setScanResult] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+
+  useEffect(() => {
+    return () => stopCamera();
+  }, []);
 
   async function copyAddress() {
     try {
@@ -27,19 +37,80 @@ export default function ReceiveScreen({
     }
   }
 
+  function stopCamera() {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraOpen(false);
+    setScanning(false);
+  }
+
   async function openCameraQr() {
+    setCameraError("");
+    setScanResult("");
+
     try {
-      if (
-        "BarcodeDetector" in window &&
-        typeof (window as any).BarcodeDetector === "function"
-      ) {
+      if (!navigator.mediaDevices?.getUserMedia) {
         fileRef.current?.click();
         return;
       }
 
-      alert(t.cameraNotSupported);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+        },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      setCameraOpen(true);
+
+      setTimeout(async () => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+      }, 50);
+
+      if ("BarcodeDetector" in window && typeof (window as any).BarcodeDetector === "function") {
+        setScanning(true);
+        startLiveQrScan();
+      }
     } catch {
-      alert(t.cameraFail);
+      fileRef.current?.click();
+    }
+  }
+
+  async function startLiveQrScan() {
+    try {
+      const Detector = (window as any).BarcodeDetector;
+      const detector = new Detector({ formats: ["qr_code"] });
+
+      const tick = async () => {
+        if (!videoRef.current || !cameraOpen) return;
+
+        try {
+          const codes = await detector.detect(videoRef.current);
+          if (codes?.length) {
+            const value = String(codes[0].rawValue || "");
+            if (value) {
+              setScanResult(value);
+              stopCamera();
+              return;
+            }
+          }
+        } catch {}
+
+        requestAnimationFrame(tick);
+      };
+
+      requestAnimationFrame(tick);
+    } catch {
+      setScanning(false);
     }
   }
 
@@ -48,22 +119,26 @@ export default function ReceiveScreen({
     if (!file) return;
 
     try {
-      setScanning(true);
+      if (
+        "BarcodeDetector" in window &&
+        typeof (window as any).BarcodeDetector === "function"
+      ) {
+        const imageBitmap = await createImageBitmap(file);
+        const Detector = (window as any).BarcodeDetector;
+        const detector = new Detector({ formats: ["qr_code"] });
+        const codes = await detector.detect(imageBitmap);
 
-      const imageBitmap = await createImageBitmap(file);
-      const Detector = (window as any).BarcodeDetector;
-      const detector = new Detector({ formats: ["qr_code"] });
-      const codes = await detector.detect(imageBitmap);
-
-      if (codes?.length) {
-        setScanResult(String(codes[0].rawValue || ""));
+        if (codes?.length) {
+          setScanResult(String(codes[0].rawValue || ""));
+        } else {
+          alert(t.noQrFound);
+        }
       } else {
-        alert(t.noQrFound);
+        alert(t.cameraNotSupported);
       }
     } catch {
       alert(t.cameraFail);
     } finally {
-      setScanning(false);
       event.target.value = "";
     }
   }
@@ -88,8 +163,7 @@ export default function ReceiveScreen({
           style={{
             width: 42,
             height: 42,
-            borderRadius: 14,
-            objectFit: "cover",
+            objectFit: "contain",
             flexShrink: 0,
           }}
         />
@@ -146,17 +220,7 @@ export default function ReceiveScreen({
       >
         <button
           onClick={copyAddress}
-          style={{
-            width: "100%",
-            padding: "14px 16px",
-            borderRadius: 14,
-            border: "none",
-            background: "#3f7cff",
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-            fontSize: 15,
-          }}
+          style={mainBtn}
         >
           {t.copyAddress}
         </button>
@@ -164,18 +228,10 @@ export default function ReceiveScreen({
         <button
           onClick={openCameraQr}
           style={{
-            width: "100%",
-            padding: "14px 16px",
-            borderRadius: 14,
-            border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-            background: isLight ? "#ffffff" : "#12192a",
-            color: isLight ? "#10131a" : "#ffffff",
-            cursor: "pointer",
-            fontWeight: 800,
-            fontSize: 15,
+            ...ghostBtn(isLight),
           }}
         >
-          {scanning ? t.scanning : t.scanQr}
+          {cameraOpen ? t.cameraOpened : t.scanQr}
         </button>
       </div>
 
@@ -187,6 +243,52 @@ export default function ReceiveScreen({
         onChange={onPickImage}
         style={{ display: "none" }}
       />
+
+      {cameraOpen && (
+        <div style={{ marginTop: 16 }}>
+          <div
+            style={{
+              borderRadius: 18,
+              overflow: "hidden",
+              border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+              background: "#000",
+            }}
+          >
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                width: "100%",
+                display: "block",
+                maxHeight: 360,
+                objectFit: "cover",
+              }}
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              marginTop: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <button onClick={stopCamera} style={ghostBtn(isLight)}>
+              {t.closeCamera}
+            </button>
+            <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, alignSelf: "center" }}>
+              {scanning ? t.scanning : t.cameraReady}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cameraError ? (
+        <div style={{ marginTop: 12, color: "#ef4444", fontSize: 13 }}>{cameraError}</div>
+      ) : null}
 
       <div style={{ marginTop: 16 }}>
         <div
@@ -221,161 +323,67 @@ export default function ReceiveScreen({
   );
 }
 
+const mainBtn: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 16px",
+  borderRadius: 14,
+  border: "none",
+  background: "#3f7cff",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 800,
+  fontSize: 15,
+};
+
+function ghostBtn(isLight: boolean): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "14px 16px",
+    borderRadius: 14,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#ffffff" : "#12192a",
+    color: isLight ? "#10131a" : "#ffffff",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 15,
+  };
+}
+
 function getText(lang: string) {
   const map: Record<string, any> = {
     en: {
       receive: "Receive",
       receiveHint: "Wallet address and QR code",
       copyAddress: "Copy Address",
-      scanQr: "Scan QR",
-      scanning: "Scanning...",
+      scanQr: "Open Camera",
+      cameraOpened: "Camera Open",
+      closeCamera: "Close Camera",
+      scanning: "Reading QR...",
+      cameraReady: "Point the camera at a QR code.",
       lastScan: "Last scanned QR",
       noScanYet: "No QR scanned yet.",
       copied: "Address copied.",
       copyFail: "Could not copy address.",
       cameraFail: "Could not read the QR code.",
-      cameraNotSupported: "This browser does not support QR reading from image yet.",
+      cameraNotSupported: "This browser does not support QR reading yet.",
       noQrFound: "No QR code was found in the image.",
     },
     pt: {
       receive: "Receber",
       receiveHint: "Endereço da carteira e código QR",
       copyAddress: "Copiar Endereço",
-      scanQr: "Ler QR",
-      scanning: "Lendo...",
+      scanQr: "Abrir Câmera",
+      cameraOpened: "Câmera Aberta",
+      closeCamera: "Fechar Câmera",
+      scanning: "Lendo QR...",
+      cameraReady: "Aponte a câmera para um QR code.",
       lastScan: "Último QR lido",
       noScanYet: "Nenhum QR lido ainda.",
       copied: "Endereço copiado.",
       copyFail: "Não foi possível copiar o endereço.",
       cameraFail: "Não foi possível ler o QR code.",
-      cameraNotSupported: "Este navegador ainda não suporta leitura de QR por imagem.",
+      cameraNotSupported: "Este navegador ainda não suporta leitura de QR.",
       noQrFound: "Nenhum QR code foi encontrado na imagem.",
-    },
-    es: {
-      receive: "Recibir",
-      receiveHint: "Dirección de la billetera y código QR",
-      copyAddress: "Copiar Dirección",
-      scanQr: "Escanear QR",
-      scanning: "Escaneando...",
-      lastScan: "Último QR escaneado",
-      noScanYet: "Todavía no se ha escaneado ningún QR.",
-      copied: "Dirección copiada.",
-      copyFail: "No se pudo copiar la dirección.",
-      cameraFail: "No se pudo leer el código QR.",
-      cameraNotSupported: "Este navegador aún no admite lectura QR por imagen.",
-      noQrFound: "No se encontró ningún código QR en la imagen.",
-    },
-    fr: {
-      receive: "Recevoir",
-      receiveHint: "Adresse du portefeuille et code QR",
-      copyAddress: "Copier l’adresse",
-      scanQr: "Scanner QR",
-      scanning: "Scan en cours...",
-      lastScan: "Dernier QR scanné",
-      noScanYet: "Aucun QR scanné pour le moment.",
-      copied: "Adresse copiée.",
-      copyFail: "Impossible de copier l’adresse.",
-      cameraFail: "Impossible de lire le code QR.",
-      cameraNotSupported: "Ce navigateur ne prend pas encore en charge la lecture QR par image.",
-      noQrFound: "Aucun code QR trouvé dans l’image.",
-    },
-    de: {
-      receive: "Empfangen",
-      receiveHint: "Wallet-Adresse und QR-Code",
-      copyAddress: "Adresse kopieren",
-      scanQr: "QR scannen",
-      scanning: "Wird gescannt...",
-      lastScan: "Zuletzt gescannter QR",
-      noScanYet: "Noch kein QR gescannt.",
-      copied: "Adresse kopiert.",
-      copyFail: "Adresse konnte nicht kopiert werden.",
-      cameraFail: "QR-Code konnte nicht gelesen werden.",
-      cameraNotSupported: "Dieser Browser unterstützt das Lesen von QR aus Bildern noch nicht.",
-      noQrFound: "Kein QR-Code im Bild gefunden.",
-    },
-    it: {
-      receive: "Ricevi",
-      receiveHint: "Indirizzo wallet e codice QR",
-      copyAddress: "Copia indirizzo",
-      scanQr: "Scansiona QR",
-      scanning: "Scansione...",
-      lastScan: "Ultimo QR scansionato",
-      noScanYet: "Nessun QR ancora scansionato.",
-      copied: "Indirizzo copiato.",
-      copyFail: "Impossibile copiare l’indirizzo.",
-      cameraFail: "Impossibile leggere il codice QR.",
-      cameraNotSupported: "Questo browser non supporta ancora la lettura QR da immagine.",
-      noQrFound: "Nessun codice QR trovato nell’immagine.",
-    },
-    ru: {
-      receive: "Получить",
-      receiveHint: "Адрес кошелька и QR-код",
-      copyAddress: "Скопировать адрес",
-      scanQr: "Сканировать QR",
-      scanning: "Сканирование...",
-      lastScan: "Последний QR",
-      noScanYet: "QR ещё не сканировался.",
-      copied: "Адрес скопирован.",
-      copyFail: "Не удалось скопировать адрес.",
-      cameraFail: "Не удалось прочитать QR-код.",
-      cameraNotSupported: "Этот браузер пока не поддерживает чтение QR из изображения.",
-      noQrFound: "QR-код на изображении не найден.",
-    },
-    zh: {
-      receive: "接收",
-      receiveHint: "钱包地址和二维码",
-      copyAddress: "复制地址",
-      scanQr: "扫描二维码",
-      scanning: "扫描中...",
-      lastScan: "最近扫描结果",
-      noScanYet: "还没有扫描二维码。",
-      copied: "地址已复制。",
-      copyFail: "无法复制地址。",
-      cameraFail: "无法读取二维码。",
-      cameraNotSupported: "此浏览器暂不支持从图片读取二维码。",
-      noQrFound: "图片中未找到二维码。",
-    },
-    ja: {
-      receive: "受取",
-      receiveHint: "ウォレットアドレスとQRコード",
-      copyAddress: "アドレスをコピー",
-      scanQr: "QRを読む",
-      scanning: "読み取り中...",
-      lastScan: "最後に読んだQR",
-      noScanYet: "まだQRは読み取られていません。",
-      copied: "アドレスをコピーしました。",
-      copyFail: "アドレスをコピーできませんでした。",
-      cameraFail: "QRコードを読み取れませんでした。",
-      cameraNotSupported: "このブラウザは画像からのQR読取にまだ対応していません。",
-      noQrFound: "画像内にQRコードが見つかりませんでした。",
-    },
-    ko: {
-      receive: "수신",
-      receiveHint: "지갑 주소와 QR 코드",
-      copyAddress: "주소 복사",
-      scanQr: "QR 스캔",
-      scanning: "스캔 중...",
-      lastScan: "마지막 스캔 QR",
-      noScanYet: "아직 스캔된 QR이 없습니다.",
-      copied: "주소가 복사되었습니다.",
-      copyFail: "주소를 복사할 수 없습니다.",
-      cameraFail: "QR 코드를 읽을 수 없습니다.",
-      cameraNotSupported: "이 브라우저는 아직 이미지 QR 읽기를 지원하지 않습니다.",
-      noQrFound: "이미지에서 QR 코드를 찾지 못했습니다.",
-    },
-    tr: {
-      receive: "Al",
-      receiveHint: "Cüzdan adresi ve QR kodu",
-      copyAddress: "Adresi Kopyala",
-      scanQr: "QR Tara",
-      scanning: "Taranıyor...",
-      lastScan: "Son taranan QR",
-      noScanYet: "Henüz QR taranmadı.",
-      copied: "Adres kopyalandı.",
-      copyFail: "Adres kopyalanamadı.",
-      cameraFail: "QR kodu okunamadı.",
-      cameraNotSupported: "Bu tarayıcı henüz görüntüden QR okumayı desteklemiyor.",
-      noQrFound: "Görüntüde QR kodu bulunamadı.",
     },
   };
 
