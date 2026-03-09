@@ -1,47 +1,33 @@
 import React from "react";
-const BASE = "/inri-wallet-stage/";
+import { shortAddress } from "../lib/inri";
+import { getActiveNetwork } from "../lib/networks";
 
-export default function Header({
-  walletName,
-  theme = "dark",
-}: {
-  walletName: string;
-  theme?: "dark" | "light";
-}) {
-  const isLight = theme === "light";
-  const avatar = localStorage.getItem("wallet_avatar") || `${BASE}token-inri.png`;
+export default function Header({ address }: { address: string }) {
+  const network = getActiveNetwork();
 
   return (
-    <header
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 20,
-        backdropFilter: "blur(14px)",
-        background: isLight ? "rgba(255,255,255,.78)" : "rgba(10,14,20,.72)",
-        borderBottom: `1px solid ${isLight ? "#dbe2f0" : "#1d2638"}`,
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 980,
-          margin: "0 auto",
-          padding: "14px 16px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <img src={`${BASE}token-inri.png`} alt="INRI" style={{ width: 42, height: 42, objectFit: "contain" }} />
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff" }}>{walletName || "INRI Wallet"}</div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: isLight ? "#64748b" : "#94a3b8" }}>INRI Wallet • Mainnet ready</div>
+    <div className="px-4 pt-4 pb-2">
+      <div className="flex items-center gap-3 bg-[#0b0f1c] rounded-2xl p-4 border border-[#1e263f]">
+        
+        <img
+          src={network.icon}
+          className="w-12 h-12 rounded-xl"
+        />
+
+        <div className="flex-1">
+          <div className="text-white text-lg font-bold">
+            Wallet 1
+          </div>
+
+          <div className="text-gray-400 text-sm">
+            {network.name} • Mainnet ready
           </div>
         </div>
-        <img src={avatar} alt="avatar" style={{ width: 38, height: 38, borderRadius: 999, objectFit: "cover", border: `1px solid ${isLight ? "#dbe2f0" : "#253047"}`, background: isLight ? "#fff" : "#101827" }} />
+
+        <div className="text-xs text-gray-400">
+          {shortAddress(address)}
+        </div>
       </div>
-    </header>
+    </div>
   );
 }
