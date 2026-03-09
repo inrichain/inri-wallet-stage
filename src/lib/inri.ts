@@ -110,10 +110,7 @@ export const KNOWN_TOKENS: TokenItem[] = [
 ];
 
 export function normalizeSeed(seed: string) {
-  return seed
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+  return seed.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 export function isValidSeedPhrase(seed: string) {
@@ -149,12 +146,16 @@ export function getKnownTokens(networkId?: string): TokenItem[] {
   };
 
   const filtered = KNOWN_TOKENS.filter((token) => token.networkId === active);
-
   const hasNativeAlready = filtered.some((t) => t.isNative);
 
   if (hasNativeAlready) return filtered;
-
   return [nativeToken, ...filtered];
+}
+
+export function getReceiveUri(address: string, networkId?: string) {
+  if (!address) return "";
+  const network = getNetworkById(networkId || getActiveNetwork().id);
+  return `ethereum:${address}@${network.chainId}`;
 }
 
 function makeProvider(url: string, networkId?: string) {
