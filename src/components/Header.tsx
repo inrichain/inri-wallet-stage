@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getStoredNetwork, type NetworkItem } from "../lib/network";
 
 const DEFAULT_AVATAR = "/avatar.png";
-const BRAND_LOGO = "/favicon.png"; // troque para /brand-inri.png quando subir esse arquivo
+const BRAND_LOGO = "/brand-inri.png";
+const FALLBACK_BRAND = "/favicon.png";
 
 export default function Header({
   walletName,
@@ -13,7 +14,10 @@ export default function Header({
 }) {
   const isLight = theme === "light";
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
-  const avatar = localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR;
+
+  const avatar = useMemo(() => {
+    return localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR;
+  }, []);
 
   useEffect(() => {
     const sync = () => setNetwork(getStoredNetwork());
@@ -53,11 +57,15 @@ export default function Header({
             src={BRAND_LOGO}
             alt="INRI"
             onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = "/favicon.png";
+              const img = e.currentTarget;
+              if (!img.dataset.fallbackApplied) {
+                img.dataset.fallbackApplied = "true";
+                img.src = FALLBACK_BRAND;
+              }
             }}
             style={{
-              width: 54,
-              height: 54,
+              width: 56,
+              height: 56,
               objectFit: "contain",
               flexShrink: 0,
               display: "block",
@@ -110,17 +118,22 @@ export default function Header({
               src={network.logo}
               alt={network.name}
               onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = "/favicon.png";
+                const img = e.currentTarget;
+                if (!img.dataset.fallbackApplied) {
+                  img.dataset.fallbackApplied = "true";
+                  img.src = "/network-inri.png";
+                }
               }}
-              style={{ width: 20, height: 20, borderRadius: 10, objectFit: "cover", flexShrink: 0 }}
-            />
-            <span
               style={{
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                width: 20,
+                height: 20,
+                borderRadius: 10,
+                objectFit: "cover",
+                flexShrink: 0,
+                display: "block",
               }}
-            >
+            />
+            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {network.name} • {network.chainId}
             </span>
           </div>
@@ -129,7 +142,11 @@ export default function Header({
             src={avatar}
             alt="avatar"
             onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = "/avatar.png";
+              const img = e.currentTarget;
+              if (!img.dataset.fallbackApplied) {
+                img.dataset.fallbackApplied = "true";
+                img.src = DEFAULT_AVATAR;
+              }
             }}
             style={{
               width: 46,
@@ -138,6 +155,7 @@ export default function Header({
               objectFit: "cover",
               border: `2px solid ${isLight ? "#dbe2f0" : "#2b3650"}`,
               flexShrink: 0,
+              display: "block",
             }}
           />
         </div>
