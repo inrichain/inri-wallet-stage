@@ -20,7 +20,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://rpc.inri.life",
     explorerAddressUrl: "https://scan.inri.life/address/",
     explorerTxUrl: "https://scan.inri.life/tx/",
-    logo: "/network-inri.png",
+    logo: "/inri-wallet-stage/network-inri.png",
   },
   {
     key: "polygon",
@@ -30,7 +30,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://polygon-rpc.com",
     explorerAddressUrl: "https://polygonscan.com/address/",
     explorerTxUrl: "https://polygonscan.com/tx/",
-    logo: "/network-polygon.png",
+    logo: "/inri-wallet-stage/network-polygon.png",
   },
   {
     key: "ethereum",
@@ -40,7 +40,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://cloudflare-eth.com",
     explorerAddressUrl: "https://etherscan.io/address/",
     explorerTxUrl: "https://etherscan.io/tx/",
-    logo: "/network-ethereum.png",
+    logo: "/inri-wallet-stage/network-ethereum.png",
   },
   {
     key: "bsc",
@@ -50,7 +50,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://bsc-dataseed.binance.org",
     explorerAddressUrl: "https://bscscan.com/address/",
     explorerTxUrl: "https://bscscan.com/tx/",
-    logo: "/network-bnb.png",
+    logo: "/inri-wallet-stage/network-bnb.png",
   },
   {
     key: "arbitrum",
@@ -60,7 +60,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://arb1.arbitrum.io/rpc",
     explorerAddressUrl: "https://arbiscan.io/address/",
     explorerTxUrl: "https://arbiscan.io/tx/",
-    logo: "/network-arbitrum.png",
+    logo: "/inri-wallet-stage/network-arbitrum.png",
   },
   {
     key: "optimism",
@@ -70,7 +70,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://mainnet.optimism.io",
     explorerAddressUrl: "https://optimistic.etherscan.io/address/",
     explorerTxUrl: "https://optimistic.etherscan.io/tx/",
-    logo: "/network-optimism.png",
+    logo: "/inri-wallet-stage/network-optimism.png",
   },
 ];
 
