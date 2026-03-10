@@ -1,9 +1,23 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { getStoredNetwork, type NetworkItem } from "../lib/network";
 
-const DEFAULT_AVATAR = "/avatar.png";
+const DEFAULT_AVATAR = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3f7cff"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="60" fill="#0f172a"/>
+  <circle cx="60" cy="44" r="22" fill="#ffffff" opacity="0.95"/>
+  <path d="M24 102c7-18 21-28 36-28s29 10 36 28" fill="#ffffff" opacity="0.95"/>
+  <circle cx="60" cy="60" r="54" fill="none" stroke="url(#g)" stroke-width="6"/>
+</svg>
+`)}`;
+
 const BRAND_LOGO = "/inri-wallet-stage/brand-inri.png";
-const FALLBACK_BRAND = "/favicon.png";
+const FALLBACK_BRAND = "/inri-wallet-stage/favicon.png";
 
 export default function Header({
   walletName,
@@ -14,18 +28,23 @@ export default function Header({
 }) {
   const isLight = theme === "light";
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
-
-  const avatar = useMemo(() => {
-    return localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR;
-  }, []);
+  const [avatar, setAvatar] = useState<string>(
+    localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR
+  );
 
   useEffect(() => {
-    const sync = () => setNetwork(getStoredNetwork());
-    window.addEventListener("storage", sync);
-    window.addEventListener("wallet-network-updated", sync as EventListener);
+    const syncNetwork = () => setNetwork(getStoredNetwork());
+    const syncAvatar = () =>
+      setAvatar(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
+
+    window.addEventListener("storage", syncNetwork);
+    window.addEventListener("wallet-network-updated", syncNetwork as EventListener);
+    window.addEventListener("wallet-avatar-updated", syncAvatar as EventListener);
+
     return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener("wallet-network-updated", sync as EventListener);
+      window.removeEventListener("storage", syncNetwork);
+      window.removeEventListener("wallet-network-updated", syncNetwork as EventListener);
+      window.removeEventListener("wallet-avatar-updated", syncAvatar as EventListener);
     };
   }, []);
 
@@ -121,7 +140,7 @@ export default function Header({
                 const img = e.currentTarget;
                 if (!img.dataset.fallbackApplied) {
                   img.dataset.fallbackApplied = "true";
-                  img.src = "/network-inri.png";
+                  img.src = "/inri-wallet-stage/network-inri.png";
                 }
               }}
               style={{
@@ -133,7 +152,13 @@ export default function Header({
                 display: "block",
               }}
             />
-            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span
+              style={{
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
               {network.name} • {network.chainId}
             </span>
           </div>
@@ -142,11 +167,7 @@ export default function Header({
             src={avatar}
             alt="avatar"
             onError={(e) => {
-              const img = e.currentTarget;
-              if (!img.dataset.fallbackApplied) {
-                img.dataset.fallbackApplied = "true";
-                img.src = DEFAULT_AVATAR;
-              }
+              (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR;
             }}
             style={{
               width: 46,
