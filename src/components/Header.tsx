@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { getStoredNetwork, type NetworkItem } from "../lib/network";
 
 const DEFAULT_AVATAR = "/avatar.png";
-const BRAND_LOGO = "/brand-inri.png";
+const BRAND_LOGO = "/inri-wallet-stage/brand-inri.png";
 const FALLBACK_BRAND = "/favicon.png";
 
 export default function Header({
