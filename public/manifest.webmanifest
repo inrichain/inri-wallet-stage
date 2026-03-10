@@ -1,0 +1,26 @@
+{
+  "name": "INRI Wallet",
+  "short_name": "INRI",
+  "description": "Professional multichain wallet for the INRI ecosystem",
+  "start_url": "/inri-wallet-stage/",
+  "display": "standalone",
+  "background_color": "#0b1120",
+  "theme_color": "#0b1120",
+  "icons": [
+    {
+      "src": "/inri-wallet-stage/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/inri-wallet-stage/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/inri-wallet-stage/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
