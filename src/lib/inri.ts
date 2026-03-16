@@ -5,8 +5,11 @@ const BASE = import.meta.env.BASE_URL || "/";
 export const RPC_URL = "https://rpc.inri.life";
 export const RPC_FALLBACK_URL = "https://rpc-chain.inri.life";
 export const CHAIN_ID = 3777;
-export const EXPLORER_ADDRESS_URL = "https://scan.inri.life/address/";
-export const EXPLORER_TX_URL = "https://scan.inri.life/tx/";
+
+export const EXPLORER_BASE_URL = "https://explorer.inri.life";
+export const EXPLORER_ADDRESS_URL = "https://explorer.inri.life/address/";
+export const EXPLORER_TX_URL = "https://explorer.inri.life/tx/";
+export const EXPLORER_API_URL = "https://explorer.inri.life/api";
 
 export const provider = new ethers.JsonRpcProvider(RPC_URL, {
   name: "INRI",
@@ -84,125 +87,52 @@ async function rpcCall(url: string, method: string, params: any[]) {
   });
 
   const data = await res.json();
-
-  if (data.error) {
-    throw new Error(data.error.message || "RPC error");
-  }
-
-  return data.result;
-}
-
-async function getNativeBalanceRaw(address: string) {
-  try {
-    const result = await rpcCall(RPC_URL, "eth_getBalance", [address, "latest"]);
-    return Number(ethers.formatEther(result)).toFixed(6);
-  } catch {
-    const result = await rpcCall(RPC_FALLBACK_URL, "eth_getBalance", [address, "latest"]);
-    return Number(ethers.formatEther(result)).toFixed(6);
-  }
+  if (data?.result !== undefined) return data.result;
+  throw new Error(data?.error?.message || "RPC error");
 }
 
 export async function getNativeBalance(address: string) {
-  if (!address) return "0.000000";
-
   try {
-    const raw = await provider.getBalance(address);
-    return Number(ethers.formatEther(raw)).toFixed(6);
+    const balanceHex = await rpcCall(RPC_URL, "eth_getBalance", [address, "latest"]);
+    return ethers.formatEther(balanceHex);
   } catch {
-    try {
-      const raw = await fallbackProvider.getBalance(address);
-      return Number(ethers.formatEther(raw)).toFixed(6);
-    } catch {
-      return await getNativeBalanceRaw(address);
-    }
+    const balanceHex = await rpcCall(RPC_FALLBACK_URL, "eth_getBalance", [address, "latest"]);
+    return ethers.formatEther(balanceHex);
   }
-}
-
-async function getTokenBalanceWithProvider(
-  activeProvider: ethers.JsonRpcProvider,
-  tokenAddress: string,
-  walletAddress: string,
-  decimals = 18
-) {
-  const contract = new ethers.Contract(tokenAddress, ERC20_ABI, activeProvider);
-  const raw = await contract.balanceOf(walletAddress);
-  return Number(ethers.formatUnits(raw, decimals)).toFixed(6);
 }
 
 export async function getTokenBalance(
-  tokenAddress: string,
   walletAddress: string,
+  tokenAddress: string,
   decimals = 18
 ) {
-  if (!tokenAddress || !walletAddress) return "0.000000";
-
-  try {
-    return await getTokenBalanceWithProvider(provider, tokenAddress, walletAddress, decimals);
-  } catch {
-    try {
-      return await getTokenBalanceWithProvider(
-        fallbackProvider,
-        tokenAddress,
-        walletAddress,
-        decimals
-      );
-    } catch {
-      return "0.000000";
-    }
-  }
+  const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+  const raw = await contract.balanceOf(walletAddress);
+  return ethers.formatUnits(raw, decimals);
 }
 
 export async function loadAllBalances(address: string, tokens: TokenItem[]) {
-  const balances: Record<string, string> = {};
+  const out: Record<string, string> = {};
 
-  if (!address) {
-    for (const token of tokens) {
-      balances[token.symbol] = "0.000000";
-    }
-    return balances;
-  }
-
-  balances["INRI"] = await getNativeBalance(address);
-
-  await Promise.all(
-    tokens.map(async (token) => {
-      if (token.symbol === "INRI") return;
-
-      if (!token.address) {
-        balances[token.symbol] = "0.000000";
-        return;
+  for (const token of tokens) {
+    try {
+      if (token.isNative) {
+        const balance = await getNativeBalance(address);
+        out[token.symbol] = formatBalance(balance, 6);
+      } else if (token.address) {
+        const balance = await getTokenBalance(address, token.address, token.decimals || 18);
+        out[token.symbol] = formatBalance(balance, 6);
       }
-
-      balances[token.symbol] = await getTokenBalance(
-        token.address,
-        address,
-        token.decimals || 18
-      );
-    })
-  );
-
-  return balances;
-}
-
-export function normalizeSeed(seed: string) {
-  return seed.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-export function isValidSeedPhrase(seed: string) {
-  const parts = normalizeSeed(seed).split(" ").filter(Boolean);
-  return [12, 15, 18, 21, 24].includes(parts.length);
-}
-
-export function shortAddress(address: string) {
-  if (!address) return "";
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
-
-export function getMnemonicFromWallet(
-  wallet: ethers.Wallet | ethers.HDNodeWallet
-): string {
-  if ("mnemonic" in wallet && wallet.mnemonic && typeof wallet.mnemonic.phrase === "string") {
-    return wallet.mnemonic.phrase;
+    } catch {
+      out[token.symbol] = "0.000000";
+    }
   }
-  return "";
+
+  return out;
+}
+
+export function formatBalance(value: string | number, decimals = 6) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return "0.000000";
+  return n.toFixed(decimals);
 }
