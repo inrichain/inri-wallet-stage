@@ -38,7 +38,6 @@ export type Tab =
   | "swap"
   | "bridge"
   | "staking"
-  | "install"
   | "settings";
 
 type View = "auth" | "wallet";
