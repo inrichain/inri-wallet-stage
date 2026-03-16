@@ -5,10 +5,69 @@ import { ethers } from "ethers";
 import { DEFAULT_TOKENS, TokenItem, loadAllBalances, provider } from "../lib/inri";
 
 const ACTIVITY_KEY = "wallet_activity_demo";
+const CUSTOM_TOKENS_KEY = "wallet_custom_tokens";
+const BASE = "/inri-wallet-stage/";
 
 type ViewToken = TokenItem & {
   balance: string;
 };
+
+function readCustomTokens(): ViewToken[] {
+  try {
+    const saved = localStorage.getItem(CUSTOM_TOKENS_KEY);
+    if (!saved) return [];
+
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((item) => item && typeof item === "object")
+      .map((item) => ({
+        symbol: String(item.symbol || "").trim().toUpperCase(),
+        subtitle: String(item.subtitle || "custom token"),
+        logo: String(item.logo || BASE + "token-inri.png"),
+        isDefault: false,
+        isNative: false,
+        address: item.address ? String(item.address).trim() : undefined,
+        decimals:
+          typeof item.decimals === "number"
+            ? item.decimals
+            : Number.isFinite(Number(item.decimals))
+            ? Number(item.decimals)
+            : 18,
+        balance: String(item.balance || "0.000000"),
+      }))
+      .filter((item) => item.symbol && item.address);
+  } catch {
+    return [];
+  }
+}
+
+function buildTokenList(customTokens: ViewToken[]): ViewToken[] {
+  const merged: ViewToken[] = [
+    ...DEFAULT_TOKENS.map((item) => ({ ...item, balance: "0.000000" })),
+    ...customTokens.map((item) => ({
+      ...item,
+      balance: item.balance || "0.000000",
+      logo: item.logo || BASE + "token-inri.png",
+    })),
+  ];
+
+  const seen = new Set<string>();
+  const unique: ViewToken[] = [];
+
+  for (const token of merged) {
+    const key = token.isNative
+      ? `native:${token.symbol.toUpperCase()}`
+      : `token:${(token.address || "").toLowerCase()}:${token.symbol.toUpperCase()}`;
+
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(token);
+  }
+
+  return unique;
+}
 
 export default function SendScreen({
   theme = "dark",
@@ -29,9 +88,7 @@ export default function SendScreen({
   const [showScanner, setShowScanner] = useState(false);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [tokens, setTokens] = useState<ViewToken[]>(
-    DEFAULT_TOKENS.map((item) => ({ ...item, balance: "0.000000" }))
-  );
+  const [tokens, setTokens] = useState<ViewToken[]>(() => buildTokenList(readCustomTokens()));
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
@@ -41,7 +98,58 @@ export default function SendScreen({
     [selectedToken, tokens]
   );
 
+  const tokenIdentityKey = useMemo(() => {
+    return tokens
+      .map((t) => `${t.symbol}:${t.address || "native"}:${t.decimals || 18}`)
+      .join("|");
+  }, [tokens]);
+
   const t = getText(lang);
+
+  useEffect(() => {
+    function refreshCustomTokens() {
+      setTokens((prev) => {
+        const customTokens = readCustomTokens();
+        const rebuilt = buildTokenList(customTokens);
+
+        return rebuilt.map((item) => {
+          const existing = prev.find(
+            (p) =>
+              p.symbol === item.symbol &&
+              (p.address || "").toLowerCase() === (item.address || "").toLowerCase()
+          );
+
+          return {
+            ...item,
+            balance: existing?.balance || item.balance || "0.000000",
+          };
+        });
+      });
+    }
+
+    refreshCustomTokens();
+
+    const onFocus = () => refreshCustomTokens();
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === CUSTOM_TOKENS_KEY) {
+        refreshCustomTokens();
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!tokens.some((item) => item.symbol === selectedToken)) {
+      setSelectedToken(tokens[0]?.symbol || "INRI");
+    }
+  }, [tokens, selectedToken]);
 
   useEffect(() => {
     let active = true;
@@ -67,7 +175,7 @@ export default function SendScreen({
       active = false;
       clearInterval(timer);
     };
-  }, [address]);
+  }, [address, tokenIdentityKey]);
 
   function showMessage(text: string) {
     setMessage(text);
@@ -108,6 +216,11 @@ export default function SendScreen({
       return;
     }
 
+    if (!token) {
+      showMessage(t.sendFailed);
+      return;
+    }
+
     if (!validateAddress(toAddress.trim())) {
       showMessage(t.invalidAddress);
       return;
@@ -139,8 +252,12 @@ export default function SendScreen({
         txHash = tx.hash;
         await tx.wait();
       } else {
+        if (!token.address) {
+          throw new Error("Token contract address not found.");
+        }
+
         const abi = ["function transfer(address to, uint256 amount) returns (bool)"];
-        const contract = new ethers.Contract(token.address!, abi, wallet);
+        const contract = new ethers.Contract(token.address, abi, wallet);
         const tx = await contract.transfer(
           toAddress.trim(),
           ethers.parseUnits(amount, token.decimals || 18)
@@ -273,13 +390,13 @@ export default function SendScreen({
 
           <div style={tokenPreviewStyle}>
             <div style={tokenLeftStyle}>
-              <img src={token.logo} alt={token.symbol} style={tokenLogoStyle} />
+              <img src={token?.logo} alt={token?.symbol} style={tokenLogoStyle} />
               <div>
                 <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>
-                  {token.symbol}
+                  {token?.symbol}
                 </div>
                 <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12 }}>
-                  {t.balance}: {token.balance}
+                  {t.balance}: {token?.balance}
                 </div>
               </div>
             </div>
@@ -290,7 +407,7 @@ export default function SendScreen({
               style={selectStyle(isLight)}
             >
               {tokens.map((item) => (
-                <option key={item.symbol} value={item.symbol}>
+                <option key={`${item.symbol}-${item.address || "native"}`} value={item.symbol}>
                   {item.symbol}
                 </option>
               ))}
@@ -396,10 +513,10 @@ export default function SendScreen({
             opacity: sending ? 0.7 : 1,
           }}
         >
-          {sending ? t.sending : `${t.send} ${token.symbol}`}
+          {sending ? t.sending : `${t.send} ${token?.symbol || ""}`}
         </button>
 
-        {token.isNative ? (
+        {token?.isNative ? (
           <div style={infoStyle(isLight)}>{t.nativeInfo}</div>
         ) : (
           <div style={infoStyle(isLight)}>{t.tokenInfo}</div>
