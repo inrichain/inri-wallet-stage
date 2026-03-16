@@ -18,9 +18,9 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     chainId: 3777,
     symbol: "INRI",
     rpcUrl: "https://rpc.inri.life",
-    explorerAddressUrl: "https://scan.inri.life/address/",
-    explorerTxUrl: "https://scan.inri.life/tx/",
-    logo: "/inri-wallet-stage/network-inri.png",
+    explorerAddressUrl: "https://explorer.inri.life/address/",
+    explorerTxUrl: "https://explorer.inri.life/tx/",
+    logo: "/network-inri.png",
   },
   {
     key: "polygon",
@@ -30,7 +30,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://polygon-rpc.com",
     explorerAddressUrl: "https://polygonscan.com/address/",
     explorerTxUrl: "https://polygonscan.com/tx/",
-    logo: "/inri-wallet-stage/network-polygon.png",
+    logo: "/network-polygon.png",
   },
   {
     key: "ethereum",
@@ -40,7 +40,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://cloudflare-eth.com",
     explorerAddressUrl: "https://etherscan.io/address/",
     explorerTxUrl: "https://etherscan.io/tx/",
-    logo: "/inri-wallet-stage/network-ethereum.png",
+    logo: "/network-ethereum.png",
   },
   {
     key: "bsc",
@@ -50,7 +50,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://bsc-dataseed.binance.org",
     explorerAddressUrl: "https://bscscan.com/address/",
     explorerTxUrl: "https://bscscan.com/tx/",
-    logo: "/inri-wallet-stage/network-bnb.png",
+    logo: "/network-bnb.png",
   },
   {
     key: "arbitrum",
@@ -60,7 +60,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://arb1.arbitrum.io/rpc",
     explorerAddressUrl: "https://arbiscan.io/address/",
     explorerTxUrl: "https://arbiscan.io/tx/",
-    logo: "/inri-wallet-stage/network-arbitrum.png",
+    logo: "/network-arbitrum.png",
   },
   {
     key: "optimism",
@@ -70,7 +70,7 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
     rpcUrl: "https://mainnet.optimism.io",
     explorerAddressUrl: "https://optimistic.etherscan.io/address/",
     explorerTxUrl: "https://optimistic.etherscan.io/tx/",
-    logo: "/inri-wallet-stage/network-optimism.png",
+    logo: "/network-optimism.png",
   },
 ];
 
@@ -78,8 +78,8 @@ export function getStoredNetwork(): NetworkItem {
   try {
     const raw = localStorage.getItem(NETWORKS_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as NetworkItem;
-      if (parsed && parsed.name && parsed.chainId) return parsed;
+      const parsed = JSON.parse(raw);
+      if (parsed?.key && parsed?.chainId) return parsed;
     }
   } catch {}
   return DEFAULT_NETWORKS[0];
@@ -87,5 +87,4 @@ export function getStoredNetwork(): NetworkItem {
 
 export function saveStoredNetwork(network: NetworkItem) {
   localStorage.setItem(NETWORKS_KEY, JSON.stringify(network));
-  window.dispatchEvent(new Event("wallet-network-updated"));
 }
