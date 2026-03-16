@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { initWalletConnect } from "../lib/walletconnect";
+import { tr } from "../i18n/translations";
 import Header from "./Header";
 import BottomNav from "./BottomNav";
 import DashboardScreen from "../screens/DashboardScreen";
@@ -85,7 +86,38 @@ export default function WalletShell() {
 
   const [unlockedWallet, setUnlockedWallet] = useState<UnlockedWallet | null>(null);
 
-  const t = getText(lang);
+  const t = {
+    authSubtitle: tr(lang, "auth_subtitle"),
+    unlock: tr(lang, "auth_unlock"),
+    create: tr(lang, "auth_create"),
+    import: tr(lang, "auth_import"),
+    password: tr(lang, "auth_password"),
+    passwordCreate: tr(lang, "auth_password_create"),
+    walletName: tr(lang, "auth_wallet_name"),
+    generatedSeed: tr(lang, "auth_generated_seed"),
+    generateSeed: tr(lang, "auth_generate_seed"),
+    createWallet: tr(lang, "auth_create_wallet"),
+    importWallet: tr(lang, "auth_import_wallet"),
+    pasteSeed: tr(lang, "auth_paste_seed"),
+    generateSeedFirst: tr(lang, "auth_generate_seed_first"),
+    confirmSeedSaveFirst: tr(lang, "auth_confirm_seed_save_first"),
+    passwordShort: tr(lang, "auth_password_short"),
+    walletCreated: tr(lang, "auth_wallet_created"),
+    walletImported: tr(lang, "auth_wallet_imported"),
+    wrongPassword: tr(lang, "auth_wrong_password"),
+    noWallet: tr(lang, "auth_no_wallet"),
+    noWalletsYet: tr(lang, "auth_no_wallets_yet"),
+    unlocked: tr(lang, "auth_unlocked"),
+    locked: tr(lang, "auth_locked"),
+    lock: tr(lang, "auth_lock"),
+    invalidSeed: tr(lang, "auth_invalid_seed"),
+    createFailed: tr(lang, "auth_create_failed"),
+    seedGenerateError: tr(lang, "auth_seed_generate_error"),
+    processing: tr(lang, "auth_processing"),
+    enterPassword: tr(lang, "auth_enter_password"),
+    seedBackupConfirm: tr(lang, "auth_seed_backup_confirm"),
+    walletAlreadyExists: tr(lang, "auth_wallet_already_exists"),
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem(VAULTS_KEY);
@@ -710,79 +742,6 @@ export default function WalletShell() {
       <BottomNav tab={tab} setTab={setTab} theme={theme} lang={lang} />
     </div>
   );
-}
-
-function getText(lang: string) {
-  const map: Record<string, any> = {
-    en: {
-      authSubtitle: "Create, import or unlock your wallet",
-      unlock: "Unlock",
-      create: "Create",
-      import: "Import",
-      password: "Enter your password",
-      passwordCreate: "Create a password (min. 6 chars)",
-      walletName: "Wallet name",
-      generatedSeed: "Generated seed phrase",
-      generateSeed: "Generate Seed",
-      createWallet: "Create Wallet",
-      importWallet: "Import Wallet",
-      pasteSeed: "Paste seed phrase",
-      generateSeedFirst: "Generate seed first.",
-      confirmSeedSaveFirst: "Confirm that you saved your seed phrase.",
-      passwordShort: "Password must be at least 6 characters.",
-      walletCreated: "Wallet created.",
-      walletImported: "Wallet imported.",
-      wrongPassword: "Wrong password.",
-      noWallet: "No wallet found.",
-      noWalletsYet: "No wallets yet",
-      unlocked: "Unlocked.",
-      locked: "Locked.",
-      lock: "Lock",
-      invalidSeed: "Invalid seed phrase.",
-      createFailed: "Could not create wallet.",
-      seedGenerateError: "Could not generate seed phrase.",
-      processing: "Processing...",
-      enterPassword: "Enter your password.",
-      seedBackupConfirm:
-        "I wrote down my seed phrase and stored it somewhere safe. I understand that losing it means losing access to my wallet.",
-      walletAlreadyExists: "This wallet already exists on this device.",
-    },
-    pt: {
-      authSubtitle: "Crie, importe ou desbloqueie sua carteira",
-      unlock: "Desbloquear",
-      create: "Criar",
-      import: "Importar",
-      password: "Digite sua senha",
-      passwordCreate: "Crie uma senha (mín. 6 caracteres)",
-      walletName: "Nome da carteira",
-      generatedSeed: "Seed phrase gerada",
-      generateSeed: "Gerar Seed",
-      createWallet: "Criar Carteira",
-      importWallet: "Importar Carteira",
-      pasteSeed: "Cole a seed phrase",
-      generateSeedFirst: "Gere a seed primeiro.",
-      confirmSeedSaveFirst: "Confirme que você salvou sua seed phrase.",
-      passwordShort: "A senha deve ter pelo menos 6 caracteres.",
-      walletCreated: "Carteira criada.",
-      walletImported: "Carteira importada.",
-      wrongPassword: "Senha incorreta.",
-      noWallet: "Nenhuma carteira encontrada.",
-      noWalletsYet: "Ainda não há carteiras",
-      unlocked: "Desbloqueada.",
-      locked: "Bloqueada.",
-      lock: "Travar",
-      invalidSeed: "Seed phrase inválida.",
-      createFailed: "Não foi possível criar a carteira.",
-      seedGenerateError: "Não foi possível gerar a seed phrase.",
-      processing: "Processando...",
-      enterPassword: "Digite sua senha.",
-      seedBackupConfirm:
-        "Eu anotei minha seed phrase e guardei em um lugar seguro. Entendo que perder essa frase significa perder o acesso à minha carteira.",
-      walletAlreadyExists: "Essa carteira já existe neste dispositivo.",
-    },
-  };
-
-  return map[lang] || map.en;
 }
 
 function tabButtonStyle(
