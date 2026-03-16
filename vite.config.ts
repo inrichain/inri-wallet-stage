@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  base: "/inri-wallet-stage/",
+  base: "/",
   plugins: [
     react(),
     VitePWA({
@@ -17,7 +17,7 @@ export default defineConfig({
         "pwa-512.png"
       ],
       manifest: {
-        id: "/inri-wallet-stage/",
+        id: "/",
         name: "INRI Wallet",
         short_name: "INRI",
         description: "Professional multichain wallet for the INRI ecosystem",
@@ -25,8 +25,8 @@ export default defineConfig({
         background_color: "#0b1120",
         display: "standalone",
         orientation: "portrait",
-        start_url: "/inri-wallet-stage/",
-        scope: "/inri-wallet-stage/",
+        start_url: "/",
+        scope: "/",
         icons: [
           {
             src: "favicon.png",
