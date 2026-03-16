@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getStoredNetwork, type NetworkItem } from "../lib/network";
+import { tr } from "../i18n/translations";
 
 const DEFAULT_AVATAR = `data:image/svg+xml;utf8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
@@ -18,14 +19,16 @@ const DEFAULT_AVATAR = `data:image/svg+xml;utf8,${encodeURIComponent(`
 
 const BASE = import.meta.env.BASE_URL || "/";
 const BRAND_LOGO = `${BASE}brand-inri.png`;
-const FALLBACK_BRAND = `${BASE}favicon.png`;
+const FALLBACK_BRAND = `${BASE}pwa-192.png`;
 
 export default function Header({
   walletName,
   theme = "dark",
+  lang = "en",
 }: {
   walletName: string;
   theme?: "dark" | "light";
+  lang?: string;
 }) {
   const isLight = theme === "light";
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
@@ -53,7 +56,7 @@ export default function Header({
     <header
       style={{
         borderBottom: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-        background: isLight ? "rgba(255,255,255,.92)" : "rgba(10,14,24,.92)",
+        background: isLight ? "rgba(255,255,255,.94)" : "rgba(10,14,24,.94)",
         backdropFilter: "blur(12px)",
         position: "sticky",
         top: 0,
@@ -68,11 +71,11 @@ export default function Header({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          gap: 12,
+          gap: 14,
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
           <img
             src={BRAND_LOGO}
             alt="INRI"
@@ -84,11 +87,10 @@ export default function Header({
               }
             }}
             style={{
-              width: 56,
-              height: 56,
+              width: 48,
+              height: 48,
               objectFit: "contain",
               flexShrink: 0,
-              display: "block",
             }}
           />
 
@@ -113,25 +115,24 @@ export default function Header({
                 lineHeight: 1.35,
               }}
             >
-              Professional multichain wallet for the INRI ecosystem
+              {tr(lang, "header_subtitle")}
             </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: 8,
-              padding: "8px 14px",
+              padding: "8px 12px",
               borderRadius: 999,
               border: "1px solid rgba(63,124,255,.35)",
               background: "rgba(63,124,255,.12)",
               color: "#3f7cff",
               fontWeight: 800,
               fontSize: 14,
-              minWidth: 0,
             }}
           >
             <img
@@ -145,21 +146,15 @@ export default function Header({
                 }
               }}
               style={{
-                width: 20,
-                height: 20,
-                borderRadius: 10,
-                objectFit: "cover",
+                width: 18,
+                height: 18,
+                borderRadius: 9,
+                objectFit: "contain",
                 flexShrink: 0,
-                display: "block",
               }}
             />
-            <span
-              style={{
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
+
+            <span style={{ whiteSpace: "nowrap" }}>
               {network.name} • {network.chainId}
             </span>
           </div>
@@ -171,13 +166,11 @@ export default function Header({
               (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR;
             }}
             style={{
-              width: 46,
-              height: 46,
+              width: 44,
+              height: 44,
               borderRadius: "50%",
               objectFit: "cover",
               border: `2px solid ${isLight ? "#dbe2f0" : "#2b3650"}`,
-              flexShrink: 0,
-              display: "block",
             }}
           />
         </div>
