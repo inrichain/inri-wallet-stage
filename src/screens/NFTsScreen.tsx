@@ -21,7 +21,7 @@ export default function NFTsScreen({
       try {
         setLoading(true);
 
-        const explorerUrl = `https://scan.inri.life/api?module=account&action=tokennfttx&address=${address}`;
+        const explorerUrl = `https://explorer.inri.life/api?module=account&action=tokennfttx&address=${address}`;
         const res = await fetch(explorerUrl);
         const data = await res.json();
 
@@ -122,23 +122,12 @@ export default function NFTsScreen({
 
               <div
                 style={{
-                  marginTop: 6,
                   color: isLight ? "#5b6578" : "#97a0b3",
                   fontSize: 13,
-                }}
-              >
-                ID: {nft.tokenID || "-"}
-              </div>
-
-              <div
-                style={{
                   marginTop: 6,
-                  color: isLight ? "#5b6578" : "#97a0b3",
-                  fontSize: 12,
-                  wordBreak: "break-all",
                 }}
               >
-                {nft.contractAddress || "-"}
+                Token ID: {nft.tokenID}
               </div>
             </div>
           ))}
@@ -153,57 +142,12 @@ function getText(lang: string) {
     en: {
       nfts: "NFTs",
       loading: "Loading NFTs...",
-      empty: "No NFTs found for this wallet yet.",
+      empty: "No NFTs found.",
     },
     pt: {
       nfts: "NFTs",
       loading: "Carregando NFTs...",
-      empty: "Nenhum NFT encontrado para esta carteira ainda.",
-    },
-    es: {
-      nfts: "NFTs",
-      loading: "Cargando NFTs...",
-      empty: "No se encontraron NFTs para esta billetera todavía.",
-    },
-    fr: {
-      nfts: "NFTs",
-      loading: "Chargement des NFTs...",
-      empty: "Aucun NFT trouvé pour ce portefeuille.",
-    },
-    de: {
-      nfts: "NFTs",
-      loading: "NFTs werden geladen...",
-      empty: "Für diese Wallet wurden noch keine NFTs gefunden.",
-    },
-    it: {
-      nfts: "NFT",
-      loading: "Caricamento NFT...",
-      empty: "Nessun NFT trovato per questo wallet.",
-    },
-    ru: {
-      nfts: "NFT",
-      loading: "Загрузка NFT...",
-      empty: "Для этого кошелька NFT пока не найдены.",
-    },
-    zh: {
-      nfts: "NFT",
-      loading: "正在加载 NFT...",
-      empty: "此钱包暂未找到 NFT。",
-    },
-    ja: {
-      nfts: "NFT",
-      loading: "NFT を読み込み中...",
-      empty: "このウォレットにはまだ NFT がありません。",
-    },
-    ko: {
-      nfts: "NFT",
-      loading: "NFT 불러오는 중...",
-      empty: "이 지갑에는 아직 NFT가 없습니다.",
-    },
-    tr: {
-      nfts: "NFT",
-      loading: "NFT'ler yükleniyor...",
-      empty: "Bu cüzdan için henüz NFT bulunamadı.",
+      empty: "Nenhum NFT encontrado.",
     },
   };
 
