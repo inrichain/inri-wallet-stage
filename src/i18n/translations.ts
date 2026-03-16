@@ -1,6 +1,7 @@
 export const translations: Record<string, Record<string, string>> = {
   en: {
     header_subtitle: "Professional multichain wallet for the INRI ecosystem",
+
     nav_home: "Home",
     nav_send: "Send",
     nav_receive: "Receive",
@@ -9,15 +10,6 @@ export const translations: Record<string, Record<string, string>> = {
     nav_swap: "Swap",
     nav_bridge: "Bridge",
     nav_settings: "Settings",
-
-    dashboard_total_balance: "Total balance",
-    dashboard_open_explorer: "Open in Explorer",
-    dashboard_install_app: "Install App",
-    dashboard_send_desc: "Native and ERC-20 transfers",
-    dashboard_receive_desc: "QR code and wallet address",
-    dashboard_swap_desc: "Professional swap interface with premium token cards",
-    dashboard_bridge_desc: "Polygon USDT ↔ INRI iUSD bridge flow",
-    dashboard_activity_desc: "Advanced transaction history with gas details",
 
     activity_title: "Activity",
     activity_subtitle: "Detailed transaction history with status, gas and explorer access.",
@@ -40,36 +32,11 @@ export const translations: Record<string, Record<string, string>> = {
     activity_priority_low: "Low",
     activity_priority_normal: "Normal",
     activity_priority_high: "High",
-
-    settings: "Settings",
-    settings_subtitle: "Manage language, theme, network and wallet profile",
-    settings_language: "Language",
-    settings_theme: "Theme",
-    settings_dark: "Dark Mode",
-    settings_light: "Light Mode",
-    settings_network: "Active network",
-    settings_network_hint:
-      "Network switching stays here in one place. Swap and bridge screens use the active network display only.",
-    settings_save_rpc: "Save RPC",
-    settings_active: "Active",
-    settings_select: "Select",
-    settings_avatar: "Avatar",
-    settings_upload_avatar: "Upload Avatar",
-    settings_remove_avatar: "Remove Avatar",
-    settings_avatar_hint: "Your avatar is fully personal now.",
-
-    common_send: "Send",
-    common_receive: "Receive",
-    common_swap: "Swap",
-    common_bridge: "Bridge",
-    common_activity: "Activity",
-    common_tokens: "Tokens",
-    common_settings: "Settings",
-    common_lock: "Lock"
   },
 
   pt: {
     header_subtitle: "Carteira multichain profissional para o ecossistema INRI",
+
     nav_home: "Início",
     nav_send: "Enviar",
     nav_receive: "Receber",
@@ -78,15 +45,6 @@ export const translations: Record<string, Record<string, string>> = {
     nav_swap: "Swap",
     nav_bridge: "Bridge",
     nav_settings: "Ajustes",
-
-    dashboard_total_balance: "Saldo total",
-    dashboard_open_explorer: "Abrir no Explorer",
-    dashboard_install_app: "Instalar App",
-    dashboard_send_desc: "Transferências nativas e ERC-20",
-    dashboard_receive_desc: "QR code e endereço da carteira",
-    dashboard_swap_desc: "Interface profissional de swap com cards premium",
-    dashboard_bridge_desc: "Fluxo Polygon USDT ↔ INRI iUSD",
-    dashboard_activity_desc: "Histórico avançado com detalhes de gas",
 
     activity_title: "Atividade",
     activity_subtitle: "Histórico detalhado com status, gas e acesso ao explorer.",
@@ -109,36 +67,11 @@ export const translations: Record<string, Record<string, string>> = {
     activity_priority_low: "Baixa",
     activity_priority_normal: "Normal",
     activity_priority_high: "Alta",
-
-    settings: "Configurações",
-    settings_subtitle: "Gerencie idioma, tema, rede e perfil da carteira",
-    settings_language: "Idioma",
-    settings_theme: "Tema",
-    settings_dark: "Modo Escuro",
-    settings_light: "Modo Claro",
-    settings_network: "Rede ativa",
-    settings_network_hint:
-      "A troca de rede fica centralizada aqui. As telas de swap e bridge usam apenas a rede ativa exibida.",
-    settings_save_rpc: "Salvar RPC",
-    settings_active: "Ativa",
-    settings_select: "Selecionar",
-    settings_avatar: "Avatar",
-    settings_upload_avatar: "Enviar Avatar",
-    settings_remove_avatar: "Remover Avatar",
-    settings_avatar_hint: "Seu avatar agora é totalmente pessoal.",
-
-    common_send: "Enviar",
-    common_receive: "Receber",
-    common_swap: "Swap",
-    common_bridge: "Bridge",
-    common_activity: "Atividade",
-    common_tokens: "Tokens",
-    common_settings: "Configurações",
-    common_lock: "Bloquear"
   },
 
   es: {
     header_subtitle: "Billetera multichain profesional para el ecosistema INRI",
+
     nav_home: "Inicio",
     nav_send: "Enviar",
     nav_receive: "Recibir",
@@ -147,15 +80,6 @@ export const translations: Record<string, Record<string, string>> = {
     nav_swap: "Swap",
     nav_bridge: "Bridge",
     nav_settings: "Ajustes",
-
-    dashboard_total_balance: "Saldo total",
-    dashboard_open_explorer: "Abrir en Explorer",
-    dashboard_install_app: "Instalar app",
-    dashboard_send_desc: "Transferencias nativas y ERC-20",
-    dashboard_receive_desc: "Código QR y dirección",
-    dashboard_swap_desc: "Interfaz profesional de swap con tarjetas premium",
-    dashboard_bridge_desc: "Flujo Polygon USDT ↔ INRI iUSD",
-    dashboard_activity_desc: "Historial avanzado con detalles de gas",
 
     activity_title: "Actividad",
     activity_subtitle: "Historial detallado con estado, gas y acceso al explorer.",
@@ -178,33 +102,7 @@ export const translations: Record<string, Record<string, string>> = {
     activity_priority_low: "Baja",
     activity_priority_normal: "Normal",
     activity_priority_high: "Alta",
-
-    settings: "Configuración",
-    settings_subtitle: "Gestiona idioma, tema, red y perfil de la billetera",
-    settings_language: "Idioma",
-    settings_theme: "Tema",
-    settings_dark: "Modo Oscuro",
-    settings_light: "Modo Claro",
-    settings_network: "Red activa",
-    settings_network_hint:
-      "El cambio de red se gestiona aquí. Las pantallas de swap y bridge usan solo la red activa mostrada.",
-    settings_save_rpc: "Guardar RPC",
-    settings_active: "Activa",
-    settings_select: "Seleccionar",
-    settings_avatar: "Avatar",
-    settings_upload_avatar: "Subir Avatar",
-    settings_remove_avatar: "Eliminar Avatar",
-    settings_avatar_hint: "Tu avatar ahora es totalmente personal.",
-
-    common_send: "Enviar",
-    common_receive: "Recibir",
-    common_swap: "Swap",
-    common_bridge: "Bridge",
-    common_activity: "Actividad",
-    common_tokens: "Tokens",
-    common_settings: "Configuración",
-    common_lock: "Bloquear"
-  }
+  },
 };
 
 export function tr(lang: string, key: string): string {
