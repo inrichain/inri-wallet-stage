@@ -14,48 +14,46 @@ export default defineConfig({
         "apple-touch-icon.png",
         "brand-inri.png",
         "pwa-192.png",
-        "pwa-512.png",
+        "pwa-512.png"
       ],
       manifest: {
         id: "/inri-wallet-stage/",
         name: "INRI Wallet",
-        short_name: "INRI Wallet",
-        description: "Secure wallet for INRI ecosystem",
-        theme_color: "#0b0f1a",
-        background_color: "#0b0f1a",
+        short_name: "INRI",
+        description: "Professional multichain wallet for the INRI ecosystem",
+        theme_color: "#0b1120",
+        background_color: "#0b1120",
         display: "standalone",
         orientation: "portrait",
         start_url: "/inri-wallet-stage/",
         scope: "/inri-wallet-stage/",
         icons: [
           {
+            src: "favicon.png",
+            sizes: "32x32",
+            type: "image/png",
+            purpose: "any"
+          },
+          {
             src: "pwa-192.png",
             sizes: "192x192",
             type: "image/png",
-            purpose: "any",
+            purpose: "any maskable"
           },
           {
             src: "pwa-512.png",
             sizes: "512x512",
             type: "image/png",
-            purpose: "any",
-          },
-          {
-            src: "pwa-512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "maskable",
+            purpose: "any maskable"
           },
           {
             src: "apple-touch-icon.png",
             sizes: "180x180",
             type: "image/png",
-          },
-        ],
-      },
-      workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest}"],
-      },
-    }),
-  ],
+            purpose: "any"
+          }
+        ]
+      }
+    })
+  ]
 });
