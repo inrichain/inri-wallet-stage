@@ -391,24 +391,10 @@ export default function WalletShell() {
 
     switch (tab) {
       case "dashboard":
-        return (
-          <DashboardScreen
-            setTab={setTab}
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
+        return <DashboardScreen setTab={setTab} theme={theme} lang={lang} address={address} />;
 
       case "send":
-        return (
-          <SendScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-            mnemonic={mnemonic}
-          />
-        );
+        return <SendScreen theme={theme} lang={lang} address={address} mnemonic={mnemonic} />;
 
       case "receive":
         return <ReceiveScreen theme={theme} lang={lang} address={address} />;
@@ -442,14 +428,7 @@ export default function WalletShell() {
         );
 
       default:
-        return (
-          <DashboardScreen
-            setTab={setTab}
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
+        return <DashboardScreen setTab={setTab} theme={theme} lang={lang} address={address} />;
     }
   };
 
@@ -715,11 +694,7 @@ export default function WalletShell() {
         boxSizing: "border-box",
       }}
     >
-      <Header
-        walletName={currentWalletMeta?.name || "INRI Wallet"}
-        theme={theme}
-        lang={lang}
-      />
+      <Header walletName={currentWalletMeta?.name || "INRI Wallet"} theme={theme} lang={lang} />
 
       <main
         style={{
