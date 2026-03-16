@@ -6,9 +6,11 @@ export type Tab =
   | "send"
   | "receive"
   | "tokens"
+  | "nfts"
   | "activity"
   | "swap"
   | "bridge"
+  | "staking"
   | "settings";
 
 export default function BottomNav({
@@ -29,9 +31,11 @@ export default function BottomNav({
     { id: "send", label: tr(lang, "nav_send") },
     { id: "receive", label: tr(lang, "nav_receive") },
     { id: "tokens", label: tr(lang, "nav_tokens") },
+    { id: "nfts", label: tr(lang, "nav_nfts") },
     { id: "activity", label: tr(lang, "nav_activity") },
     { id: "swap", label: tr(lang, "nav_swap") },
     { id: "bridge", label: tr(lang, "nav_bridge") },
+    { id: "staking", label: tr(lang, "nav_staking") },
     { id: "settings", label: tr(lang, "nav_settings") },
   ];
 
@@ -55,7 +59,7 @@ export default function BottomNav({
           maxWidth: 980,
           margin: "0 auto",
           display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
           gap: 8,
         }}
       >
