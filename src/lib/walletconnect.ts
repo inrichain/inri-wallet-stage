@@ -2,13 +2,15 @@ import { Core } from "@walletconnect/core";
 import { Web3Wallet } from "@walletconnect/web3wallet";
 import { buildApprovedNamespaces } from "@walletconnect/utils";
 
-export const projectId = "3ec8f1c2261a7eb46e33e0368a6be0e8";
+export const projectId = "bfc7a39282888507c8c1dca6d8b2dbfe";
 
 let web3wallet: any = null;
 
 export async function initWalletConnect(address: string) {
   if (!address) return null;
   if (web3wallet) return web3wallet;
+
+  const base = window.location.origin;
 
   const core = new Core({
     projectId,
@@ -19,8 +21,8 @@ export async function initWalletConnect(address: string) {
     metadata: {
       name: "INRI Wallet",
       description: "Secure wallet for INRI ecosystem",
-      url: window.location.origin,
-      icons: [`${window.location.origin}/inri-wallet-stage/token-inri.png`],
+      url: base,
+      icons: [`${base}/pwa-512.png`],
     },
   });
 
