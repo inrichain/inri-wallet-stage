@@ -10,7 +10,9 @@ export async function initWalletConnect(address: string) {
   if (!address) return null;
   if (web3wallet) return web3wallet;
 
-  const base = window.location.origin;
+  const origin = window.location.origin;
+  const base = import.meta.env.BASE_URL || "/";
+  const iconUrl = `${origin}${base}pwa-512.png`;
 
   const core = new Core({
     projectId,
@@ -21,8 +23,8 @@ export async function initWalletConnect(address: string) {
     metadata: {
       name: "INRI Wallet",
       description: "Secure wallet for INRI ecosystem",
-      url: base,
-      icons: [`${base}/pwa-512.png`],
+      url: `${origin}${base}`,
+      icons: [iconUrl],
     },
   });
 
