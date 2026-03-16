@@ -11,6 +11,7 @@ const BASE = import.meta.env.BASE_URL || "/";
 
 type ViewToken = TokenItem & {
   balance: string;
+  networkKey?: string;
 };
 
 function readCustomTokens(): ViewToken[] {
@@ -48,11 +49,13 @@ function readCustomTokens(): ViewToken[] {
 function buildTokenList(networkKey: string, customTokens: ViewToken[]): ViewToken[] {
   const merged: ViewToken[] = [
     ...getDefaultTokensForNetwork(networkKey).map((item) => ({ ...item, balance: "0.000000" })),
-    ...customTokens.filter((item) => !item.networkKey || item.networkKey === networkKey).map((item) => ({
-      ...item,
-      balance: item.balance || "0.000000",
-      logo: item.logo || BASE + "token-inri.png",
-    })),
+    ...customTokens
+      .filter((item) => !item.networkKey || item.networkKey === networkKey)
+      .map((item) => ({
+        ...item,
+        balance: item.balance || "0.000000",
+        logo: item.logo || BASE + "token-inri.png",
+      })),
   ];
 
   const seen = new Set<string>();
@@ -84,14 +87,18 @@ export default function SendScreen({
 }) {
   const isLight = theme === "light";
   const [networkKey, setNetworkKey] = useState(getStoredNetwork().key);
-  const [selectedToken, setSelectedToken] = useState(getDefaultTokensForNetwork(getStoredNetwork().key)[0]?.symbol || "INRI");
+  const [selectedToken, setSelectedToken] = useState(
+    getDefaultTokensForNetwork(getStoredNetwork().key)[0]?.symbol || "INRI"
+  );
   const [toAddress, setToAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [showReceiveQr, setShowReceiveQr] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [tokens, setTokens] = useState<ViewToken[]>(() => buildTokenList(getStoredNetwork().key, readCustomTokens()));
+  const [tokens, setTokens] = useState<ViewToken[]>(() =>
+    buildTokenList(getStoredNetwork().key, readCustomTokens())
+  );
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
@@ -102,9 +109,7 @@ export default function SendScreen({
   );
 
   const tokenIdentityKey = useMemo(() => {
-    return tokens
-      .map((t) => `${t.symbol}:${t.address || "native"}:${t.decimals || 18}`)
-      .join("|");
+    return tokens.map((t) => `${t.symbol}:${t.address || "native"}:${t.decimals || 18}`).join("|");
   }, [tokens]);
 
   const t = getText(lang);
@@ -114,6 +119,7 @@ export default function SendScreen({
       setTokens((prev) => {
         const activeKey = getStoredNetwork().key;
         setNetworkKey(activeKey);
+
         const customTokens = readCustomTokens();
         const rebuilt = buildTokenList(activeKey, customTokens);
 
@@ -159,7 +165,7 @@ export default function SendScreen({
   useEffect(() => {
     let active = true;
 
-    async function loadBalances() {
+    async function loadBalancesNow() {
       try {
         const balances = await loadAllBalances(address, tokens, networkKey);
         if (!active) return;
@@ -173,8 +179,8 @@ export default function SendScreen({
       } catch {}
     }
 
-    loadBalances();
-    const timer = setInterval(loadBalances, 8000);
+    loadBalancesNow();
+    const timer = setInterval(loadBalancesNow, 8000);
 
     return () => {
       active = false;
@@ -245,17 +251,16 @@ export default function SendScreen({
     setSending(true);
 
     try {
+      const activeNetwork = getStoredNetwork();
       const wallet = ethers.Wallet.fromPhrase(mnemonic).connect(getProvider(networkKey));
 
-      let txHash = "";
+      let tx: any;
 
       if (token.isNative) {
-        const tx = await wallet.sendTransaction({
+        tx = await wallet.sendTransaction({
           to: toAddress.trim(),
           value: ethers.parseEther(amount),
         });
-        txHash = tx.hash;
-        await tx.wait();
       } else {
         if (!token.address) {
           throw new Error("Token contract address not found.");
@@ -263,12 +268,36 @@ export default function SendScreen({
 
         const abi = ["function transfer(address to, uint256 amount) returns (bool)"];
         const contract = new ethers.Contract(token.address, abi, wallet);
-        const tx = await contract.transfer(
+
+        tx = await contract.transfer(
           toAddress.trim(),
           ethers.parseUnits(amount, token.decimals || 18)
         );
-        txHash = tx.hash;
-        await tx.wait();
+      }
+
+      const txHash = tx.hash;
+      const receipt = await tx.wait();
+
+      const gasUsed = receipt?.gasUsed ? receipt.gasUsed.toString() : "0";
+
+      const gasPriceWei =
+        tx.gasPrice?.toString?.() ||
+        tx.maxFeePerGas?.toString?.() ||
+        receipt?.gasPrice?.toString?.() ||
+        "0";
+
+      const feeWei = BigInt(gasUsed || "0") * BigInt(gasPriceWei || "0");
+
+      const gasPriceGwei = gasPriceWei !== "0" ? ethers.formatUnits(gasPriceWei, "gwei") : "0";
+
+      const feeNative = feeWei !== 0n ? ethers.formatEther(feeWei) : "0";
+
+      let priority = "normal";
+      const gasGweiNumber = Number(gasPriceGwei);
+
+      if (Number.isFinite(gasGweiNumber)) {
+        if (gasGweiNumber > 20) priority = "high";
+        else if (gasGweiNumber < 2) priority = "low";
       }
 
       saveActivity({
@@ -279,14 +308,24 @@ export default function SendScreen({
         to: toAddress.trim(),
         from: address,
         createdAt: new Date().toISOString(),
-        status: "confirmed",
+        status: receipt?.status === 1 ? "confirmed" : "failed",
+        networkKey: activeNetwork.key,
+        networkName: activeNetwork.name,
+        chainId: activeNetwork.chainId,
+        gasUsed,
+        gasPriceGwei,
+        feeNative,
+        priority,
       });
 
-      showMessage(`${t.sent}: ${amount} ${token.symbol}`);
-      setAmount("");
-      setToAddress("");
-
-      await refreshBalances();
+      if (receipt?.status === 1) {
+        showMessage(`${t.sent}: ${amount} ${token.symbol}`);
+        setAmount("");
+        setToAddress("");
+        await refreshBalances();
+      } else {
+        showMessage(t.sendFailed);
+      }
     } catch (e: any) {
       showMessage(e?.shortMessage || e?.message || t.sendFailed);
     } finally {
@@ -337,22 +376,18 @@ export default function SendScreen({
             },
       };
 
-      await reader.decodeFromConstraints(
-        constraints,
-        videoRef.current,
-        (result) => {
-          if (!result) return;
+      await reader.decodeFromConstraints(constraints, videoRef.current, (result) => {
+        if (!result) return;
 
-          const text = result.getText();
-          const match = text.match(/0x[a-fA-F0-9]{40}/);
+        const text = result.getText();
+        const match = text.match(/0x[a-fA-F0-9]{40}/);
 
-          if (match?.[0]) {
-            setToAddress(match[0]);
-            closeScanner();
-            showMessage(t.qrCaptured);
-          }
+        if (match?.[0]) {
+          setToAddress(match[0]);
+          closeScanner();
+          showMessage(t.qrCaptured);
         }
-      );
+      });
     } catch {
       showMessage(t.cameraFail);
     }
@@ -385,9 +420,7 @@ export default function SendScreen({
         padding: 16,
       }}
     >
-      <h2 style={{ marginTop: 0, color: isLight ? "#10131a" : "#ffffff" }}>
-        {t.send}
-      </h2>
+      <h2 style={{ marginTop: 0, color: isLight ? "#10131a" : "#ffffff" }}>{t.send}</h2>
 
       <div style={{ display: "grid", gap: 12 }}>
         <div style={cardStyle(isLight)}>
@@ -486,10 +519,7 @@ export default function SendScreen({
               {t.copyAddress}
             </button>
 
-            <button
-              onClick={() => setShowReceiveQr((v) => !v)}
-              style={secondaryButtonStyle()}
-            >
+            <button onClick={() => setShowReceiveQr((v) => !v)} style={secondaryButtonStyle()}>
               {showReceiveQr ? t.hideQr : t.showQr}
             </button>
           </div>
@@ -611,8 +641,8 @@ function getText(lang: string) {
       sending: "Sending...",
       sent: "Sent",
       sendFailed: "Transaction failed.",
-      nativeInfo: "INRI is the native gas token of the network and pays transaction fees.",
-      tokenInfo: "ERC20 token transfer through the INRI network.",
+      nativeInfo: "Native token transfer pays network gas fees.",
+      tokenInfo: "ERC20 token transfer through the active network.",
       scanQr: "Scan QR",
       close: "Close",
       scanHint: "Point your camera at a QR code containing a wallet address.",
@@ -641,8 +671,8 @@ function getText(lang: string) {
       sending: "Enviando...",
       sent: "Enviado",
       sendFailed: "Falha na transação.",
-      nativeInfo: "INRI é o token nativo da rede e paga as taxas.",
-      tokenInfo: "Transferência de token ERC20 pela rede INRI.",
+      nativeInfo: "A transferência do token nativo paga as taxas da rede.",
+      tokenInfo: "Transferência de token ERC20 pela rede ativa.",
       scanQr: "Ler QR",
       close: "Fechar",
       scanHint: "Aponte sua câmera para um QR code com endereço de carteira.",
