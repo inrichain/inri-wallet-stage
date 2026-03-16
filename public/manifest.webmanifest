@@ -1,10 +1,10 @@
 {
-  "id": "/inri-wallet-stage/",
+  "id": "/",
   "name": "INRI Wallet",
   "short_name": "INRI",
   "description": "Professional multichain wallet for the INRI ecosystem",
-  "start_url": "/inri-wallet-stage/",
-  "scope": "/inri-wallet-stage/",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0b1120",
