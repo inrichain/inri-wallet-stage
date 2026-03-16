@@ -125,7 +125,11 @@ export default function ActivityScreen({
                       fontWeight: 800,
                     }}
                   >
-                    {item.status || tr(lang, "activity_confirmed")}
+                    {item.status === "failed"
+                      ? tr(lang, "activity_failed")
+                      : item.status === "pending"
+                      ? tr(lang, "activity_pending")
+                      : tr(lang, "activity_confirmed")}
                   </div>
                 </div>
 
