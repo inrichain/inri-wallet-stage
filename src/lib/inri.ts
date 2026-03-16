@@ -87,52 +87,130 @@ async function rpcCall(url: string, method: string, params: any[]) {
   });
 
   const data = await res.json();
-  if (data?.result !== undefined) return data.result;
-  throw new Error(data?.error?.message || "RPC error");
+
+  if (data?.error) {
+    throw new Error(data.error.message || "RPC error");
+  }
+
+  return data.result;
+}
+
+async function getNativeBalanceRaw(address: string) {
+  try {
+    const result = await rpcCall(RPC_URL, "eth_getBalance", [address, "latest"]);
+    return Number(ethers.formatEther(result)).toFixed(6);
+  } catch {
+    const result = await rpcCall(RPC_FALLBACK_URL, "eth_getBalance", [address, "latest"]);
+    return Number(ethers.formatEther(result)).toFixed(6);
+  }
 }
 
 export async function getNativeBalance(address: string) {
+  if (!address) return "0.000000";
+
   try {
-    const balanceHex = await rpcCall(RPC_URL, "eth_getBalance", [address, "latest"]);
-    return ethers.formatEther(balanceHex);
+    const raw = await provider.getBalance(address);
+    return Number(ethers.formatEther(raw)).toFixed(6);
   } catch {
-    const balanceHex = await rpcCall(RPC_FALLBACK_URL, "eth_getBalance", [address, "latest"]);
-    return ethers.formatEther(balanceHex);
+    try {
+      const raw = await fallbackProvider.getBalance(address);
+      return Number(ethers.formatEther(raw)).toFixed(6);
+    } catch {
+      return await getNativeBalanceRaw(address);
+    }
   }
+}
+
+async function getTokenBalanceWithProvider(
+  activeProvider: ethers.JsonRpcProvider,
+  tokenAddress: string,
+  walletAddress: string,
+  decimals = 18
+) {
+  const contract = new ethers.Contract(tokenAddress, ERC20_ABI, activeProvider);
+  const raw = await contract.balanceOf(walletAddress);
+  return Number(ethers.formatUnits(raw, decimals)).toFixed(6);
 }
 
 export async function getTokenBalance(
-  walletAddress: string,
   tokenAddress: string,
+  walletAddress: string,
   decimals = 18
 ) {
-  const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-  const raw = await contract.balanceOf(walletAddress);
-  return ethers.formatUnits(raw, decimals);
+  if (!tokenAddress || !walletAddress) return "0.000000";
+
+  try {
+    return await getTokenBalanceWithProvider(provider, tokenAddress, walletAddress, decimals);
+  } catch {
+    try {
+      return await getTokenBalanceWithProvider(
+        fallbackProvider,
+        tokenAddress,
+        walletAddress,
+        decimals
+      );
+    } catch {
+      return "0.000000";
+    }
+  }
 }
 
 export async function loadAllBalances(address: string, tokens: TokenItem[]) {
-  const out: Record<string, string> = {};
+  const balances: Record<string, string> = {};
 
-  for (const token of tokens) {
-    try {
-      if (token.isNative) {
-        const balance = await getNativeBalance(address);
-        out[token.symbol] = formatBalance(balance, 6);
-      } else if (token.address) {
-        const balance = await getTokenBalance(address, token.address, token.decimals || 18);
-        out[token.symbol] = formatBalance(balance, 6);
-      }
-    } catch {
-      out[token.symbol] = "0.000000";
+  if (!address) {
+    for (const token of tokens) {
+      balances[token.symbol] = "0.000000";
     }
+    return balances;
   }
 
-  return out;
+  await Promise.all(
+    tokens.map(async (token) => {
+      try {
+        if (token.isNative) {
+          balances[token.symbol] = await getNativeBalance(address);
+          return;
+        }
+
+        if (!token.address) {
+          balances[token.symbol] = "0.000000";
+          return;
+        }
+
+        balances[token.symbol] = await getTokenBalance(
+          token.address,
+          address,
+          token.decimals || 18
+        );
+      } catch {
+        balances[token.symbol] = "0.000000";
+      }
+    })
+  );
+
+  return balances;
 }
 
-export function formatBalance(value: string | number, decimals = 6) {
-  const n = Number(value || 0);
-  if (!Number.isFinite(n)) return "0.000000";
-  return n.toFixed(decimals);
+export function normalizeSeed(seed: string) {
+  return seed.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function isValidSeedPhrase(seed: string) {
+  const parts = normalizeSeed(seed).split(" ").filter(Boolean);
+  return [12, 15, 18, 21, 24].includes(parts.length);
+}
+
+export function shortAddress(address: string) {
+  if (!address) return "";
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+export function getMnemonicFromWallet(
+  wallet: ethers.Wallet | ethers.HDNodeWallet
+): string {
+  if ("mnemonic" in wallet && wallet.mnemonic && typeof wallet.mnemonic.phrase === "string") {
+    return wallet.mnemonic.phrase;
+  }
+  return "";
 }
