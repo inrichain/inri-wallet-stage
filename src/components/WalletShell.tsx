@@ -12,6 +12,7 @@ import SwapScreen from "../screens/SwapScreen";
 import BridgeScreen from "../screens/BridgeScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import NFTsScreen from "../screens/NFTsScreen";
+import StakingScreen from "../screens/StakingScreen";
 import {
   getMnemonicFromWallet,
   isValidSeedPhrase,
@@ -34,6 +35,7 @@ export type Tab =
   | "activity"
   | "swap"
   | "bridge"
+  | "staking"
   | "settings";
 
 type View = "auth" | "wallet";
@@ -63,9 +65,7 @@ export default function WalletShell() {
   const [theme, setTheme] = useState<"dark" | "light">(
     () => (localStorage.getItem(THEME_KEY) as "dark" | "light") || "dark"
   );
-  const [lang, setLang] = useState<string>(
-    () => localStorage.getItem(LANG_KEY) || "en"
-  );
+  const [lang, setLang] = useState<string>(() => localStorage.getItem(LANG_KEY) || "en");
 
   const [wallets, setWallets] = useState<WalletVault[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState("");
@@ -97,8 +97,7 @@ export default function WalletShell() {
         setWallets(parsed);
 
         if (parsed.length > 0) {
-          const found =
-            parsed.find((w) => w.id === currentId)?.id || parsed[0].id || "";
+          const found = parsed.find((w) => w.id === currentId)?.id || parsed[0].id || "";
           setSelectedWalletId(found);
         }
       } catch {
@@ -380,58 +379,25 @@ export default function WalletShell() {
         );
 
       case "receive":
-        return (
-          <ReceiveScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
+        return <ReceiveScreen theme={theme} lang={lang} address={address} />;
 
       case "tokens":
-        return (
-          <TokensScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
+        return <TokensScreen theme={theme} lang={lang} address={address} />;
 
       case "nfts":
-        return (
-          <NFTsScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
+        return <NFTsScreen theme={theme} lang={lang} address={address} />;
 
       case "activity":
-        return (
-          <ActivityScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
+        return <ActivityScreen theme={theme} lang={lang} address={address} />;
 
       case "swap":
-        return (
-          <SwapScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
+        return <SwapScreen theme={theme} lang={lang} address={address} />;
 
       case "bridge":
-        return (
-          <BridgeScreen
-            theme={theme}
-            lang={lang}
-            address={address}
-          />
-        );
+        return <BridgeScreen theme={theme} lang={lang} address={address} />;
+
+      case "staking":
+        return <StakingScreen theme={theme} lang={lang} />;
 
       case "settings":
         return (
@@ -611,10 +577,7 @@ export default function WalletShell() {
                   style={textareaStyle(theme)}
                 />
 
-                <button
-                  onClick={generateSeedPhrase}
-                  style={secondaryButtonStyle(theme)}
-                >
+                <button onClick={generateSeedPhrase} style={secondaryButtonStyle(theme)}>
                   {t.generateSeed}
                 </button>
 
@@ -712,7 +675,7 @@ export default function WalletShell() {
     <div
       style={{
         minHeight: "100vh",
-        paddingBottom: "112px",
+        paddingBottom: "132px",
         background:
           theme === "light"
             ? "linear-gradient(180deg,#eef3fb 0%, #f7f9fd 100%)"
@@ -720,7 +683,11 @@ export default function WalletShell() {
         boxSizing: "border-box",
       }}
     >
-      <Header walletName={currentWalletMeta?.name || "INRI Wallet"} theme={theme} />
+      <Header
+        walletName={currentWalletMeta?.name || "INRI Wallet"}
+        theme={theme}
+        lang={lang}
+      />
 
       <main
         style={{
@@ -828,11 +795,7 @@ function tabButtonStyle(
     border: active
       ? "1px solid #4d7ef2"
       : `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
-    background: active
-      ? "#3f7cff"
-      : theme === "light"
-      ? "#f3f6fc"
-      : "#141927",
+    background: active ? "#3f7cff" : theme === "light" ? "#f3f6fc" : "#141927",
     color: active ? "#fff" : theme === "light" ? "#10131a" : "#ffffff",
     cursor: "pointer",
     fontWeight: 800,
