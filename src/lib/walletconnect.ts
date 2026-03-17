@@ -22,7 +22,9 @@ export async function initWalletConnect(address: string, chainId = 3777) {
   const base = import.meta.env.BASE_URL || "/";
   const iconUrl = `${origin}${base}pwa-512.png`;
 
-  const core = new Core({ projectId });
+  const core = new Core({
+    projectId,
+  });
 
   web3wallet = await Web3Wallet.init({
     core,
@@ -79,9 +81,13 @@ export async function initWalletConnect(address: string, chainId = 3777) {
 
 export async function pairWalletConnect(uri: string) {
   if (!web3wallet) throw new Error("WalletConnect not initialized");
-  if (!uri?.startsWith("wc:")) throw new Error("Invalid WalletConnect URI");
 
-  await web3wallet.pair({ uri: uri.trim() });
+  const cleanUri = String(uri || "").trim();
+  if (!cleanUri.startsWith("wc:")) {
+    throw new Error("Invalid WalletConnect URI");
+  }
+
+  await web3wallet.pair({ uri: cleanUri });
 }
 
 export async function approveSessionProposal(proposal: any, address: string) {
@@ -105,12 +111,13 @@ export async function approveSessionProposal(proposal: any, address: string) {
   } catch (err) {
     console.error("buildApprovedNamespaces failed:", err);
 
+    const eip155 = supportedNamespaces.eip155;
+
     approvedNamespaces = {
       eip155: {
-        chains: supportedNamespaces.eip155.chains,
-        methods: supportedNamespaces.eip155.methods,
-        events: supportedNamespaces.eip155.events,
-        accounts: supportedNamespaces.eip155.accounts,
+        accounts: eip155.accounts,
+        methods: eip155.methods,
+        events: eip155.events,
       },
     };
   }
