@@ -73,6 +73,8 @@ export async function initWalletConnect(address: string, chainId = 3777) {
     try {
       const { topic, params, id } = event;
       const req = params?.request;
+      const session = web3wallet.getActiveSessions?.()?.[topic];
+      const peer = session?.peer?.metadata;
 
       wcStoreSetRequest({
         topic,
@@ -80,6 +82,11 @@ export async function initWalletConnect(address: string, chainId = 3777) {
         chainId: params?.chainId,
         method: req?.method,
         params: req?.params,
+        peerMetadata: {
+          name: peer?.name || "Unknown dApp",
+          url: peer?.url || "",
+          icons: peer?.icons || [],
+        },
         raw: event,
       });
     } catch (err) {

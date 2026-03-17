@@ -15,6 +15,7 @@ export function getSupportedNamespaces(address: string) {
         "eth_chainId",
         "personal_sign",
         "eth_sendTransaction",
+        "eth_signTypedData_v4",
       ],
       events: ["accountsChanged", "chainChanged"],
       accounts: [`${chain}:${address}`],
@@ -61,6 +62,22 @@ export async function handleRequestMethod(args: {
         : String(rawMessage ?? "");
 
     return await wallet.signMessage(message);
+  }
+
+  if (method === "eth_signTypedData_v4") {
+    const wallet = new ethers.Wallet(privateKey);
+    const payloadRaw = Array.isArray(params) ? params[1] : null;
+    const payload = typeof payloadRaw === "string" ? JSON.parse(payloadRaw) : payloadRaw;
+
+    if (!payload) {
+      throw new Error("Invalid typed data payload");
+    }
+
+    return await wallet.signTypedData(
+      payload.domain || {},
+      payload.types || {},
+      payload.message || {}
+    );
   }
 
   if (method === "eth_sendTransaction") {

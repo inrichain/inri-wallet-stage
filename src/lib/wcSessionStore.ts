@@ -16,6 +16,11 @@ export type PendingSessionRequest = {
   chainId: string;
   method: string;
   params: any;
+  peerMetadata?: {
+    name?: string;
+    url?: string;
+    icons?: string[];
+  };
   raw: any;
 };
 
