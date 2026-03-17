@@ -94,17 +94,13 @@ export default function WalletShell() {
   const [reauthOpen, setReauthOpen] = useState(false);
   const [reauthPassword, setReauthPassword] = useState("");
   const [reauthError, setReauthError] = useState("");
-  const [approvingRequest, setApprovingRequest] = useState(false);
 
   const autoLockTimerRef = useRef<number | null>(null);
-  const hiddenLockTimerRef = useRef<number | null>(null);
   const pendingSensitiveActionRef = useRef<null | ((overridePrivateKey?: string) => Promise<void>)>(null);
 
   const [wcProposal, setWcProposal] = useState<any | null>(null);
   const [wcRequest, setWcRequest] = useState<any | null>(null);
-  const wcProposalRef = useRef<any | null>(null);
-  const wcRequestRef = useRef<any | null>(null);
-  const reauthOpenRef = useRef(false);
+  const [wcApproving, setWcApproving] = useState(false);
 
   const t = {
     authSubtitle: tr(lang, "auth_subtitle"),
@@ -191,18 +187,6 @@ export default function WalletShell() {
     sync();
     return wcStoreSubscribe(sync);
   }, []);
-
-  useEffect(() => {
-    wcProposalRef.current = wcProposal;
-  }, [wcProposal]);
-
-  useEffect(() => {
-    wcRequestRef.current = wcRequest;
-  }, [wcRequest]);
-
-  useEffect(() => {
-    reauthOpenRef.current = reauthOpen;
-  }, [reauthOpen]);
 
   function ensureFavicon() {
     let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
@@ -443,33 +427,13 @@ export default function WalletShell() {
       markActivity();
     };
 
-    const clearHiddenTimer = () => {
-      if (hiddenLockTimerRef.current) {
-        window.clearTimeout(hiddenLockTimerRef.current);
-        hiddenLockTimerRef.current = null;
-      }
-    };
-
     const handleVisibility = () => {
-      if (document.hidden) {
-        if (!security.lockOnHidden) return;
-
-        const hasPendingWcFlow = !!wcProposalRef.current || !!wcRequestRef.current || reauthOpenRef.current;
-        if (hasPendingWcFlow) {
-          return;
-        }
-
-        clearHiddenTimer();
-        hiddenLockTimerRef.current = window.setTimeout(() => {
-          if (document.hidden) {
-            lockWallet("Wallet locked after staying in background");
-          }
-        }, 30000);
+      if (document.hidden && security.lockOnHidden) {
+        lockWallet("Wallet locked because the app went to background");
         return;
       }
 
-      clearHiddenTimer();
-      markActivity();
+      if (!document.hidden) markActivity();
     };
 
     markActivity();
@@ -482,10 +446,6 @@ export default function WalletShell() {
       if (autoLockTimerRef.current) {
         window.clearTimeout(autoLockTimerRef.current);
         autoLockTimerRef.current = null;
-      }
-      if (hiddenLockTimerRef.current) {
-        window.clearTimeout(hiddenLockTimerRef.current);
-        hiddenLockTimerRef.current = null;
       }
     };
   }, [lockWallet, markActivity, security.autoLockEnabled, security.lockOnHidden, unlockedWallet]);
@@ -504,7 +464,6 @@ export default function WalletShell() {
   }
 
   async function confirmSensitiveAction() {
-    if (approvingRequest) return;
     const vault = wallets.find((w) => w.id === (unlockedWallet?.id || selectedWalletId));
 
     if (!vault) {
@@ -536,13 +495,8 @@ export default function WalletShell() {
       setReauthError("");
 
       if (action) {
-        setApprovingRequest(true);
-        try {
-          await action(decrypted.privateKey);
-          markActivity();
-        } finally {
-          setApprovingRequest(false);
-        }
+        await action(decrypted.privateKey);
+        markActivity();
       }
     } catch {
       setReauthError("Wrong password");
@@ -604,31 +558,36 @@ export default function WalletShell() {
       showMessage("Unlock the wallet first");
       return;
     }
-    if (approvingRequest) return;
 
-    await runSensitiveAction(async (overridePrivateKey?: string) => {
-      setApprovingRequest(true);
-      try {
-        const result = await handleRequestMethod({
-          method: wcRequest.method,
-          params: wcRequest.params,
-          address: unlockedWallet.address,
-          privateKey: overridePrivateKey || unlockedWallet.privateKey,
-        });
+    if (wcApproving) return;
+    setWcApproving(true);
 
-        await approveSessionRequest(wcRequest, result);
-        showMessage("Request approved");
-      } catch (err: any) {
-        console.error(err);
-        showMessage(err?.message || "Failed to approve request");
-      } finally {
-        setApprovingRequest(false);
-      }
-    });
+    try {
+      await runSensitiveAction(async (overridePrivateKey?: string) => {
+        try {
+          const result = await handleRequestMethod({
+            method: wcRequest.method,
+            params: wcRequest.params,
+            address: unlockedWallet.address,
+            privateKey: overridePrivateKey || unlockedWallet.privateKey,
+          });
+
+          await approveSessionRequest(wcRequest, result);
+          showMessage("Request approved");
+        } catch (err: any) {
+          console.error(err);
+          showMessage(err?.message || "Failed to approve request");
+        } finally {
+          setWcApproving(false);
+        }
+      });
+    } catch {
+      setWcApproving(false);
+    }
   }
 
   async function onRejectRequest() {
-    if (!wcRequest) return;
+    if (!wcRequest || wcApproving) return;
 
     try {
       await rejectSessionRequest(wcRequest);
@@ -987,7 +946,7 @@ export default function WalletShell() {
         open={!!wcRequest}
         theme={theme}
         request={wcRequest}
-        approving={approvingRequest}
+        approving={wcApproving}
         onApprove={onApproveRequest}
         onReject={onRejectRequest}
       />
@@ -1026,6 +985,7 @@ export default function WalletShell() {
               <button
                 onClick={() => {
                   pendingSensitiveActionRef.current = null;
+                  setWcApproving(false);
                   setReauthOpen(false);
                   setReauthPassword("");
                   setReauthError("");
@@ -1050,7 +1010,7 @@ function overlayStyle(): React.CSSProperties {
     display: "grid",
     placeItems: "center",
     padding: 20,
-    zIndex: 15000,
+    zIndex: 20000,
   };
 }
 

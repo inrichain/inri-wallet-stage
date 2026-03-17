@@ -23,31 +23,24 @@ export default function WcRequestModal({
   const text = theme === "light" ? "#10131a" : "#fff";
   const sub = theme === "light" ? "#5f6b7d" : "#9aa4b5";
   const details = buildWcRequestDetails(request);
-  const primaryIcon = details.kind === "transaction" ? (details.networkIcon || details.dappIcon) : (details.dappIcon || details.networkIcon);
-  const [iconFailed, setIconFailed] = React.useState(false);
 
   return (
     <div style={overlayStyle}>
       <div style={panelStyle(theme)}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-          {!iconFailed && primaryIcon ? (
+          {details.networkLogo ? (
             <img
-              src={primaryIcon}
-              alt={details.kind === "transaction" ? details.networkName : details.dappName}
-              onError={() => setIconFailed(true)}
+              src={details.networkLogo}
+              alt={details.networkName}
               style={{ width: 42, height: 42, borderRadius: 12, objectFit: "cover" }}
             />
           ) : (
-            <div style={iconFallback(theme)}>
-              {(details.kind === "transaction" ? details.networkName : details.dappName).slice(0, 1).toUpperCase()}
-            </div>
+            <div style={iconFallback(theme)}>{details.networkName.slice(0, 1).toUpperCase()}</div>
           )}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 22, fontWeight: 800 }}>{details.title}</div>
             <div style={{ color: sub, fontSize: 14, lineHeight: 1.4 }}>{details.subtitle}</div>
-            <div style={{ color: text, fontWeight: 700, marginTop: 4 }}>
-              {details.kind === "transaction" ? details.networkName : details.dappName}
-            </div>
+            <div style={{ color: text, fontWeight: 700, marginTop: 4 }}>{details.dappName}</div>
             {!!details.dappUrl && (
               <div style={{ color: sub, fontSize: 13, wordBreak: "break-all" }}>{details.dappUrl}</div>
             )}
@@ -55,7 +48,7 @@ export default function WcRequestModal({
         </div>
 
         <div style={heroBox(theme)}>
-          <InfoRow label="Method" value={details.methodLabel || details.method} text={text} sub={sub} />
+          <InfoRow label="Method" value={details.displayMethod || details.methodLabel || details.method} text={text} sub={sub} />
           <InfoRow label="Network" value={details.networkName} text={text} sub={sub} />
           <InfoRow label="Chain" value={details.chainLabel} text={text} sub={sub} />
         </div>
@@ -100,18 +93,8 @@ export default function WcRequestModal({
           <>
             <SectionTitle text="Typed data summary" />
             <div style={gridStyle}>
-              <Card
-                theme={theme}
-                label="Domain"
-                value={details.summary?.domainName || "Unknown"}
-                hint="Signing domain"
-              />
-              <Card
-                theme={theme}
-                label="Primary type"
-                value={details.summary?.primaryType || "Unknown"}
-                hint="Main structured type"
-              />
+              <Card theme={theme} label="Domain" value={details.summary?.domainName || "Unknown"} hint="Signing domain" />
+              <Card theme={theme} label="Primary type" value={details.summary?.primaryType || "Unknown"} hint="Main structured type" />
               <Card
                 theme={theme}
                 label="Fields"
@@ -272,17 +255,17 @@ function preStyle(theme: "dark" | "light"): React.CSSProperties {
   };
 }
 
-function primaryBtn(disabled = false): React.CSSProperties {
+function primaryBtn(disabled: boolean): React.CSSProperties {
   return {
     flex: 1,
     height: 48,
     borderRadius: 14,
     border: "none",
-    background: "#3f7cff",
+    background: disabled ? "#6f89c9" : "#3f7cff",
     color: "#fff",
     fontWeight: 800,
-    cursor: disabled ? "wait" : "pointer",
-    opacity: disabled ? 0.82 : 1,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.85 : 1,
   };
 }
 
@@ -295,8 +278,7 @@ function secondaryBtn(theme: "dark" | "light"): React.CSSProperties {
     background: "transparent",
     color: theme === "light" ? "#10131a" : "#fff",
     fontWeight: 800,
-    cursor: disabled ? "wait" : "pointer",
-    opacity: disabled ? 0.82 : 1,
+    cursor: "pointer",
   };
 }
 

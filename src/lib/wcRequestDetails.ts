@@ -7,6 +7,20 @@ function shorten(value: string, left = 8, right = 6) {
   return `${value.slice(0, left)}...${value.slice(-right)}`;
 }
 
+function prettyMethod(method: string) {
+  if (!method) return "unknown";
+  return method.replace(/^eth_/, "").replace(/^personal_/, "").replace(/^wallet_/, "");
+}
+
+function titleCase(value: string) {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^./, (s) => s.toUpperCase());
+}
+
 function hexToBigIntSafe(value?: string | null): bigint | undefined {
   if (!value) return undefined;
   try {
@@ -59,30 +73,19 @@ function summarizeTypedData(payload: any) {
   };
 }
 
-function getMethodLabel(method: string) {
-  switch (method) {
-    case "eth_sendTransaction":
-      return "sendTransaction";
-    case "personal_sign":
-      return "personalSign";
-    case "eth_signTypedData_v4":
-      return "signTypedData_v4";
-    default:
-      return method;
-  }
-}
-
 export function buildWcRequestDetails(request: any) {
   const network = getStoredNetwork();
   const chainId = Number(network?.chainId || 3777);
   const method = request?.method || "unknown";
+  const cleanMethod = prettyMethod(method);
+  const cleanMethodLabel = titleCase(cleanMethod);
 
   const base = {
     method,
-    methodLabel: getMethodLabel(method),
+    methodLabel: cleanMethod,
     chainLabel: request?.chainId || `eip155:${chainId}`,
     networkName: network?.name || "Current network",
-    networkIcon: network?.logo || "",
+    networkLogo: network?.logo || "",
     dappName: request?.peerMetadata?.name || "Unknown dApp",
     dappUrl: request?.peerMetadata?.url || "",
     dappIcon: request?.peerMetadata?.icons?.[0] || "",
@@ -98,16 +101,14 @@ export function buildWcRequestDetails(request: any) {
     const maxFeePerGas = hexToBigIntSafe(tx?.maxFeePerGas);
     const maxPriorityFeePerGas = hexToBigIntSafe(tx?.maxPriorityFeePerGas);
     const effectiveGasPrice = maxFeePerGas ?? gasPrice;
-    const estimatedFee =
-      gasLimit !== undefined && effectiveGasPrice !== undefined
-        ? gasLimit * effectiveGasPrice
-        : undefined;
+    const estimatedFee = gasLimit !== undefined && effectiveGasPrice !== undefined ? gasLimit * effectiveGasPrice : undefined;
     const hasData = !!tx?.data && tx.data !== "0x";
 
     const riskItems: string[] = [];
     if (!tx?.to) riskItems.push("Contract creation or malformed transaction without destination.");
     if (hasData) riskItems.push("This transaction calls contract code. Review method intent carefully.");
     if (value > 0n) riskItems.push("This will move native funds from your wallet.");
+    if (riskItems.length === 0) riskItems.push("Confirm the destination and requested action before sending.");
 
     return {
       ...base,
@@ -131,13 +132,12 @@ export function buildWcRequestDetails(request: any) {
       dataPreview: hasData ? shorten(tx.data, 14, 10) : "No calldata",
       rawTx: tx,
       riskItems,
+      displayMethod: cleanMethodLabel,
     };
   }
 
   if (method === "personal_sign") {
-    const rawMessage = Array.isArray(request?.params)
-      ? (request.params[0] ?? request.params[1])
-      : "";
+    const rawMessage = Array.isArray(request?.params) ? request.params[0] ?? request.params[1] : "";
 
     const messageText =
       typeof rawMessage === "string" && rawMessage.startsWith("0x")
@@ -156,9 +156,8 @@ export function buildWcRequestDetails(request: any) {
       title: `${network?.name || "Wallet"} sign message`,
       subtitle: "Signing proves wallet control but does not send funds by itself.",
       preview: messageText,
-      riskItems: [
-        "Only sign messages you trust. They can authorize off-chain actions.",
-      ],
+      riskItems: ["Only sign messages you trust. They can authorize off-chain actions."],
+      displayMethod: cleanMethodLabel,
     };
   }
 
@@ -177,14 +176,16 @@ export function buildWcRequestDetails(request: any) {
         "Typed data can authorize spending permissions or delegated actions.",
         "Check the domain and primary type before approving.",
       ],
+      displayMethod: cleanMethodLabel,
     };
   }
 
   return {
     ...base,
     kind: "raw",
-    title: "Confirm request",
+    title: `${network?.name || "Wallet"} confirm request`,
     subtitle: "Unsupported request preview. Review the raw payload before approving.",
     riskItems: ["Unknown or advanced method. Approve only if you fully trust this dApp."],
+    displayMethod: cleanMethodLabel,
   };
 }
