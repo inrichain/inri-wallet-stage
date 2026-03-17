@@ -25,7 +25,6 @@ export default function WalletConnectQrScanner({
     if (!open) return;
 
     readerRef.current = new BrowserMultiFormatReader();
-
     openCamera();
 
     return () => {
@@ -49,12 +48,39 @@ export default function WalletConnectQrScanner({
     }
   }
 
+  function findBackCamera(devices: MediaDeviceInfo[]) {
+    const patterns = /back|rear|environment|traseira|traseiro/gi;
+    return devices.find((d) => patterns.test(`${d.label} ${d.deviceId}`));
+  }
+
+  async function startDecodeWithConstraints(
+    constraints: MediaStreamConstraints
+  ) {
+    if (!readerRef.current || !videoRef.current) return;
+
+    await readerRef.current.decodeFromConstraints(
+      constraints,
+      videoRef.current,
+      (result) => {
+        if (!result) return;
+
+        const text = result.getText()?.trim() || "";
+        setScannedText(text);
+
+        if (text.startsWith("wc:")) {
+          handleClose();
+          onScan(text);
+        }
+      }
+    );
+  }
+
   async function openCamera() {
     setCameraError("");
     setScannedText("");
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 120));
 
       if (!videoRef.current || !readerRef.current) {
         setCameraError("Camera unavailable.");
@@ -62,42 +88,43 @@ export default function WalletConnectQrScanner({
       }
 
       const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-      const backCamera =
-        devices.find((d) =>
-          /back|rear|environment/gi.test(`${d.label} ${d.deviceId}`)
-        ) || devices[0];
 
-      if (!backCamera) {
-        setCameraError("No camera found on this device.");
-        return;
-      }
+      const backCamera = findBackCamera(devices);
 
-      const constraints: MediaStreamConstraints = {
-        audio: false,
-        video: backCamera?.deviceId
-          ? { deviceId: { exact: backCamera.deviceId } }
-          : {
-              facingMode: { ideal: "environment" },
+      if (backCamera?.deviceId) {
+        try {
+          await startDecodeWithConstraints({
+            audio: false,
+            video: {
+              deviceId: { exact: backCamera.deviceId },
               width: { ideal: 1280 },
               height: { ideal: 720 },
             },
-      };
-
-      await readerRef.current.decodeFromConstraints(
-        constraints,
-        videoRef.current,
-        (result) => {
-          if (!result) return;
-
-          const text = result.getText()?.trim() || "";
-          setScannedText(text);
-
-          if (text.startsWith("wc:")) {
-            handleClose();
-            onScan(text);
-          }
+          });
+          return;
+        } catch (err) {
+          console.warn("Back camera by deviceId failed, trying environment mode", err);
         }
-      );
+      }
+
+      try {
+        await startDecodeWithConstraints({
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+        return;
+      } catch (err) {
+        console.warn("Environment camera failed, trying any camera", err);
+      }
+
+      await startDecodeWithConstraints({
+        audio: false,
+        video: true,
+      });
     } catch (err: any) {
       console.error(err);
       setCameraError(err?.message || "Could not open camera.");
@@ -166,7 +193,7 @@ export default function WalletConnectQrScanner({
             lineHeight: 1.5,
           }}
         >
-          Point your camera at a QR code containing a <strong>wc:</strong> WalletConnect URI.
+          Point the rear camera at a QR code containing a <strong>wc:</strong> WalletConnect URI.
         </div>
 
         <div
@@ -194,6 +221,10 @@ export default function WalletConnectQrScanner({
         <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
           <button onClick={() => fileRef.current?.click()} style={secondaryBtn(isLight)}>
             Scan from Image
+          </button>
+
+          <button onClick={openCamera} style={secondaryBtn(isLight)}>
+            Retry Camera
           </button>
 
           <button onClick={handleClose} style={secondaryBtn(isLight)}>
