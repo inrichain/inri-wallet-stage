@@ -98,10 +98,8 @@ export default function ActivityScreen({
                         color: isLight ? "#10131a" : "#ffffff",
                         fontSize: 17,
                       }}
-                    >
-                      {isOutgoing
-                        ? tr(lang, "activity_sent")
-                        : tr(lang, "activity_received")}
+>
+                      {activityTitle(item, isOutgoing, lang)}
                     </div>
 
                     <div
@@ -297,4 +295,12 @@ function actionLink(isLight: boolean): React.CSSProperties {
     fontWeight: 800,
     textDecoration: "none",
   };
+}
+
+
+function activityTitle(item: any, isOutgoing: boolean, lang: string) {
+  if (item.type === "bridge_deposit") return `Bridge deposit • ${item.bridgeDirection || "Bridge"}`;
+  if (item.type === "bridge_withdraw") return `Bridge withdraw • ${item.bridgeDirection || "Bridge"}`;
+  if (item.type === "swap") return "Swap";
+  return isOutgoing ? tr(lang, "activity_sent") : tr(lang, "activity_received");
 }
