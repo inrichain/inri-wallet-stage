@@ -9,6 +9,7 @@ export const projectId = "bfc7a39282888507c8c1dca6d8b2dbfe";
 let web3wallet: any = null;
 let currentAddress = "";
 let currentChainId = 3777;
+let approvingProposalIds = new Set<number>();
 
 export async function initWalletConnect(address: string, chainId = 3777) {
   if (!address) return null;
@@ -22,9 +23,7 @@ export async function initWalletConnect(address: string, chainId = 3777) {
   const base = import.meta.env.BASE_URL || "/";
   const iconUrl = `${origin}${base}pwa-512.png`;
 
-  const core = new Core({
-    projectId,
-  });
+  const core = new Core({ projectId });
 
   web3wallet = await Web3Wallet.init({
     core,
@@ -37,8 +36,6 @@ export async function initWalletConnect(address: string, chainId = 3777) {
   });
 
   web3wallet.on("session_proposal", async (proposal: any) => {
-    console.log("WC session_proposal:", proposal);
-
     const meta = proposal?.params?.proposer?.metadata;
     const requiredNamespaces = proposal?.params?.requiredNamespaces || {};
     const optionalNamespaces = proposal?.params?.optionalNamespaces || {};
@@ -55,8 +52,6 @@ export async function initWalletConnect(address: string, chainId = 3777) {
   });
 
   web3wallet.on("session_request", async (event: any) => {
-    console.log("WC session_request:", event);
-
     const { topic, params, id } = event;
     const req = params?.request;
 
@@ -70,8 +65,7 @@ export async function initWalletConnect(address: string, chainId = 3777) {
     });
   });
 
-  web3wallet.on("session_delete", async (event: any) => {
-    console.log("WC session_delete:", event);
+  web3wallet.on("session_delete", async () => {
     wcStoreSetProposal(null);
     wcStoreSetRequest(null);
   });
@@ -92,55 +86,76 @@ export async function pairWalletConnect(uri: string) {
 
 export async function approveSessionProposal(proposal: any, address: string) {
   if (!web3wallet) throw new Error("WalletConnect not initialized");
+  if (!proposal?.id || !proposal?.raw) throw new Error("Invalid session proposal");
+  if (approvingProposalIds.has(proposal.id)) return;
 
-  const rawProposal = proposal?.raw;
-  if (!rawProposal) throw new Error("Invalid session proposal");
-
-  const supportedNamespaces = getSupportedNamespaces(address);
-
-  console.log("WC supportedNamespaces:", supportedNamespaces);
-  console.log("WC rawProposal:", rawProposal);
-
-  let approvedNamespaces: any;
+  approvingProposalIds.add(proposal.id);
 
   try {
-    approvedNamespaces = buildApprovedNamespaces({
-      proposal: rawProposal,
-      supportedNamespaces,
+    const supportedNamespaces = getSupportedNamespaces(address);
+    let approvedNamespaces: any;
+
+    try {
+      approvedNamespaces = buildApprovedNamespaces({
+        proposal: proposal.raw,
+        supportedNamespaces,
+      });
+    } catch {
+      const eip155 = supportedNamespaces.eip155;
+
+      approvedNamespaces = {
+        eip155: {
+          accounts: eip155.accounts,
+          methods: eip155.methods,
+          events: eip155.events,
+        },
+      };
+    }
+
+    await web3wallet.approveSession({
+      id: proposal.id,
+      namespaces: approvedNamespaces,
     });
-  } catch (err) {
-    console.error("buildApprovedNamespaces failed:", err);
 
-    const eip155 = supportedNamespaces.eip155;
+    wcStoreSetProposal(null);
+  } catch (err: any) {
+    const msg = String(err?.message || "");
 
-    approvedNamespaces = {
-      eip155: {
-        accounts: eip155.accounts,
-        methods: eip155.methods,
-        events: eip155.events,
-      },
-    };
+    if (
+      msg.includes("recently deleted") ||
+      msg.includes("No matching key") ||
+      msg.includes("No proposal") ||
+      msg.includes("Missing or invalid")
+    ) {
+      wcStoreSetProposal(null);
+      return;
+    }
+
+    throw err;
+  } finally {
+    approvingProposalIds.delete(proposal.id);
   }
-
-  console.log("WC approvedNamespaces:", approvedNamespaces);
-
-  await web3wallet.approveSession({
-    id: proposal.id,
-    namespaces: approvedNamespaces,
-  });
-
-  wcStoreSetProposal(null);
 }
 
 export async function rejectSessionProposal(proposalId: number) {
   if (!web3wallet) throw new Error("WalletConnect not initialized");
 
-  await web3wallet.rejectSession({
-    id: proposalId,
-    reason: getSdkError("USER_REJECTED"),
-  });
-
-  wcStoreSetProposal(null);
+  try {
+    await web3wallet.rejectSession({
+      id: proposalId,
+      reason: getSdkError("USER_REJECTED"),
+    });
+  } catch (err: any) {
+    const msg = String(err?.message || "");
+    if (
+      !msg.includes("recently deleted") &&
+      !msg.includes("Missing or invalid")
+    ) {
+      throw err;
+    }
+  } finally {
+    wcStoreSetProposal(null);
+  }
 }
 
 export async function approveSessionRequest(request: any, result: any) {
