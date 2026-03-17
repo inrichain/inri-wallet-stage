@@ -22,6 +22,12 @@ export default function WcSessionProposalModal({
   const text = theme === "light" ? "#10131a" : "#ffffff";
   const sub = theme === "light" ? "#5f6b7d" : "#9aa4b5";
 
+  const requested =
+    proposal.requiredNamespaces &&
+    Object.keys(proposal.requiredNamespaces).length > 0
+      ? proposal.requiredNamespaces
+      : proposal.optionalNamespaces || {};
+
   return (
     <div style={overlayStyle}>
       <div
@@ -47,7 +53,7 @@ export default function WcSessionProposalModal({
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>Requested access</div>
           <pre style={preStyle(theme)}>
-            {JSON.stringify(proposal.requiredNamespaces, null, 2)}
+            {JSON.stringify(requested, null, 2)}
           </pre>
         </div>
 
