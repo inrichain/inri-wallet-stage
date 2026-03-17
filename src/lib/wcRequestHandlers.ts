@@ -1,6 +1,5 @@
 import { ethers } from "ethers";
-import { getSdkError } from "@walletconnect/utils";
-import { getCurrentNetwork } from "./network";
+import { getStoredNetwork } from "./network";
 import { sendNativeTransaction } from "./inri";
 
 export function getSupportedNamespaces(address: string) {
@@ -64,36 +63,39 @@ export async function handleRequestMethod(args: {
   }
 
   if (method === "eth_chainId") {
-    const net = getCurrentNetwork();
+    const net = getStoredNetwork();
     return ethers.toQuantity(net.chainId);
   }
 
   if (method === "personal_sign") {
     const wallet = new ethers.Wallet(privateKey);
-    const rawMessage = Array.isArray(params) ? (params[0] ?? params[1]) : "";
+
+    const rawMessage = Array.isArray(params)
+      ? (params[0] ?? params[1])
+      : "";
+
     const message =
       typeof rawMessage === "string" && rawMessage.startsWith("0x")
         ? ethers.getBytes(rawMessage)
         : String(rawMessage ?? "");
+
     return await wallet.signMessage(message);
   }
 
   if (method === "eth_sendTransaction") {
     const tx = Array.isArray(params) ? params[0] : params;
+
     return await sendNativeTransaction({
       privateKey,
-      to: tx.to,
-      value: tx.value || "0x0",
-      data: tx.data || "0x",
-      gasLimit: tx.gas,
-      maxFeePerGas: tx.maxFeePerGas,
-      maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
-      gasPrice: tx.gasPrice,
+      to: tx?.to,
+      value: tx?.value || "0x0",
+      data: tx?.data || "0x",
+      gasLimit: tx?.gas,
+      maxFeePerGas: tx?.maxFeePerGas,
+      maxPriorityFeePerGas: tx?.maxPriorityFeePerGas,
+      gasPrice: tx?.gasPrice,
     });
   }
 
-  throw {
-    code: 4200,
-    message: `Unsupported method: ${method}`,
-  };
+  throw new Error(`Unsupported method: ${method}`);
 }
