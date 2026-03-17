@@ -29,26 +29,32 @@ export async function initWalletConnect(address: string, chainId = 3777) {
     metadata: {
       name: "INRI Wallet",
       description: "Secure wallet for INRI ecosystem",
-      url: `${origin}${base}`,
+      url: origin,
       icons: [iconUrl],
     },
   });
 
   web3wallet.on("session_proposal", async (proposal: any) => {
+    console.log("WC session_proposal:", proposal);
+
     const meta = proposal?.params?.proposer?.metadata;
+    const requiredNamespaces = proposal?.params?.requiredNamespaces || {};
+    const optionalNamespaces = proposal?.params?.optionalNamespaces || {};
 
     wcStoreSetProposal({
       id: proposal.id,
       proposerName: meta?.name || "Unknown dApp",
       proposerUrl: meta?.url || "",
       proposerIcons: meta?.icons || [],
-      requiredNamespaces: proposal.params?.requiredNamespaces,
-      optionalNamespaces: proposal.params?.optionalNamespaces,
+      requiredNamespaces,
+      optionalNamespaces,
       raw: proposal,
     });
   });
 
   web3wallet.on("session_request", async (event: any) => {
+    console.log("WC session_request:", event);
+
     const { topic, params, id } = event;
     const req = params?.request;
 
@@ -62,7 +68,8 @@ export async function initWalletConnect(address: string, chainId = 3777) {
     });
   });
 
-  web3wallet.on("session_delete", async () => {
+  web3wallet.on("session_delete", async (event: any) => {
+    console.log("WC session_delete:", event);
     wcStoreSetProposal(null);
     wcStoreSetRequest(null);
   });
@@ -73,16 +80,42 @@ export async function initWalletConnect(address: string, chainId = 3777) {
 export async function pairWalletConnect(uri: string) {
   if (!web3wallet) throw new Error("WalletConnect not initialized");
   if (!uri?.startsWith("wc:")) throw new Error("Invalid WalletConnect URI");
+
   await web3wallet.pair({ uri: uri.trim() });
 }
 
 export async function approveSessionProposal(proposal: any, address: string) {
   if (!web3wallet) throw new Error("WalletConnect not initialized");
 
-  const approvedNamespaces = buildApprovedNamespaces({
-    proposal: proposal.raw,
-    supportedNamespaces: getSupportedNamespaces(address),
-  });
+  const rawProposal = proposal?.raw;
+  if (!rawProposal) throw new Error("Invalid session proposal");
+
+  const supportedNamespaces = getSupportedNamespaces(address);
+
+  console.log("WC supportedNamespaces:", supportedNamespaces);
+  console.log("WC rawProposal:", rawProposal);
+
+  let approvedNamespaces: any;
+
+  try {
+    approvedNamespaces = buildApprovedNamespaces({
+      proposal: rawProposal,
+      supportedNamespaces,
+    });
+  } catch (err) {
+    console.error("buildApprovedNamespaces failed:", err);
+
+    approvedNamespaces = {
+      eip155: {
+        chains: supportedNamespaces.eip155.chains,
+        methods: supportedNamespaces.eip155.methods,
+        events: supportedNamespaces.eip155.events,
+        accounts: supportedNamespaces.eip155.accounts,
+      },
+    };
+  }
+
+  console.log("WC approvedNamespaces:", approvedNamespaces);
 
   await web3wallet.approveSession({
     id: proposal.id,
