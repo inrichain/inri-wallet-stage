@@ -179,8 +179,8 @@ export default function SwapScreen({ theme = 'dark', lang = 'en', address }: { t
           <div style={{ ...panel(isLight), marginTop: 12 }}>
             <div style={label(isLight)}>{t.execution}</div>
             <div style={networkInfo(isLight)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <img src={network.logo} alt={network.name} style={{ width: 28, height: 28, borderRadius: 10 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <img src={network.logo} alt={network.name} style={networkExecutionLogo(isLight)} />
                 <div>
                   <div style={{ color: isLight ? '#10131a' : '#fff', fontWeight: 800 }}>{network.name}</div>
                   <div style={hint(isLight)}>Chain ID {network.chainId}</div>
@@ -267,6 +267,8 @@ function sectionHeader(isLight:boolean):React.CSSProperties{return{display:'flex
 const tokenBox:React.CSSProperties={display:'flex',alignItems:'center',gap:10,minWidth:0};
 function tokenPreview(isLight:boolean):React.CSSProperties{return{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',padding:'10px 12px',borderRadius:16,background:isLight?'#ffffff':'#0b1120',border:`1px solid ${isLight?'#e2e8f0':'#1f2937'}`}}
 const logoStyle:React.CSSProperties={width:42,height:42,borderRadius:14,objectFit:'cover',background:'#fff'};
+function networkExecutionLogo(isLight:boolean):React.CSSProperties{return{width:42,height:42,borderRadius:21,objectFit:'cover',background:isLight?'#f4f7fc':'#0d111b',flexShrink:0}}
+
 function tokenSelectStyle(isLight:boolean):React.CSSProperties{return{border:`1px solid ${isLight?'#dbe2f0':'#2a3344'}`,borderRadius:12,padding:'10px 12px',background:isLight?'#fff':'#111827',color:isLight?'#0f172a':'#fff',fontWeight:700}}
 function amountInput(isLight:boolean):React.CSSProperties{return{flex:1,border:`1px solid ${isLight?'#dbe2f0':'#2a3344'}`,borderRadius:14,padding:'14px 16px',background:isLight?'#ffffff':'#111827',color:isLight?'#10131a':'#fff',fontSize:26,fontWeight:900,minWidth:0}}
 const amountRow:React.CSSProperties={display:'flex',alignItems:'center',gap:10,marginTop:12};
