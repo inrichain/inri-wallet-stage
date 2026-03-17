@@ -9,6 +9,7 @@ import {
   submitSwapOperation,
 } from '../lib/swap';
 
+const BASE = import.meta.env.BASE_URL || '/';
 const SWAP_READY_FOR_INTEGRATION = true;
 
 export default function SwapScreen({ theme = 'dark', lang = 'en', address }: { theme?: 'dark' | 'light'; lang?: string; address: string }) {
@@ -125,7 +126,7 @@ export default function SwapScreen({ theme = 'dark', lang = 'en', address }: { t
           <div style={subhead(isLight)}>{t.swapSubtitle}</div>
         </div>
         <div style={chip(isLight)}>
-          <img src={network.logo} alt={network.name} style={chipLogo} />
+          <img src={getNetworkDisplayLogo(network)} alt={network.name} style={chipLogo} />
           <span>{network.name}</span>
         </div>
       </div>
@@ -180,7 +181,7 @@ export default function SwapScreen({ theme = 'dark', lang = 'en', address }: { t
             <div style={label(isLight)}>{t.execution}</div>
             <div style={networkInfo(isLight)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <img src={network.logo} alt={network.name} style={networkExecutionLogo(isLight)} />
+                <img src={getNetworkDisplayLogo(network)} alt={network.name} style={networkExecutionLogo(isLight)} />
                 <div>
                   <div style={{ color: isLight ? '#10131a' : '#fff', fontWeight: 800 }}>{network.name}</div>
                   <div style={hint(isLight)}>Chain ID {network.chainId}</div>
@@ -260,14 +261,18 @@ function panel(isLight:boolean):React.CSSProperties{return{border:`1px solid ${i
 function banner(isLight:boolean, ready:boolean):React.CSSProperties{return{margin:'12px 0',padding:'12px 14px',borderRadius:14,background:ready?(isLight?'#eefbf4':'#11241b'):(isLight?'#eef4ff':'#16213b'),color:ready?'#16a34a':'#3f7cff',fontWeight:700}}
 function chip(isLight:boolean):React.CSSProperties{return{display:'inline-flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:999,background:isLight?'#eef4ff':'#16213b',color:'#3f7cff',fontWeight:800,fontSize:13}}
 function notice(isLight:boolean):React.CSSProperties{return{marginBottom:12,padding:'12px 14px',borderRadius:14,background:isLight?'#fff7ed':'#2a1d0d',color:'#f59e0b',fontWeight:700}}
-const chipLogo:React.CSSProperties={width:18,height:18,borderRadius:9,objectFit:'cover'};
+const chipLogo:React.CSSProperties={width:18,height:18,borderRadius:999,objectFit:'cover',background:'transparent'};
 function label(isLight:boolean):React.CSSProperties{return{marginBottom:10,fontSize:13,color:isLight?'#5b6578':'#97a0b3'}}
 function hint(isLight:boolean):React.CSSProperties{return{fontSize:12,color:isLight?'#5b6578':'#97a0b3'}}
 function sectionHeader(isLight:boolean):React.CSSProperties{return{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:10,fontSize:13,color:isLight?'#5b6578':'#97a0b3'}}
 const tokenBox:React.CSSProperties={display:'flex',alignItems:'center',gap:10,minWidth:0};
 function tokenPreview(isLight:boolean):React.CSSProperties{return{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',padding:'10px 12px',borderRadius:16,background:isLight?'#ffffff':'#0b1120',border:`1px solid ${isLight?'#e2e8f0':'#1f2937'}`}}
-const logoStyle:React.CSSProperties={width:42,height:42,borderRadius:14,objectFit:'cover',background:'#fff'};
-function networkExecutionLogo(isLight:boolean):React.CSSProperties{return{width:42,height:42,borderRadius:21,objectFit:'cover',background:isLight?'#f4f7fc':'#0d111b',flexShrink:0}}
+const logoStyle:React.CSSProperties={width:42,height:42,borderRadius:21,objectFit:'cover',background:'transparent'};
+function networkExecutionLogo(isLight:boolean):React.CSSProperties{return{width:42,height:42,borderRadius:21,objectFit:'cover',background:'transparent',flexShrink:0}}
+function getNetworkDisplayLogo(network: NetworkItem) {
+  if (network.key === 'inri') return `${BASE}token-inri.png`;
+  return network.logo;
+}
 
 function tokenSelectStyle(isLight:boolean):React.CSSProperties{return{border:`1px solid ${isLight?'#dbe2f0':'#2a3344'}`,borderRadius:12,padding:'10px 12px',background:isLight?'#fff':'#111827',color:isLight?'#0f172a':'#fff',fontWeight:700}}
 function amountInput(isLight:boolean):React.CSSProperties{return{flex:1,border:`1px solid ${isLight?'#dbe2f0':'#2a3344'}`,borderRadius:14,padding:'14px 16px',background:isLight?'#ffffff':'#111827',color:isLight?'#10131a':'#fff',fontSize:26,fontWeight:900,minWidth:0}}
