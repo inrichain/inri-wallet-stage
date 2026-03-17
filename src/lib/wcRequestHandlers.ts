@@ -2,11 +2,13 @@ import { ethers } from "ethers";
 import { getStoredNetwork } from "./network";
 
 export function getSupportedNamespaces(address: string) {
-  const chains = [1, 10, 56, 137, 42161, 3777];
+  const network = getStoredNetwork();
+  const chainId = Number(network?.chainId || 3777);
+  const chain = `eip155:${chainId}`;
 
   return {
     eip155: {
-      chains: chains.map((id) => `eip155:${id}`),
+      chains: [chain],
       methods: [
         "eth_accounts",
         "eth_requestAccounts",
@@ -15,38 +17,9 @@ export function getSupportedNamespaces(address: string) {
         "eth_sendTransaction",
       ],
       events: ["accountsChanged", "chainChanged"],
-      accounts: chains.map((id) => `eip155:${id}:${address}`),
+      accounts: [`${chain}:${address}`],
     },
   };
-}
-
-export async function approveRequestWithResult(
-  web3wallet: any,
-  event: any,
-  result: any
-) {
-  await web3wallet.respondSessionRequest({
-    topic: event.topic,
-    response: {
-      id: event.id,
-      jsonrpc: "2.0",
-      result,
-    },
-  });
-}
-
-export async function rejectRequestUserRejected(web3wallet: any, event: any) {
-  await web3wallet.respondSessionRequest({
-    topic: event.topic,
-    response: {
-      id: event.id,
-      jsonrpc: "2.0",
-      error: {
-        code: 4001,
-        message: "User rejected the request",
-      },
-    },
-  });
 }
 
 function hexToBigIntSafe(value?: string | null): bigint | undefined {
@@ -72,7 +45,7 @@ export async function handleRequestMethod(args: {
 
   if (method === "eth_chainId") {
     const net = getStoredNetwork();
-    return ethers.toQuantity(net.chainId);
+    return ethers.toQuantity(Number(net.chainId));
   }
 
   if (method === "personal_sign") {
