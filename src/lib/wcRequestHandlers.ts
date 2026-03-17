@@ -1,6 +1,5 @@
 import { ethers } from "ethers";
 import { getStoredNetwork } from "./network";
-import { signTypedDataFromRequest } from "./wcTypedData";
 
 export function getSupportedNamespaces(address: string) {
   const network = getStoredNetwork();
@@ -15,10 +14,11 @@ export function getSupportedNamespaces(address: string) {
         "eth_requestAccounts",
         "eth_chainId",
         "personal_sign",
+        "eth_sign",
+        "eth_sendTransaction",
         "eth_signTypedData",
         "eth_signTypedData_v3",
         "eth_signTypedData_v4",
-        "eth_sendTransaction",
       ],
       events: ["accountsChanged", "chainChanged"],
       accounts: [`${chain}:${address}`],
@@ -52,11 +52,13 @@ export async function handleRequestMethod(args: {
     return ethers.toQuantity(Number(net.chainId));
   }
 
-  if (method === "personal_sign") {
+  if (method === "personal_sign" || method === "eth_sign") {
     const wallet = new ethers.Wallet(privateKey);
 
     const rawMessage = Array.isArray(params)
-      ? (params[0] ?? params[1])
+      ? method === "eth_sign"
+        ? params[1]
+        : (params[0] ?? params[1])
       : "";
 
     const message =
@@ -67,8 +69,29 @@ export async function handleRequestMethod(args: {
     return await wallet.signMessage(message);
   }
 
-  if (method === "eth_signTypedData" || method === "eth_signTypedData_v3" || method === "eth_signTypedData_v4") {
-    return signTypedDataFromRequest({ method, params, privateKey });
+  if (
+    method === "eth_signTypedData" ||
+    method === "eth_signTypedData_v3" ||
+    method === "eth_signTypedData_v4"
+  ) {
+    const wallet = new ethers.Wallet(privateKey);
+    const payloadRaw = Array.isArray(params)
+      ? (params[1] ?? params[0])
+      : null;
+    const payload = typeof payloadRaw === "string" ? JSON.parse(payloadRaw) : payloadRaw;
+
+    if (!payload) {
+      throw new Error("Invalid typed data payload");
+    }
+
+    const types = { ...(payload.types || {}) };
+    delete types.EIP712Domain;
+
+    return await wallet.signTypedData(
+      payload.domain || {},
+      types,
+      payload.message || {}
+    );
   }
 
   if (method === "eth_sendTransaction") {

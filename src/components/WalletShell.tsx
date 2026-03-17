@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ethers } from "ethers";
 import { initWalletConnect } from "../lib/walletconnect";
 import { tr } from "../i18n/translations";
@@ -24,12 +24,9 @@ import {
 } from "../lib/walletconnect";
 import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
-import {
-  getMnemonicFromWallet,
-  isValidSeedPhrase,
-  normalizeSeed,
-  shortAddress,
-} from "../lib/inri";
+import { isValidSeedPhrase, normalizeSeed, shortAddress } from "../lib/inri";
+import { getSecuritySettings, type SecuritySettings } from "../lib/security";
+import { installDesktopEthereumProvider } from "../lib/desktopProvider";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const VAULTS_KEY = "inri_wallet_vaults_v2";
@@ -64,7 +61,6 @@ type UnlockedWallet = {
   id: string;
   name: string;
   address: string;
-  mnemonic: string;
   privateKey: string;
 };
 
@@ -95,9 +91,17 @@ export default function WalletShell() {
   const [loading, setLoading] = useState(false);
 
   const [unlockedWallet, setUnlockedWallet] = useState<UnlockedWallet | null>(null);
+  const [security, setSecurity] = useState<SecuritySettings>(() => getSecuritySettings());
+  const [reauthOpen, setReauthOpen] = useState(false);
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [reauthError, setReauthError] = useState("");
+
+  const autoLockTimerRef = useRef<number | null>(null);
+  const pendingSensitiveActionRef = useRef<null | ((overridePrivateKey?: string) => Promise<void>)>(null);
 
   const [wcProposal, setWcProposal] = useState<any | null>(null);
   const [wcRequest, setWcRequest] = useState<any | null>(null);
+  const [wcApproving, setWcApproving] = useState(false);
 
   const t = {
     authSubtitle: tr(lang, "auth_subtitle"),
@@ -152,6 +156,13 @@ export default function WalletShell() {
   }, []);
 
   useEffect(() => {
+    const syncSecurity = () => setSecurity(getSecuritySettings());
+    syncSecurity();
+    window.addEventListener("wallet-security-updated", syncSecurity);
+    return () => window.removeEventListener("wallet-security-updated", syncSecurity);
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem(THEME_KEY, theme);
     localStorage.setItem(LANG_KEY, lang);
 
@@ -196,10 +207,10 @@ export default function WalletShell() {
     localStorage.setItem(VAULTS_KEY, JSON.stringify(next));
   }
 
-  function showMessage(text: string) {
+  const showMessage = useCallback((text: string) => {
     setMessage(text);
     window.setTimeout(() => setMessage(""), 2600);
-  }
+  }, []);
 
   function generateSeedPhrase() {
     try {
@@ -251,7 +262,6 @@ export default function WalletShell() {
         id: item.id,
         name: item.name,
         address: baseWallet.address,
-        mnemonic: generatedSeed.trim(),
         privateKey: baseWallet.privateKey,
       });
 
@@ -319,7 +329,6 @@ export default function WalletShell() {
         id: item.id,
         name: item.name,
         address: baseWallet.address,
-        mnemonic: normalizedSeed,
         privateKey: baseWallet.privateKey,
       });
 
@@ -357,13 +366,10 @@ export default function WalletShell() {
         unlockPassword.trim()
       );
 
-      const mnemonic = getMnemonicFromWallet(decrypted);
-
       setUnlockedWallet({
         id: vault.id,
         name: vault.name,
         address: decrypted.address,
-        mnemonic,
         privateKey: decrypted.privateKey,
       });
 
@@ -379,11 +385,123 @@ export default function WalletShell() {
     }
   }
 
-  function lockWallet() {
-    setUnlockedWallet(null);
+  const lockWallet = useCallback((reason?: string) => {
+    pendingSensitiveActionRef.current = null;
+    setReauthOpen(false);
+    setReauthPassword("");
+    setReauthError("");
+    setUnlockedWallet((current) => {
+      if (!current) return null;
+      return null;
+    });
     setView("auth");
     setUnlockPassword("");
-    showMessage(t.locked);
+    showMessage(reason || t.locked);
+  }, [t.locked]);
+
+  const markActivity = useCallback(() => {
+    if (!unlockedWallet || !security.autoLockEnabled) return;
+    if (autoLockTimerRef.current) {
+      window.clearTimeout(autoLockTimerRef.current);
+    }
+
+    autoLockTimerRef.current = window.setTimeout(() => {
+      lockWallet(`Auto-locked after ${security.autoLockMinutes} minutes of inactivity`);
+    }, security.autoLockMinutes * 60 * 1000);
+  }, [lockWallet, security.autoLockEnabled, security.autoLockMinutes, unlockedWallet]);
+
+  useEffect(() => {
+    if (!unlockedWallet || !security.autoLockEnabled) {
+      if (autoLockTimerRef.current) {
+        window.clearTimeout(autoLockTimerRef.current);
+        autoLockTimerRef.current = null;
+      }
+      return;
+    }
+
+    const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart", "focus", "mousemove"];
+    let throttle = 0;
+    const handleActivity = () => {
+      const now = Date.now();
+      if (now - throttle < 1500) return;
+      throttle = now;
+      markActivity();
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden && security.lockOnHidden) {
+        lockWallet("Wallet locked because the app went to background");
+        return;
+      }
+
+      if (!document.hidden) markActivity();
+    };
+
+    markActivity();
+    events.forEach((eventName) => window.addEventListener(eventName, handleActivity, { passive: true }));
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      events.forEach((eventName) => window.removeEventListener(eventName, handleActivity));
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (autoLockTimerRef.current) {
+        window.clearTimeout(autoLockTimerRef.current);
+        autoLockTimerRef.current = null;
+      }
+    };
+  }, [lockWallet, markActivity, security.autoLockEnabled, security.lockOnHidden, unlockedWallet]);
+
+  async function runSensitiveAction(action: (overridePrivateKey?: string) => Promise<void>) {
+    if (!security.requirePasswordForSensitiveActions) {
+      await action();
+      markActivity();
+      return;
+    }
+
+    pendingSensitiveActionRef.current = action;
+    setReauthPassword("");
+    setReauthError("");
+    setReauthOpen(true);
+  }
+
+  async function confirmSensitiveAction() {
+    const vault = wallets.find((w) => w.id === (unlockedWallet?.id || selectedWalletId));
+
+    if (!vault) {
+      setReauthError("Wallet vault not found");
+      return;
+    }
+
+    if (!reauthPassword.trim()) {
+      setReauthError("Enter your password");
+      return;
+    }
+
+    try {
+      const decrypted = await ethers.Wallet.fromEncryptedJson(vault.encryptedJson, reauthPassword.trim());
+      setUnlockedWallet((current) =>
+        current
+          ? {
+              ...current,
+              address: decrypted.address,
+              privateKey: decrypted.privateKey,
+            }
+          : current
+      );
+
+      const action = pendingSensitiveActionRef.current;
+      pendingSensitiveActionRef.current = null;
+      setReauthOpen(false);
+      setReauthPassword("");
+      setReauthError("");
+
+      if (action) {
+        await action(decrypted.privateKey);
+        markActivity();
+      }
+    } catch {
+      setReauthError("Wrong password");
+    }
   }
 
   const currentWalletMeta = useMemo(() => {
@@ -408,6 +526,33 @@ export default function WalletShell() {
       console.error("WalletConnect init failed:", err);
     });
   }, [activeAddress]);
+
+  useEffect(() => {
+    const cleanup = installDesktopEthereumProvider({
+      getAddress: () => unlockedWallet?.address || "",
+      getPrivateKey: () => unlockedWallet?.privateKey || "",
+      requireSensitiveApproval: async ({ method, params, address, privateKey }) => {
+        return await new Promise((resolve, reject) => {
+          runSensitiveAction(async (overridePrivateKey?: string) => {
+            try {
+              const result = await handleRequestMethod({
+                method,
+                params,
+                address,
+                privateKey: overridePrivateKey || privateKey,
+              });
+              resolve(result);
+            } catch (err) {
+              reject(err);
+            }
+          }).catch(reject);
+        });
+      },
+      showMessage,
+    });
+
+    return cleanup;
+  }, [showMessage, unlockedWallet, wallets, selectedWalletId, security.requirePasswordForSensitiveActions]);
 
   async function onApproveProposal() {
     if (!unlockedWallet || !wcProposal) {
@@ -442,24 +587,35 @@ export default function WalletShell() {
       return;
     }
 
-    try {
-      const result = await handleRequestMethod({
-        method: wcRequest.method,
-        params: wcRequest.params,
-        address: unlockedWallet.address,
-        privateKey: unlockedWallet.privateKey,
-      });
+    if (wcApproving) return;
+    setWcApproving(true);
 
-      await approveSessionRequest(wcRequest, result);
-      showMessage("Request approved");
-    } catch (err: any) {
-      console.error(err);
-      showMessage(err?.message || "Failed to approve request");
+    try {
+      await runSensitiveAction(async (overridePrivateKey?: string) => {
+        try {
+          const result = await handleRequestMethod({
+            method: wcRequest.method,
+            params: wcRequest.params,
+            address: unlockedWallet.address,
+            privateKey: overridePrivateKey || unlockedWallet.privateKey,
+          });
+
+          await approveSessionRequest(wcRequest, result);
+          showMessage("Request approved");
+        } catch (err: any) {
+          console.error(err);
+          showMessage(err?.message || "Failed to approve request");
+        } finally {
+          setWcApproving(false);
+        }
+      });
+    } catch {
+      setWcApproving(false);
     }
   }
 
   async function onRejectRequest() {
-    if (!wcRequest) return;
+    if (!wcRequest || wcApproving) return;
 
     try {
       await rejectSessionRequest(wcRequest);
@@ -472,14 +628,14 @@ export default function WalletShell() {
 
   const renderTab = () => {
     const address = unlockedWallet?.address || currentWalletMeta?.address || "";
-    const mnemonic = unlockedWallet?.mnemonic || "";
+    const privateKey = unlockedWallet?.privateKey || "";
 
     switch (tab) {
       case "dashboard":
         return <DashboardScreen setTab={setTab} theme={theme} lang={lang} address={address} />;
 
       case "send":
-        return <SendScreen theme={theme} lang={lang} address={address} mnemonic={mnemonic} />;
+        return <SendScreen theme={theme} lang={lang} address={address} privateKey={privateKey} />;
 
       case "receive":
         return <ReceiveScreen theme={theme} lang={lang} address={address} />;
@@ -509,6 +665,7 @@ export default function WalletShell() {
             setTheme={setTheme}
             lang={lang}
             setLang={setLang}
+            security={security}
           />
         );
 
@@ -817,11 +974,122 @@ export default function WalletShell() {
         open={!!wcRequest}
         theme={theme}
         request={wcRequest}
+        approving={wcApproving}
         onApprove={onApproveRequest}
         onReject={onRejectRequest}
       />
+
+      {reauthOpen ? (
+        <div style={overlayStyle()}>
+          <div style={reauthCardStyle(theme === "light")}>
+            <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>
+              Confirm sensitive action
+            </div>
+            <div
+              style={{
+                color: theme === "light" ? "#5b6578" : "#97a0b3",
+                lineHeight: 1.55,
+                marginBottom: 14,
+              }}
+            >
+              Re-enter your password before approving WalletConnect signatures or transactions.
+            </div>
+            <input
+              type="password"
+              value={reauthPassword}
+              onChange={(e) => setReauthPassword(e.target.value)}
+              placeholder="Wallet password"
+              style={authInputStyle(theme)}
+            />
+            {reauthError ? (
+              <div style={{ marginTop: 10, color: "#ff7b7b", fontSize: 13, fontWeight: 700 }}>
+                {reauthError}
+              </div>
+            ) : null}
+            <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+              <button onClick={confirmSensitiveAction} style={primaryActionStyle()}>
+                Confirm
+              </button>
+              <button
+                onClick={() => {
+                  pendingSensitiveActionRef.current = null;
+                  setWcApproving(false);
+                  setReauthOpen(false);
+                  setReauthPassword("");
+                  setReauthError("");
+                }}
+                style={secondaryActionStyle(theme === "light")}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function overlayStyle(): React.CSSProperties {
+  return {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(3,6,14,.72)",
+    display: "grid",
+    placeItems: "center",
+    padding: 20,
+    zIndex: 20000,
+  };
+}
+
+function reauthCardStyle(isLight: boolean): React.CSSProperties {
+  return {
+    width: "min(420px, 100%)",
+    borderRadius: 24,
+    padding: 20,
+    background: isLight ? "#ffffff" : "#111826",
+    border: `1px solid ${isLight ? "#dbe2f0" : "#263247"}`,
+    boxShadow: "0 20px 50px rgba(0,0,0,.32)",
+    color: isLight ? "#10131a" : "#ffffff",
+  };
+}
+
+function authInputStyle(theme: "dark" | "light"): React.CSSProperties {
+  const isLight = theme === "light";
+  return {
+    width: "100%",
+    padding: 12,
+    borderRadius: 14,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#263247"}`,
+    background: isLight ? "#f6f8fc" : "#0b1120",
+    color: isLight ? "#10131a" : "#ffffff",
+    boxSizing: "border-box",
+    outline: "none",
+  };
+}
+
+function primaryActionStyle(): React.CSSProperties {
+  return {
+    padding: "12px 16px",
+    borderRadius: 14,
+    border: "none",
+    background: "#3f7cff",
+    color: "#fff",
+    cursor: "pointer",
+    fontWeight: 800,
+  };
+}
+
+function secondaryActionStyle(isLight: boolean): React.CSSProperties {
+  return {
+    padding: "12px 16px",
+    borderRadius: 14,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#263247"}`,
+    background: isLight ? "#ffffff" : "#182235",
+    color: isLight ? "#10131a" : "#ffffff",
+    cursor: "pointer",
+    fontWeight: 700,
+  };
 }
 
 function tabButtonStyle(
