@@ -1,6 +1,5 @@
 import { ethers } from "ethers";
 import { getStoredNetwork } from "./network";
-import { sendNativeTransaction } from "./inri";
 
 export function getSupportedNamespaces(address: string) {
   const chains = [1, 10, 56, 137, 42161, 3777];
@@ -50,6 +49,15 @@ export async function rejectRequestUserRejected(web3wallet: any, event: any) {
   });
 }
 
+function hexToBigIntSafe(value?: string | null): bigint | undefined {
+  if (!value) return undefined;
+  try {
+    return BigInt(value);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function handleRequestMethod(args: {
   method: string;
   params: any;
@@ -84,17 +92,32 @@ export async function handleRequestMethod(args: {
 
   if (method === "eth_sendTransaction") {
     const tx = Array.isArray(params) ? params[0] : params;
+    const net = getStoredNetwork();
 
-    return await sendNativeTransaction({
-      privateKey,
-      to: tx?.to,
-      value: tx?.value || "0x0",
-      data: tx?.data || "0x",
-      gasLimit: tx?.gas,
-      maxFeePerGas: tx?.maxFeePerGas,
-      maxPriorityFeePerGas: tx?.maxPriorityFeePerGas,
-      gasPrice: tx?.gasPrice,
-    });
+    if (!net?.rpcUrl) {
+      throw new Error("RPC URL not configured for current network");
+    }
+
+    const provider = new ethers.JsonRpcProvider(net.rpcUrl, Number(net.chainId));
+    const wallet = new ethers.Wallet(privateKey, provider);
+
+    const txRequest: ethers.TransactionRequest = {
+      to: tx?.to || undefined,
+      data: tx?.data || undefined,
+      value: hexToBigIntSafe(tx?.value) ?? 0n,
+      gasLimit: hexToBigIntSafe(tx?.gas),
+      gasPrice: hexToBigIntSafe(tx?.gasPrice),
+      maxFeePerGas: hexToBigIntSafe(tx?.maxFeePerGas),
+      maxPriorityFeePerGas: hexToBigIntSafe(tx?.maxPriorityFeePerGas),
+      nonce:
+        tx?.nonce !== undefined && tx?.nonce !== null
+          ? Number(tx.nonce)
+          : undefined,
+      chainId: Number(net.chainId),
+    };
+
+    const sent = await wallet.sendTransaction(txRequest);
+    return sent.hash;
   }
 
   throw new Error(`Unsupported method: ${method}`);
