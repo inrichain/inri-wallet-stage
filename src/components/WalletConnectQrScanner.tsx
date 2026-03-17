@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 
 type Props = {
   open: boolean;
@@ -14,70 +14,129 @@ export default function WalletConnectQrScanner({
   onClose,
   onScan,
 }: Props) {
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const regionIdRef = useRef(`wc-qr-reader-${Math.random().toString(36).slice(2)}`);
-  const [error, setError] = useState("");
+  const isLight = theme === "light";
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const [cameraError, setCameraError] = useState("");
+  const [scannedText, setScannedText] = useState("");
 
   useEffect(() => {
     if (!open) return;
 
-    let cancelled = false;
+    readerRef.current = new BrowserMultiFormatReader();
 
-    async function startScanner() {
-      try {
-        setError("");
-
-        const scanner = new Html5Qrcode(regionIdRef.current);
-        scannerRef.current = scanner;
-
-        await scanner.start(
-          { facingMode: "environment" },
-          {
-            fps: 10,
-            qrbox: { width: 240, height: 240 },
-            aspectRatio: 1,
-          },
-          async (decodedText) => {
-            if (cancelled) return;
-
-            if (decodedText?.startsWith("wc:")) {
-              try {
-                await stopScanner();
-              } catch {}
-              onScan(decodedText);
-            }
-          },
-          () => {}
-        );
-      } catch (err: any) {
-        console.error(err);
-        setError(err?.message || "Could not open camera");
-      }
-    }
-
-    startScanner();
+    openCamera();
 
     return () => {
-      cancelled = true;
-      stopScanner();
+      try {
+        (readerRef.current as any)?.reset?.();
+      } catch {}
+      stopCameraTracks();
     };
   }, [open]);
 
-  async function stopScanner() {
-    try {
-      if (scannerRef.current) {
-        const state = scannerRef.current.getState();
-        if (state === 2 || state === 3) {
-          await scannerRef.current.stop();
-        }
-        await scannerRef.current.clear();
-      }
-    } catch {}
-    scannerRef.current = null;
+  function stopCameraTracks() {
+    const video = videoRef.current;
+    const stream = video?.srcObject as MediaStream | null;
+
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+
+    if (video) {
+      video.srcObject = null;
+    }
   }
 
-  async function handleClose() {
-    await stopScanner();
+  async function openCamera() {
+    setCameraError("");
+    setScannedText("");
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      if (!videoRef.current || !readerRef.current) {
+        setCameraError("Camera unavailable.");
+        return;
+      }
+
+      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+      const backCamera =
+        devices.find((d) =>
+          /back|rear|environment/gi.test(`${d.label} ${d.deviceId}`)
+        ) || devices[0];
+
+      if (!backCamera) {
+        setCameraError("No camera found on this device.");
+        return;
+      }
+
+      const constraints: MediaStreamConstraints = {
+        audio: false,
+        video: backCamera?.deviceId
+          ? { deviceId: { exact: backCamera.deviceId } }
+          : {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+      };
+
+      await readerRef.current.decodeFromConstraints(
+        constraints,
+        videoRef.current,
+        (result) => {
+          if (!result) return;
+
+          const text = result.getText()?.trim() || "";
+          setScannedText(text);
+
+          if (text.startsWith("wc:")) {
+            handleClose();
+            onScan(text);
+          }
+        }
+      );
+    } catch (err: any) {
+      console.error(err);
+      setCameraError(err?.message || "Could not open camera.");
+    }
+  }
+
+  async function onPickImage(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !readerRef.current) return;
+
+    try {
+      const url = URL.createObjectURL(file);
+      const result = await readerRef.current.decodeFromImageUrl(url);
+      const text = result?.getText()?.trim() || "";
+
+      setScannedText(text);
+
+      if (text.startsWith("wc:")) {
+        URL.revokeObjectURL(url);
+        handleClose();
+        onScan(text);
+        return;
+      }
+
+      URL.revokeObjectURL(url);
+      setCameraError("This QR code does not contain a WalletConnect URI.");
+    } catch {
+      setCameraError("No valid WalletConnect QR code was found in the image.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function handleClose() {
+    try {
+      (readerRef.current as any)?.reset?.();
+    } catch {}
+
+    stopCameraTracks();
     onClose();
   }
 
@@ -88,58 +147,91 @@ export default function WalletConnectQrScanner({
       <div
         style={{
           width: "min(560px, calc(100vw - 24px))",
-          background: theme === "light" ? "#ffffff" : "#111722",
-          color: theme === "light" ? "#10131a" : "#ffffff",
-          border: `1px solid ${theme === "light" ? "#d9e1ef" : "#273042"}`,
+          background: isLight ? "#ffffff" : "#111722",
+          color: isLight ? "#10131a" : "#ffffff",
+          border: `1px solid ${isLight ? "#d9e1ef" : "#273042"}`,
           borderRadius: 24,
           padding: 18,
           boxSizing: "border-box",
         }}
       >
-        <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>
+        <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>
           Scan WalletConnect QR
         </div>
 
         <div
           style={{
-            color: theme === "light" ? "#5f6b7d" : "#9aa4b5",
+            color: isLight ? "#5f6b7d" : "#9aa4b5",
             marginBottom: 14,
             lineHeight: 1.5,
           }}
         >
-          Point your camera at a WalletConnect QR code. When a valid <strong>wc:</strong> URI
-          is detected, it will be inserted automatically.
+          Point your camera at a QR code containing a <strong>wc:</strong> WalletConnect URI.
         </div>
 
         <div
-          id={regionIdRef.current}
           style={{
-            width: "100%",
-            minHeight: 280,
-            borderRadius: 16,
+            borderRadius: 18,
             overflow: "hidden",
-            background: theme === "light" ? "#f4f7fb" : "#0a0f18",
+            border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+            background: "#000",
           }}
-        />
-
-        {error ? (
-          <div
+        >
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
             style={{
-              marginTop: 12,
-              color: "#ff6b6b",
-              fontSize: 13,
-              fontWeight: 700,
+              width: "100%",
+              display: "block",
+              maxHeight: 360,
+              objectFit: "cover",
             }}
-          >
-            {error}
-          </div>
-        ) : null}
+          />
+        </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-          <button style={secondaryBtn(theme)} onClick={handleClose}>
+        <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+          <button onClick={() => fileRef.current?.click()} style={secondaryBtn(isLight)}>
+            Scan from Image
+          </button>
+
+          <button onClick={handleClose} style={secondaryBtn(isLight)}>
             Close
           </button>
         </div>
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          onChange={onPickImage}
+          style={{ display: "none" }}
+        />
+
+        {cameraError ? (
+          <div style={{ marginTop: 12, color: "#ef4444", fontSize: 13, fontWeight: 700 }}>
+            {cameraError}
+          </div>
+        ) : null}
+
+        {scannedText ? (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 12,
+              border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+              background: isLight ? "#f8fafc" : "#0f1522",
+              color: isLight ? "#334155" : "#cdd6ea",
+              wordBreak: "break-all",
+              fontSize: 12,
+              lineHeight: 1.5,
+            }}
+          >
+            {scannedText}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -156,15 +248,14 @@ const overlayStyle: React.CSSProperties = {
   padding: 12,
 };
 
-function secondaryBtn(theme: "dark" | "light"): React.CSSProperties {
+function secondaryBtn(isLight: boolean): React.CSSProperties {
   return {
-    flex: 1,
-    height: 46,
+    padding: "12px 16px",
     borderRadius: 14,
-    border: `1px solid ${theme === "light" ? "#d3dceb" : "#2c3950"}`,
-    background: "transparent",
-    color: theme === "light" ? "#10131a" : "#fff",
-    fontWeight: 800,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#ffffff" : "#1b2741",
+    color: isLight ? "#10131a" : "#fff",
     cursor: "pointer",
+    fontWeight: 700,
   };
 }
