@@ -1,3 +1,4 @@
+import { getSecuritySettings, saveSecuritySettings, type SecuritySettings } from "../lib/security";
 import React, { useEffect, useRef, useState } from "react";
 import {
   DEFAULT_NETWORKS,
@@ -21,11 +22,13 @@ export default function SettingsScreen({
   setTheme,
   lang = "en",
   setLang,
+  security = getSecuritySettings(),
 }: {
   theme?: "dark" | "light";
   setTheme: (value: "dark" | "light") => void;
   lang?: string;
   setLang: (value: string) => void;
+  security?: SecuritySettings;
 }) {
   const isLight = theme === "light";
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
@@ -36,6 +39,7 @@ export default function SettingsScreen({
   const [wcLoading, setWcLoading] = useState(false);
   const [wcMessage, setWcMessage] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [securityState, setSecurityState] = useState<SecuritySettings>(security);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const t = {
@@ -59,8 +63,9 @@ export default function SettingsScreen({
   useEffect(() => {
     setNetwork(getStoredNetwork());
     setCustomRpc(getStoredNetwork().rpcUrl || "");
+    setSecurityState(security);
     refreshSessions();
-  }, []);
+  }, [security]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -102,6 +107,13 @@ export default function SettingsScreen({
     setNetwork(next);
     window.dispatchEvent(new Event("wallet-network-updated"));
     showWcMessage("RPC saved");
+  }
+
+  function handleSecurityPatch(patch: Partial<SecuritySettings>) {
+    const next = { ...securityState, ...patch };
+    setSecurityState(next);
+    saveSecuritySettings(next);
+    showWcMessage("Security settings saved");
   }
 
   function handleUploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
@@ -519,6 +531,84 @@ export default function SettingsScreen({
               fontWeight: 800,
               color: isLight ? "#10131a" : "#ffffff",
               fontSize: 18,
+              marginBottom: 8,
+            }}
+          >
+            Security
+          </div>
+
+          <div
+            style={{
+              color: isLight ? "#5b6578" : "#97a0b3",
+              marginBottom: 16,
+              lineHeight: 1.55,
+            }}
+          >
+            Auto-lock protects the wallet after inactivity, when the app goes to background, and before WalletConnect approvals.
+          </div>
+
+          <div style={{ display: "grid", gap: 14 }}>
+            <label style={switchRowStyle(isLight)}>
+              <div>
+                <div style={switchTitleStyle(isLight)}>Enable auto-lock</div>
+                <div style={switchHintStyle(isLight)}>Locks the wallet after inactivity.</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={securityState.autoLockEnabled}
+                onChange={(e) => handleSecurityPatch({ autoLockEnabled: e.target.checked })}
+              />
+            </label>
+
+            <div>
+              <div style={labelStyle(isLight)}>Auto-lock time (minutes)</div>
+              <select
+                value={securityState.autoLockMinutes}
+                onChange={(e) => handleSecurityPatch({ autoLockMinutes: Number(e.target.value) })}
+                style={inputStyle(isLight)}
+              >
+                {[1, 3, 5, 10, 15, 30, 60].map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {minutes} minute{minutes > 1 ? "s" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <label style={switchRowStyle(isLight)}>
+              <div>
+                <div style={switchTitleStyle(isLight)}>Lock when app goes to background</div>
+                <div style={switchHintStyle(isLight)}>Useful on mobile and shared desktops.</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={securityState.lockOnHidden}
+                onChange={(e) => handleSecurityPatch({ lockOnHidden: e.target.checked })}
+              />
+            </label>
+
+            <label style={switchRowStyle(isLight)}>
+              <div>
+                <div style={switchTitleStyle(isLight)}>Password for WalletConnect approvals</div>
+                <div style={switchHintStyle(isLight)}>Ask again before signing requests and transactions.</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={securityState.requirePasswordForSensitiveActions}
+                onChange={(e) =>
+                  handleSecurityPatch({ requirePasswordForSensitiveActions: e.target.checked })
+                }
+              />
+            </label>
+          </div>
+        </div>
+
+        <div style={cardStyle(isLight)}>
+          <div
+            style={{
+              fontWeight: 800,
+              color: isLight ? "#10131a" : "#ffffff",
+              fontSize: 18,
               marginBottom: 14,
             }}
           >
@@ -602,6 +692,35 @@ export default function SettingsScreen({
       />
     </>
   );
+}
+
+function switchRowStyle(isLight: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 16,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#f8faff" : "#0f1420",
+  };
+}
+
+function switchTitleStyle(isLight: boolean): React.CSSProperties {
+  return {
+    color: isLight ? "#10131a" : "#ffffff",
+    fontWeight: 800,
+    marginBottom: 4,
+  };
+}
+
+function switchHintStyle(isLight: boolean): React.CSSProperties {
+  return {
+    color: isLight ? "#5b6578" : "#97a0b3",
+    fontSize: 13,
+    lineHeight: 1.5,
+  };
 }
 
 function cardStyle(isLight: boolean): React.CSSProperties {
