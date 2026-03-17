@@ -132,6 +132,12 @@ export default function SettingsScreen({
       return;
     }
 
+    const current = getStoredNetwork();
+    if (Number(current?.chainId) !== 3777) {
+      showWcMessage("Select INRI network (3777) before connecting.");
+      return;
+    }
+
     setWcLoading(true);
 
     try {
@@ -177,7 +183,7 @@ export default function SettingsScreen({
     }
   }
 
-  async function handleScannedUri(value: string) {
+  function handleScannedUri(value: string) {
     setScannerOpen(false);
     setWcUri(value);
     showWcMessage("WalletConnect QR detected");
@@ -360,7 +366,7 @@ export default function SettingsScreen({
               lineHeight: 1.55,
             }}
           >
-            Select the correct network first, then scan a WalletConnect QR code or paste a
+            Select the INRI network first, then scan a WalletConnect QR code or paste a
             <strong> wc:</strong> URI.
           </div>
 
