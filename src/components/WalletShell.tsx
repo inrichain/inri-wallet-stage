@@ -14,6 +14,16 @@ import BridgeScreen from "../screens/BridgeScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import NFTsScreen from "../screens/NFTsScreen";
 import StakingScreen from "../screens/StakingScreen";
+import WcSessionProposalModal from "./WcSessionProposalModal";
+import WcRequestModal from "./WcRequestModal";
+import {
+  approveSessionProposal,
+  rejectSessionProposal,
+  approveSessionRequest,
+  rejectSessionRequest,
+} from "../lib/walletconnect";
+import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
+import { handleRequestMethod } from "../lib/wcRequestHandlers";
 import {
   getMnemonicFromWallet,
   isValidSeedPhrase,
@@ -86,6 +96,9 @@ export default function WalletShell() {
 
   const [unlockedWallet, setUnlockedWallet] = useState<UnlockedWallet | null>(null);
 
+  const [wcProposal, setWcProposal] = useState<any | null>(null);
+  const [wcRequest, setWcRequest] = useState<any | null>(null);
+
   const t = {
     authSubtitle: tr(lang, "auth_subtitle"),
     unlock: tr(lang, "auth_unlock"),
@@ -153,6 +166,17 @@ export default function WalletShell() {
 
     ensureFavicon();
   }, [theme, lang]);
+
+  useEffect(() => {
+    const sync = () => {
+      const state = wcStoreGetState();
+      setWcProposal(state.proposal);
+      setWcRequest(state.request);
+    };
+
+    sync();
+    return wcStoreSubscribe(sync);
+  }, []);
 
   function ensureFavicon() {
     let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
@@ -384,6 +408,67 @@ export default function WalletShell() {
       console.error("WalletConnect init failed:", err);
     });
   }, [activeAddress]);
+
+  async function onApproveProposal() {
+    if (!unlockedWallet || !wcProposal) {
+      showMessage("Unlock the wallet first");
+      return;
+    }
+
+    try {
+      await approveSessionProposal(wcProposal, unlockedWallet.address);
+      showMessage("WalletConnect connected");
+    } catch (err) {
+      console.error(err);
+      showMessage("Failed to approve connection");
+    }
+  }
+
+  async function onRejectProposal() {
+    if (!wcProposal) return;
+
+    try {
+      await rejectSessionProposal(wcProposal.id);
+      showMessage("Connection rejected");
+    } catch (err) {
+      console.error(err);
+      showMessage("Failed to reject connection");
+    }
+  }
+
+  async function onApproveRequest() {
+    if (!unlockedWallet || !wcRequest) {
+      showMessage("Unlock the wallet first");
+      return;
+    }
+
+    try {
+      const result = await handleRequestMethod({
+        method: wcRequest.method,
+        params: wcRequest.params,
+        address: unlockedWallet.address,
+        privateKey: unlockedWallet.privateKey,
+      });
+
+      await approveSessionRequest(wcRequest, result);
+      showMessage("Request approved");
+    } catch (err: any) {
+      console.error(err);
+      showMessage(err?.message || "Failed to approve request");
+    }
+  }
+
+  async function onRejectRequest() {
+    if (!wcRequest) return;
+
+    try {
+      await rejectSessionRequest(wcRequest);
+      showMessage("Request rejected");
+    } catch (err) {
+      console.error(err);
+      showMessage("Failed to reject request");
+    }
+  }
 
   const renderTab = () => {
     const address = unlockedWallet?.address || currentWalletMeta?.address || "";
@@ -719,6 +804,22 @@ export default function WalletShell() {
       </main>
 
       <BottomNav tab={tab} setTab={setTab} theme={theme} lang={lang} />
+
+      <WcSessionProposalModal
+        open={!!wcProposal}
+        theme={theme}
+        proposal={wcProposal}
+        onApprove={onApproveProposal}
+        onReject={onRejectProposal}
+      />
+
+      <WcRequestModal
+        open={!!wcRequest}
+        theme={theme}
+        request={wcRequest}
+        onApprove={onApproveRequest}
+        onReject={onRejectRequest}
+      />
     </div>
   );
 }
