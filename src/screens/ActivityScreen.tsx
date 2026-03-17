@@ -215,6 +215,20 @@ export default function ActivityScreen({
                     value={priorityLabel(item.priority || "normal")}
                     isLight={isLight}
                   />
+                  {item.swapRoute ? (
+                    <InfoRow
+                      label="Swap route"
+                      value={String(item.swapRoute)}
+                      isLight={isLight}
+                    />
+                  ) : null}
+                  {item.minimumReceived ? (
+                    <InfoRow
+                      label="Minimum received"
+                      value={`${item.minimumReceived}${item.amountOut ? ` • Output ${item.amountOut}` : ''}`}
+                      isLight={isLight}
+                    />
+                  ) : null}
                 </div>
 
                 {txHash ? (
@@ -301,6 +315,6 @@ function actionLink(isLight: boolean): React.CSSProperties {
 function activityTitle(item: any, isOutgoing: boolean, lang: string) {
   if (item.type === "bridge_deposit") return `Bridge deposit • ${item.bridgeDirection || "Bridge"}`;
   if (item.type === "bridge_withdraw") return `Bridge withdraw • ${item.bridgeDirection || "Bridge"}`;
-  if (item.type === "swap") return "Swap";
+  if (item.type === "swap") return `Swap • ${item.swapRoute || `${item.symbol || 'Route'}`}`;
   return isOutgoing ? tr(lang, "activity_sent") : tr(lang, "activity_received");
 }
