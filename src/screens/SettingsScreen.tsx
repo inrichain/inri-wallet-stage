@@ -1,6 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
-import { DEFAULT_NETWORKS, getStoredNetwork, saveStoredNetwork, type NetworkItem } from "../lib/network";
+import {
+  DEFAULT_NETWORKS,
+  getStoredNetwork,
+  saveStoredNetwork,
+  type NetworkItem,
+} from "../lib/network";
 import { tr } from "../i18n/translations";
+import {
+  pairWalletConnect,
+  getActiveSessions,
+  disconnectSession,
+  disconnectAllSessions,
+} from "../lib/walletconnect";
 
 const AVATAR_KEY = "wallet_avatar";
 
@@ -19,6 +30,10 @@ export default function SettingsScreen({
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
   const [customRpc, setCustomRpc] = useState(getStoredNetwork().rpcUrl || "");
   const [avatar, setAvatar] = useState<string>(localStorage.getItem(AVATAR_KEY) || "");
+  const [wcUri, setWcUri] = useState("");
+  const [wcSessions, setWcSessions] = useState<any[]>([]);
+  const [wcLoading, setWcLoading] = useState(false);
+  const [wcMessage, setWcMessage] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const t = {
@@ -42,13 +57,35 @@ export default function SettingsScreen({
   useEffect(() => {
     setNetwork(getStoredNetwork());
     setCustomRpc(getStoredNetwork().rpcUrl || "");
+    refreshSessions();
   }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      refreshSessions();
+    }, 2000);
+
+    return () => window.clearInterval(id);
+  }, []);
+
+  function showWcMessage(text: string) {
+    setWcMessage(text);
+    window.setTimeout(() => setWcMessage(""), 2600);
+  }
+
+  function refreshSessions() {
+    try {
+      const list = getActiveSessions();
+      setWcSessions(Array.isArray(list) ? list : []);
+    } catch {
+      setWcSessions([]);
+    }
+  }
 
   function handleSelectNetwork(item: NetworkItem) {
     saveStoredNetwork(item);
     setNetwork(item);
     setCustomRpc(item.rpcUrl || "");
-
     window.dispatchEvent(new Event("wallet-network-updated"));
   }
 
@@ -60,7 +97,6 @@ export default function SettingsScreen({
 
     saveStoredNetwork(next);
     setNetwork(next);
-
     window.dispatchEvent(new Event("wallet-network-updated"));
   }
 
@@ -84,6 +120,57 @@ export default function SettingsScreen({
     localStorage.removeItem(AVATAR_KEY);
     setAvatar("");
     window.dispatchEvent(new Event("wallet-avatar-updated"));
+  }
+
+  async function handleConnectWc() {
+    if (!wcUri.trim()) {
+      showWcMessage("Paste a WalletConnect URI");
+      return;
+    }
+
+    setWcLoading(true);
+
+    try {
+      await pairWalletConnect(wcUri.trim());
+      setWcUri("");
+      refreshSessions();
+      showWcMessage("WalletConnect pairing started");
+    } catch (err: any) {
+      console.error(err);
+      showWcMessage(err?.message || "Failed to connect WalletConnect");
+    } finally {
+      setWcLoading(false);
+    }
+  }
+
+  async function handleDisconnectSession(topic: string) {
+    setWcLoading(true);
+
+    try {
+      await disconnectSession(topic);
+      refreshSessions();
+      showWcMessage("Session disconnected");
+    } catch (err: any) {
+      console.error(err);
+      showWcMessage(err?.message || "Failed to disconnect session");
+    } finally {
+      setWcLoading(false);
+    }
+  }
+
+  async function handleDisconnectAll() {
+    setWcLoading(true);
+
+    try {
+      await disconnectAllSessions();
+      refreshSessions();
+      showWcMessage("All sessions disconnected");
+    } catch (err: any) {
+      console.error(err);
+      showWcMessage(err?.message || "Failed to disconnect all sessions");
+    } finally {
+      setWcLoading(false);
+    }
   }
 
   return (
@@ -241,6 +328,164 @@ export default function SettingsScreen({
             {t.saveRpc}
           </button>
         </div>
+      </div>
+
+      <div style={cardStyle(isLight)}>
+        <div
+          style={{
+            fontWeight: 800,
+            color: isLight ? "#10131a" : "#ffffff",
+            fontSize: 18,
+            marginBottom: 8,
+          }}
+        >
+          WalletConnect
+        </div>
+
+        <div
+          style={{
+            color: isLight ? "#5b6578" : "#97a0b3",
+            marginBottom: 14,
+            lineHeight: 1.55,
+          }}
+        >
+          Paste a WalletConnect URI starting with <strong>wc:</strong> to connect this
+          wallet to a dApp on desktop or mobile.
+        </div>
+
+        <textarea
+          value={wcUri}
+          onChange={(e) => setWcUri(e.target.value)}
+          placeholder="wc:..."
+          style={{
+            ...inputStyle(isLight),
+            minHeight: 96,
+            resize: "vertical",
+            marginBottom: 12,
+          }}
+        />
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            marginBottom: 14,
+          }}
+        >
+          <button
+            onClick={handleConnectWc}
+            disabled={wcLoading}
+            style={mainButtonStyle()}
+          >
+            {wcLoading ? "Connecting..." : "Connect URI"}
+          </button>
+
+          <button
+            onClick={refreshSessions}
+            disabled={wcLoading}
+            style={secondaryButtonStyle(isLight)}
+          >
+            Refresh
+          </button>
+
+          <button
+            onClick={handleDisconnectAll}
+            disabled={wcLoading || wcSessions.length === 0}
+            style={secondaryButtonStyle(isLight)}
+          >
+            Disconnect All
+          </button>
+        </div>
+
+        {wcMessage ? (
+          <div
+            style={{
+              marginBottom: 14,
+              color: "#3f7cff",
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            {wcMessage}
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            fontWeight: 800,
+            color: isLight ? "#10131a" : "#ffffff",
+            fontSize: 15,
+            marginBottom: 10,
+          }}
+        >
+          Active Sessions
+        </div>
+
+        {wcSessions.length === 0 ? (
+          <div
+            style={{
+              color: isLight ? "#5b6578" : "#97a0b3",
+              fontSize: 13,
+            }}
+          >
+            No active WalletConnect sessions.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {wcSessions.map((session) => (
+              <div
+                key={session.topic}
+                style={{
+                  border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+                  borderRadius: 14,
+                  padding: 12,
+                  background: isLight ? "#f8faff" : "#0f1420",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: isLight ? "#10131a" : "#ffffff",
+                    marginBottom: 4,
+                  }}
+                >
+                  {session.name}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: isLight ? "#5b6578" : "#97a0b3",
+                    marginBottom: 8,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {session.url || "No URL"}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: isLight ? "#6a7488" : "#8f99ad",
+                    marginBottom: 10,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  Topic: {session.topic}
+                </div>
+
+                <button
+                  onClick={() => handleDisconnectSession(session.topic)}
+                  disabled={wcLoading}
+                  style={secondaryButtonStyle(isLight)}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={cardStyle(isLight)}>
