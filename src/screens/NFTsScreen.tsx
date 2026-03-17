@@ -139,17 +139,22 @@ export default function NFTsScreen({
 
 function getText(lang: string) {
   const map: Record<string, any> = {
-    en: {
-      nfts: "NFTs",
-      loading: "Loading NFTs...",
-      empty: "No NFTs found.",
-    },
-    pt: {
-      nfts: "NFTs",
-      loading: "Carregando NFTs...",
-      empty: "Nenhum NFT encontrado.",
-    },
+    en: { nfts: "NFTs", loading: "Loading NFTs...", empty: "No NFTs found." },
+    pt: { nfts: "NFTs", loading: "Carregando NFTs...", empty: "Nenhum NFT encontrado." },
+    es: { nfts: "NFTs", loading: "Cargando NFTs...", empty: "No se encontraron NFTs." },
+    fr: { nfts: "NFTs", loading: "Chargement des NFTs...", empty: "Aucun NFT trouvé." },
+    de: { nfts: "NFTs", loading: "NFTs werden geladen...", empty: "Keine NFTs gefunden." },
+    it: { nfts: "NFTs", loading: "Caricamento NFT...", empty: "Nessun NFT trovato." },
   };
 
+  map.fr ||= map.en;
+  map.de ||= map.en;
+  map.it ||= map.en;
+  map.ru ||= map.en;
+  map.zh ||= map.en;
+  map.ja ||= map.en;
+  map.ko ||= map.en;
+  map.tr ||= map.en;
   return map[lang] || map.en;
 }
+

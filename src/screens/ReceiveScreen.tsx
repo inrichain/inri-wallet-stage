@@ -324,7 +324,31 @@ function getText(lang: string) {
       noCamera: "Nenhuma câmera foi encontrada neste aparelho.",
       cameraFail: "Não foi possível abrir ou ler a câmera.",
     },
+    es: {
+      receive: "Recibir",
+      receiveHint: "Dirección de la billetera y código QR",
+      copyAddress: "Copiar Dirección",
+      openCamera: "Abrir Cámara",
+      closeCamera: "Cerrar Cámara",
+      imageScan: "QR de Imagen",
+      lastScan: "Último QR leído",
+      noScanYet: "Aún no se ha leído ningún QR.",
+      copied: "Dirección copiada.",
+      copyFail: "No se pudo copiar la dirección.",
+      noQrFound: "No se encontró ningún código QR en la imagen.",
+      noCamera: "No se encontró ninguna cámara en este dispositivo.",
+      cameraFail: "No se pudo abrir o leer la cámara.",
+    },
   };
 
+  map.fr ||= map.en;
+  map.de ||= map.en;
+  map.it ||= map.en;
+  map.ru ||= map.en;
+  map.zh ||= map.en;
+  map.ja ||= map.en;
+  map.ko ||= map.en;
+  map.tr ||= map.en;
   return map[lang] || map.en;
 }
+

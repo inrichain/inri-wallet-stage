@@ -129,10 +129,30 @@ export default function SwapScreen({ theme = "dark", lang = "en", address }: { t
   );
 }
 
-function getText(lang: string) { const map: Record<string, any> = {
- en: { swap:"Swap", from:"From", to:"To", balance:"Balance", reverse:"Reverse", estimatedOutput:"Estimated output", previewFee:"Professional swap interface is ready. You can connect the router contracts later without changing the design.", execution:"Execution", slippage:"Slippage %", minimumReceived:"Minimum received", priceImpact:"Price impact", route:"Token route", networkRoute:"Active network", waitingConfig:"Router not configured yet", swapNow:"Swap now", routerPending:"Swap UI is ready with polished token cards and active network display.", routerReady:"Router configured and ready.", networkLocked:"Change network only in Settings" },
- pt: { swap:"Swap", from:"De", to:"Para", balance:"Saldo", reverse:"Inverter", estimatedOutput:"Saída estimada", previewFee:"A interface profissional do swap já está pronta. Você pode conectar os contratos do router depois sem mudar o design.", execution:"Execução", slippage:"Slippage %", minimumReceived:"Mínimo recebido", priceImpact:"Impacto no preço", route:"Rota do token", networkRoute:"Rede ativa", waitingConfig:"Roteador ainda não configurado", swapNow:"Trocar agora", routerPending:"A UI do swap está pronta com cards refinados e exibição da rede ativa.", routerReady:"Roteador configurado e pronto.", networkLocked:"Troque a rede apenas em Configurações" },
- es: { swap:"Swap", from:"De", to:"A", balance:"Saldo", reverse:"Invertir", estimatedOutput:"Salida estimada", previewFee:"La interfaz profesional del swap ya está lista. Puedes conectar los contratos del router después sin cambiar el diseño.", execution:"Ejecución", slippage:"Slippage %", minimumReceived:"Mínimo recibido", priceImpact:"Impacto de precio", route:"Ruta del token", networkRoute:"Red activa", waitingConfig:"Router aún no configurado", swapNow:"Hacer swap", routerPending:"La UI del swap ya está lista con tarjetas pulidas y red activa visible.", routerReady:"Router configurado y listo.", networkLocked:"Cambia la red solo en Ajustes" } }; return map[lang] || map.en; }
+function getText(lang: string) {
+  const map: Record<string, any> = {
+    en: {
+      swap: "Swap", from: "From", to: "To", balance: "Balance", reverse: "Reverse", estimatedOutput: "Estimated output", previewFee: "The professional swap interface is ready. You can connect router contracts later without changing the design.", execution: "Execution", slippage: "Slippage %", minimumReceived: "Minimum received", priceImpact: "Price impact", route: "Token route", networkRoute: "Active network", waitingConfig: "Router not configured yet", swapNow: "Swap now", routerPending: "Swap UI is ready with polished token cards and active network display.", routerReady: "Router configured and ready.", networkLocked: "Change the network only in Settings",
+    },
+    pt: {
+      swap: "Swap", from: "De", to: "Para", balance: "Saldo", reverse: "Inverter", estimatedOutput: "Saída estimada", previewFee: "A interface profissional do swap já está pronta. Você poderá conectar os contratos do router depois sem mudar o design.", execution: "Execução", slippage: "Slippage %", minimumReceived: "Mínimo recebido", priceImpact: "Impacto no preço", route: "Rota do token", networkRoute: "Rede ativa", waitingConfig: "Roteador ainda não configurado", swapNow: "Trocar agora", routerPending: "A interface do swap já está pronta com cards refinados e exibição da rede ativa.", routerReady: "Roteador configurado e pronto.", networkLocked: "Troque a rede apenas em Configurações",
+    },
+    es: {
+      swap: "Swap", from: "De", to: "A", balance: "Saldo", reverse: "Invertir", estimatedOutput: "Salida estimada", previewFee: "La interfaz profesional del swap ya está lista. Podrás conectar los contratos del router más adelante sin cambiar el diseño.", execution: "Ejecución", slippage: "Slippage %", minimumReceived: "Mínimo recibido", priceImpact: "Impacto en el precio", route: "Ruta del token", networkRoute: "Red activa", waitingConfig: "Router aún no configurado", swapNow: "Hacer swap", routerPending: "La interfaz del swap ya está lista con tarjetas refinadas y red activa visible.", routerReady: "Router configurado y listo.", networkLocked: "Cambia la red solo en Ajustes",
+    },
+  };
+
+  map.fr ||= map.en;
+  map.de ||= map.en;
+  map.it ||= map.en;
+  map.ru ||= map.en;
+  map.zh ||= map.en;
+  map.ja ||= map.en;
+  map.ko ||= map.en;
+  map.tr ||= map.en;
+  return map[lang] || map.en;
+}
+
 function wrap(isLight:boolean):React.CSSProperties{return{border:`1px solid ${isLight?"#dbe2f0":"#252b39"}`,borderRadius:20,background:isLight?"#ffffff":"#121621",padding:16}}
 function title(isLight:boolean):React.CSSProperties{return{margin:"0",color:isLight?"#10131a":"#ffffff"}}
 function panel(isLight:boolean):React.CSSProperties{return{border:`1px solid ${isLight?"#dbe2f0":"#252b39"}`,borderRadius:20,background:isLight?"#fbfcff":"#0f1522",padding:14}}

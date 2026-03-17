@@ -372,152 +372,24 @@ function noteStyle(isLight: boolean): React.CSSProperties {
 function getText(lang: string) {
   const map: Record<string, any> = {
     en: {
-      title: "Install INRI Wallet",
-      subtitle:
-        "Choose the best way to use INRI Wallet on your phone, browser or web. The wallet works as a professional web app and can also be installed on supported devices.",
-      installNow: "Install Now",
-      mobile: "Mobile",
-      browser: "Browser",
-      web: "Web",
-
-      android: "Android",
-      iphone: "iPhone",
-      androidText:
-        "Use the wallet as an installed app on Android for faster access and a cleaner full-screen experience.",
-      iphoneText:
-        "On iPhone, the wallet can be added to your Home Screen and used like an app through Safari.",
-
-      androidStep1: "Open wallet.inri.life in Chrome on Android.",
-      androidStep2: "Tap the browser menu and choose Install app or Add to Home screen.",
-      androidStep3: "Confirm the installation and open the wallet from your apps.",
-
-      iphoneStep1: "Open wallet.inri.life in Safari.",
-      iphoneStep2: "Tap the Share button.",
-      iphoneStep3: "Choose Add to Home Screen.",
-      iphoneStep4: "Tap Add and open the wallet from your Home Screen.",
-
-      installOnAndroid: "Install on Android",
-      openInSafari: "Open in Safari",
-
-      browserTitle: "Install in your browser",
-      browserText:
-        "On supported desktop browsers, INRI Wallet can be installed as an app for quick access, a standalone window and a cleaner experience.",
-      browserStep1: "Open wallet.inri.life in a supported browser.",
-      browserStep2: "Use the install button in the address bar or the install button below.",
-      browserStep3: "Confirm and launch the wallet as an installed app.",
-      openWalletSite: "Open Wallet Site",
-
-      webTitle: "Use on the web",
-      webText:
-        "You can always use INRI Wallet directly in your browser with the same secure interface and multichain experience.",
-      webStep1: "Open wallet.inri.life in your browser.",
-      webStep2: "Unlock, create or import your wallet and use it normally.",
-      openWallet: "Open Wallet",
-
-      note:
-        "If installation is not available yet, open the site in the recommended browser and try again after the page fully loads.",
-      installNotAvailable:
-        "Installation is not available on this device yet. Open the site in the recommended browser and try again.",
+      title: "Install INRI Wallet", subtitle: "Choose the best way to use INRI Wallet on your phone, browser or web. The wallet works as a professional web app and can also be installed on supported devices.", installNow: "Install Now", mobile: "Mobile", browser: "Browser", web: "Web", android: "Android", iphone: "iPhone", androidText: "Use the wallet as an installed app on Android for faster access and a cleaner full-screen experience.", iphoneText: "On iPhone, the wallet can be added to your Home Screen and used like an app through Safari.", androidStep1: "Open wallet.inri.life in Chrome on Android.", androidStep2: "Tap the browser menu and choose Install app or Add to Home screen.", androidStep3: "Confirm the installation and open the wallet from your apps.", iphoneStep1: "Open wallet.inri.life in Safari.", iphoneStep2: "Tap the Share button.", iphoneStep3: "Choose Add to Home Screen.", iphoneStep4: "Tap Add and open the wallet from your Home Screen.", installOnAndroid: "Install on Android", openInSafari: "Open in Safari", browserTitle: "Install in your browser", browserText: "On supported desktop browsers, INRI Wallet can be installed as an app for quick access, a standalone window and a cleaner experience.", browserStep1: "Open wallet.inri.life in a supported browser.", browserStep2: "Use the install button in the address bar or the install button below.", browserStep3: "Confirm and launch the wallet as an installed app.", openWalletSite: "Open Wallet Site", webTitle: "Use on the web", webText: "You can always use INRI Wallet directly in your browser with the same secure interface and multichain experience.", webStep1: "Open wallet.inri.life in your browser.", webStep2: "Unlock, create or import your wallet and use it normally.", openWallet: "Open Wallet", note: "If installation is not available yet, open the site in the recommended browser and try again after the page fully loads.", installNotAvailable: "Installation is not available on this device yet. Open the site in the recommended browser and try again.",
     },
-
     pt: {
-      title: "Instalar INRI Wallet",
-      subtitle:
-        "Escolha a melhor forma de usar a INRI Wallet no celular, navegador ou web. A wallet funciona como app profissional na web e também pode ser instalada em aparelhos compatíveis.",
-      installNow: "Instalar Agora",
-      mobile: "Mobile",
-      browser: "Navegador",
-      web: "Web",
-
-      android: "Android",
-      iphone: "iPhone",
-      androidText:
-        "Use a wallet como app instalado no Android para acesso mais rápido e uma experiência mais limpa em tela cheia.",
-      iphoneText:
-        "No iPhone, a wallet pode ser adicionada à Tela de Início e usada como app pelo Safari.",
-
-      androidStep1: "Abra wallet.inri.life no Chrome do Android.",
-      androidStep2: "Toque no menu do navegador e escolha Instalar app ou Adicionar à tela inicial.",
-      androidStep3: "Confirme a instalação e abra a wallet pelos seus apps.",
-
-      iphoneStep1: "Abra wallet.inri.life no Safari.",
-      iphoneStep2: "Toque no botão Compartilhar.",
-      iphoneStep3: "Escolha Adicionar à Tela de Início.",
-      iphoneStep4: "Toque em Adicionar e abra a wallet na sua Tela de Início.",
-
-      installOnAndroid: "Instalar no Android",
-      openInSafari: "Abrir no Safari",
-
-      browserTitle: "Instalar no navegador",
-      browserText:
-        "Em navegadores compatíveis no desktop, a INRI Wallet pode ser instalada como app para acesso rápido, janela separada e experiência mais limpa.",
-      browserStep1: "Abra wallet.inri.life em um navegador compatível.",
-      browserStep2: "Use o botão de instalar da barra de endereço ou o botão abaixo.",
-      browserStep3: "Confirme e abra a wallet como app instalado.",
-      openWalletSite: "Abrir Site da Wallet",
-
-      webTitle: "Usar na web",
-      webText:
-        "Você sempre pode usar a INRI Wallet diretamente no navegador com a mesma interface segura e experiência multichain.",
-      webStep1: "Abra wallet.inri.life no seu navegador.",
-      webStep2: "Desbloqueie, crie ou importe sua wallet e use normalmente.",
-      openWallet: "Abrir Wallet",
-
-      note:
-        "Se a instalação ainda não estiver disponível, abra o site no navegador recomendado e tente novamente depois que a página terminar de carregar.",
-      installNotAvailable:
-        "A instalação ainda não está disponível neste aparelho. Abra o site no navegador recomendado e tente novamente.",
+      title: "Instalar INRI Wallet", subtitle: "Escolha a melhor forma de usar a INRI Wallet no celular, navegador ou web. A wallet funciona como app profissional na web e também pode ser instalada em aparelhos compatíveis.", installNow: "Instalar Agora", mobile: "Celular", browser: "Navegador", web: "Web", android: "Android", iphone: "iPhone", androidText: "Use a wallet como app instalado no Android para acesso mais rápido e uma experiência mais limpa em tela cheia.", iphoneText: "No iPhone, a wallet pode ser adicionada à Tela de Início e usada como app pelo Safari.", androidStep1: "Abra wallet.inri.life no Chrome do Android.", androidStep2: "Toque no menu do navegador e escolha Instalar app ou Adicionar à tela inicial.", androidStep3: "Confirme a instalação e abra a wallet pelos seus apps.", iphoneStep1: "Abra wallet.inri.life no Safari.", iphoneStep2: "Toque no botão Compartilhar.", iphoneStep3: "Escolha Adicionar à Tela de Início.", iphoneStep4: "Toque em Adicionar e abra a wallet na sua Tela de Início.", installOnAndroid: "Instalar no Android", openInSafari: "Abrir no Safari", browserTitle: "Instalar no navegador", browserText: "Em navegadores compatíveis no desktop, a INRI Wallet pode ser instalada como app para acesso rápido, janela separada e experiência mais limpa.", browserStep1: "Abra wallet.inri.life em um navegador compatível.", browserStep2: "Use o botão de instalar da barra de endereço ou o botão abaixo.", browserStep3: "Confirme e abra a wallet como app instalado.", openWalletSite: "Abrir site da wallet", webTitle: "Usar na web", webText: "Você sempre pode usar a INRI Wallet diretamente no navegador com a mesma interface segura e experiência multichain.", webStep1: "Abra wallet.inri.life no seu navegador.", webStep2: "Desbloqueie, crie ou importe sua wallet e use normalmente.", openWallet: "Abrir wallet", note: "Se a instalação ainda não estiver disponível, abra o site no navegador recomendado e tente novamente depois que a página terminar de carregar.", installNotAvailable: "A instalação ainda não está disponível neste aparelho. Abra o site no navegador recomendado e tente novamente.",
     },
-
     es: {
-      title: "Instalar INRI Wallet",
-      subtitle:
-        "Elige la mejor forma de usar INRI Wallet en tu móvil, navegador o web. La wallet funciona como una app web profesional y también puede instalarse en dispositivos compatibles.",
-      installNow: "Instalar Ahora",
-      mobile: "Móvil",
-      browser: "Navegador",
-      web: "Web",
-
-      android: "Android",
-      iphone: "iPhone",
-      androidText:
-        "Usa la wallet como app instalada en Android para un acceso más rápido y una experiencia más limpia en pantalla completa.",
-      iphoneText:
-        "En iPhone, la wallet puede añadirse a la pantalla de inicio y usarse como app mediante Safari.",
-
-      androidStep1: "Abre wallet.inri.life en Chrome para Android.",
-      androidStep2: "Toca el menú del navegador y elige Instalar app o Añadir a pantalla de inicio.",
-      androidStep3: "Confirma la instalación y abre la wallet desde tus apps.",
-
-      iphoneStep1: "Abre wallet.inri.life en Safari.",
-      iphoneStep2: "Toca el botón Compartir.",
-      iphoneStep3: "Elige Añadir a pantalla de inicio.",
-      iphoneStep4: "Toca Añadir y abre la wallet desde tu pantalla de inicio.",
-
-      installOnAndroid: "Instalar en Android",
-      openInSafari: "Abrir en Safari",
-
-      browserTitle: "Instalar en el navegador",
-      browserText:
-        "En navegadores compatibles de escritorio, INRI Wallet puede instalarse como app para acceso rápido, ventana independiente y una experiencia más limpia.",
-      browserStep1: "Abre wallet.inri.life en un navegador compatible.",
-      browserStep2: "Usa el botón de instalar de la barra de direcciones o el botón inferior.",
-      browserStep3: "Confirma y abre la wallet como app instalada.",
-      openWalletSite: "Abrir Sitio de la Wallet",
-
-      webTitle: "Usar en la web",
-      webText:
-        "Siempre puedes usar INRI Wallet directamente en tu navegador con la misma interfaz segura y experiencia multichain.",
-      webStep1: "Abre wallet.inri.life en tu navegador.",
-      webStep2: "Desbloquea, crea o importa tu wallet y úsala normalmente.",
-      openWallet: "Abrir Wallet",
-
-      note:
-        "Si la instalación aún no está disponible, abre el sitio en el navegador recomendado y vuelve a intentarlo después de que la página cargue por completo.",
-      installNotAvailable:
-        "La instalación aún no está disponible en este dispositivo. Abre el sitio en el navegador recomendado e inténtalo de nuevo.",
+      title: "Instalar INRI Wallet", subtitle: "Elige la mejor forma de usar INRI Wallet en tu móvil, navegador o web. La wallet funciona como una app web profesional y también puede instalarse en dispositivos compatibles.", installNow: "Instalar ahora", mobile: "Móvil", browser: "Navegador", web: "Web", android: "Android", iphone: "iPhone", androidText: "Usa la wallet como app instalada en Android para un acceso más rápido y una experiencia más limpia en pantalla completa.", iphoneText: "En iPhone, la wallet puede añadirse a la pantalla de inicio y usarse como app mediante Safari.", androidStep1: "Abre wallet.inri.life en Chrome para Android.", androidStep2: "Toca el menú del navegador y elige Instalar app o Añadir a pantalla de inicio.", androidStep3: "Confirma la instalación y abre la wallet desde tus apps.", iphoneStep1: "Abre wallet.inri.life en Safari.", iphoneStep2: "Toca el botón Compartir.", iphoneStep3: "Elige Añadir a pantalla de inicio.", iphoneStep4: "Toca Añadir y abre la wallet desde tu pantalla de inicio.", installOnAndroid: "Instalar en Android", openInSafari: "Abrir en Safari", browserTitle: "Instalar en el navegador", browserText: "En navegadores compatibles de escritorio, INRI Wallet puede instalarse como app para acceso rápido, ventana independiente y una experiencia más limpia.", browserStep1: "Abre wallet.inri.life en un navegador compatible.", browserStep2: "Usa el botón de instalar de la barra de direcciones o el botón inferior.", browserStep3: "Confirma y abre la wallet como app instalada.", openWalletSite: "Abrir sitio de la wallet", webTitle: "Usar en la web", webText: "Siempre puedes usar INRI Wallet directamente en tu navegador con la misma interfaz segura y experiencia multichain.", webStep1: "Abre wallet.inri.life en tu navegador.", webStep2: "Desbloquea, crea o importa tu wallet y úsala normalmente.", openWallet: "Abrir wallet", note: "Si la instalación aún no está disponible, abre el sitio en el navegador recomendado y vuelve a intentarlo después de que la página cargue por completo.", installNotAvailable: "La instalación aún no está disponible en este dispositivo. Abre el sitio en el navegador recomendado e inténtalo de nuevo.",
     },
   };
 
+  map.fr ||= map.en;
+  map.de ||= map.en;
+  map.it ||= map.en;
+  map.ru ||= map.en;
+  map.zh ||= map.en;
+  map.ja ||= map.en;
+  map.ko ||= map.en;
+  map.tr ||= map.en;
   return map[lang] || map.en;
 }
+

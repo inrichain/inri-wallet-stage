@@ -621,69 +621,27 @@ export default function SendScreen({
 function getText(lang: string) {
   const map: Record<string, any> = {
     en: {
-      send: "Send",
-      token: "Token",
-      balance: "Balance",
-      recipient: "Recipient address",
-      amount: "Amount",
-      yourAddress: "Your address",
-      openCamera: "Open Camera",
-      useMyAddress: "Use My Address",
-      copyAddress: "Copy Address",
-      showQr: "Show QR",
-      hideQr: "Hide QR",
-      copied: "Copied.",
-      copyFail: "Could not copy.",
-      noWallet: "Unlock your wallet first.",
-      invalidAddress: "Invalid recipient address.",
-      invalidAmount: "Invalid amount.",
-      insufficientBalance: "Insufficient balance.",
-      sending: "Sending...",
-      sent: "Sent",
-      sendFailed: "Transaction failed.",
-      nativeInfo: "Native token transfer pays network gas fees.",
-      tokenInfo: "ERC20 token transfer through the active network.",
-      scanQr: "Scan QR",
-      close: "Close",
-      scanHint: "Point your camera at a QR code containing a wallet address.",
-      qrCaptured: "Address captured from QR.",
-      cameraFail: "Could not open camera.",
-      cameraUnavailable: "Camera unavailable.",
+      send: "Send", token: "Token", balance: "Balance", recipient: "Recipient address", amount: "Amount", yourAddress: "Your address", openCamera: "Open Camera", useMyAddress: "Use My Address", copyAddress: "Copy Address", showQr: "Show QR", hideQr: "Hide QR", copied: "Copied.", copyFail: "Could not copy.", noWallet: "Unlock your wallet first.", invalidAddress: "Invalid recipient address.", invalidAmount: "Invalid amount.", insufficientBalance: "Insufficient balance.", sending: "Sending...", sent: "Sent", sendFailed: "Transaction failed.", nativeInfo: "Native token transfer pays network gas fees.", tokenInfo: "ERC-20 token transfer through the active network.", scanQr: "Scan QR", close: "Close", scanHint: "Point your camera at a QR code containing a wallet address.", qrCaptured: "Address captured from QR.", cameraFail: "Could not open camera.", cameraUnavailable: "Camera unavailable.",
     },
     pt: {
-      send: "Enviar",
-      token: "Token",
-      balance: "Saldo",
-      recipient: "Endereço do destinatário",
-      amount: "Quantidade",
-      yourAddress: "Seu endereço",
-      openCamera: "Abrir Câmera",
-      useMyAddress: "Usar Meu Endereço",
-      copyAddress: "Copiar Endereço",
-      showQr: "Mostrar QR",
-      hideQr: "Ocultar QR",
-      copied: "Copiado.",
-      copyFail: "Não foi possível copiar.",
-      noWallet: "Desbloqueie sua carteira primeiro.",
-      invalidAddress: "Endereço do destinatário inválido.",
-      invalidAmount: "Quantidade inválida.",
-      insufficientBalance: "Saldo insuficiente.",
-      sending: "Enviando...",
-      sent: "Enviado",
-      sendFailed: "Falha na transação.",
-      nativeInfo: "A transferência do token nativo paga as taxas da rede.",
-      tokenInfo: "Transferência de token ERC20 pela rede ativa.",
-      scanQr: "Ler QR",
-      close: "Fechar",
-      scanHint: "Aponte sua câmera para um QR code com endereço de carteira.",
-      qrCaptured: "Endereço capturado do QR.",
-      cameraFail: "Não foi possível abrir a câmera.",
-      cameraUnavailable: "Câmera indisponível.",
+      send: "Enviar", token: "Token", balance: "Saldo", recipient: "Endereço do destinatário", amount: "Quantidade", yourAddress: "Seu endereço", openCamera: "Abrir Câmera", useMyAddress: "Usar Meu Endereço", copyAddress: "Copiar Endereço", showQr: "Mostrar QR", hideQr: "Ocultar QR", copied: "Copiado.", copyFail: "Não foi possível copiar.", noWallet: "Desbloqueie sua carteira primeiro.", invalidAddress: "Endereço do destinatário inválido.", invalidAmount: "Quantidade inválida.", insufficientBalance: "Saldo insuficiente.", sending: "Enviando...", sent: "Enviado", sendFailed: "Falha na transação.", nativeInfo: "A transferência do token nativo paga as taxas da rede.", tokenInfo: "Transferência de token ERC-20 pela rede ativa.", scanQr: "Ler QR", close: "Fechar", scanHint: "Aponte sua câmera para um QR code com endereço de carteira.", qrCaptured: "Endereço capturado do QR.", cameraFail: "Não foi possível abrir a câmera.", cameraUnavailable: "Câmera indisponível.",
+    },
+    es: {
+      send: "Enviar", token: "Token", balance: "Saldo", recipient: "Dirección del destinatario", amount: "Cantidad", yourAddress: "Tu dirección", openCamera: "Abrir Cámara", useMyAddress: "Usar Mi Dirección", copyAddress: "Copiar Dirección", showQr: "Mostrar QR", hideQr: "Ocultar QR", copied: "Copiado.", copyFail: "No se pudo copiar.", noWallet: "Desbloquea tu wallet primero.", invalidAddress: "Dirección del destinatario inválida.", invalidAmount: "Cantidad inválida.", insufficientBalance: "Saldo insuficiente.", sending: "Enviando...", sent: "Enviado", sendFailed: "La transacción falló.", nativeInfo: "La transferencia del token nativo paga las comisiones de la red.", tokenInfo: "Transferencia de token ERC-20 a través de la red activa.", scanQr: "Escanear QR", close: "Cerrar", scanHint: "Apunta tu cámara a un código QR que contenga una dirección de wallet.", qrCaptured: "Dirección capturada desde el QR.", cameraFail: "No se pudo abrir la cámara.", cameraUnavailable: "Cámara no disponible.",
     },
   };
 
+  map.fr ||= map.en;
+  map.de ||= map.en;
+  map.it ||= map.en;
+  map.ru ||= map.en;
+  map.zh ||= map.en;
+  map.ja ||= map.en;
+  map.ko ||= map.en;
+  map.tr ||= map.en;
   return map[lang] || map.en;
 }
+
 
 function cardStyle(isLight: boolean): React.CSSProperties {
   return {

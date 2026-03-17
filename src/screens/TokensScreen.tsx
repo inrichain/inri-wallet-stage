@@ -353,63 +353,27 @@ export default function TokensScreen({
 function getText(lang: string) {
   const map: Record<string, any> = {
     en: {
-      tokens: "Tokens",
-      tokenSymbol: "Token symbol",
-      tokenAddress: "Token address",
-      logoOptional: "Logo URL (optional)",
-      addToken: "Add Token",
-      symbolRequired: "Token symbol is required.",
-      addressRequired: "Token address is required.",
-      invalidAddress: "Invalid token address.",
-      invalidDecimals: "Invalid decimals.",
-      tokenExists: "Token already added.",
-      tokenAdded: "Token added.",
-      tokenRemoved: "Token removed.",
-      tokenDetected: "Token detected: {symbol}",
-      searchingToken: "Searching token data automatically...",
-      fixed: "Fixed",
-      remove: "Remove",
+      tokens: "Tokens", tokenSymbol: "Token symbol", tokenAddress: "Token address", logoOptional: "Logo URL (optional)", addToken: "Add Token", symbolRequired: "Token symbol is required.", addressRequired: "Token address is required.", invalidAddress: "Invalid token address.", invalidDecimals: "Invalid decimals.", tokenExists: "Token already added.", tokenAdded: "Token added.", tokenRemoved: "Token removed.", tokenDetected: "Token detected: {symbol}", searchingToken: "Searching token data automatically...", fixed: "Fixed", remove: "Remove",
     },
     pt: {
-      tokens: "Tokens",
-      tokenSymbol: "Símbolo do token",
-      tokenAddress: "Endereço do token",
-      logoOptional: "URL da logo (opcional)",
-      addToken: "Adicionar Token",
-      symbolRequired: "O símbolo do token é obrigatório.",
-      addressRequired: "O endereço do token é obrigatório.",
-      invalidAddress: "Endereço de token inválido.",
-      invalidDecimals: "Decimais inválidos.",
-      tokenExists: "Token já adicionado.",
-      tokenAdded: "Token adicionado.",
-      tokenRemoved: "Token removido.",
-      tokenDetected: "Token detectado: {symbol}",
-      searchingToken: "Buscando dados do token automaticamente...",
-      fixed: "Fixo",
-      remove: "Remover",
+      tokens: "Tokens", tokenSymbol: "Símbolo do token", tokenAddress: "Endereço do token", logoOptional: "URL da logo (opcional)", addToken: "Adicionar Token", symbolRequired: "O símbolo do token é obrigatório.", addressRequired: "O endereço do token é obrigatório.", invalidAddress: "Endereço de token inválido.", invalidDecimals: "Decimais inválidos.", tokenExists: "Token já adicionado.", tokenAdded: "Token adicionado.", tokenRemoved: "Token removido.", tokenDetected: "Token detectado: {symbol}", searchingToken: "Buscando dados do token automaticamente...", fixed: "Fixo", remove: "Remover",
     },
     es: {
-      tokens: "Tokens",
-      tokenSymbol: "Símbolo del token",
-      tokenAddress: "Dirección del token",
-      logoOptional: "URL del logo (opcional)",
-      addToken: "Agregar Token",
-      symbolRequired: "El símbolo del token es obligatorio.",
-      addressRequired: "La dirección del token es obligatoria.",
-      invalidAddress: "Dirección del token inválida.",
-      invalidDecimals: "Decimales inválidos.",
-      tokenExists: "El token ya fue agregado.",
-      tokenAdded: "Token agregado.",
-      tokenRemoved: "Token eliminado.",
-      tokenDetected: "Token detectado: {symbol}",
-      searchingToken: "Buscando datos del token automáticamente...",
-      fixed: "Fijo",
-      remove: "Eliminar",
+      tokens: "Tokens", tokenSymbol: "Símbolo del token", tokenAddress: "Dirección del token", logoOptional: "URL del logo (opcional)", addToken: "Agregar Token", symbolRequired: "El símbolo del token es obligatorio.", addressRequired: "La dirección del token es obligatoria.", invalidAddress: "Dirección del token inválida.", invalidDecimals: "Decimales inválidos.", tokenExists: "El token ya fue agregado.", tokenAdded: "Token agregado.", tokenRemoved: "Token eliminado.", tokenDetected: "Token detectado: {symbol}", searchingToken: "Buscando datos del token automáticamente...", fixed: "Fijo", remove: "Eliminar",
     },
   };
 
+  map.fr ||= map.en;
+  map.de ||= map.en;
+  map.it ||= map.en;
+  map.ru ||= map.en;
+  map.zh ||= map.en;
+  map.ja ||= map.en;
+  map.ko ||= map.en;
+  map.tr ||= map.en;
   return map[lang] || map.en;
 }
+
 
 function inputStyle(isLight: boolean): React.CSSProperties {
   return {

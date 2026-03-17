@@ -291,55 +291,27 @@ function LogoSlot({
 function getText(lang: string) {
   const map: Record<string, any> = {
     en: {
-      bridge: "Bridge",
-      direction: "Direction",
-      depositFlow: "Polygon USDT → INRI iUSD",
-      withdrawFlow: "INRI iUSD → Polygon USDT",
-      summary: "Transfer summary",
-      route: "Route",
-      assetFlow: "Asset flow",
-      destination: "Destination wallet",
-      fee: "Bridge fee",
-      status: "Status",
-      live: "Live",
-      awaitingContracts: "Awaiting contract integration",
-      waitingConfig: "Bridge contracts not connected yet",
-      bridgeNow: "Bridge now",
-      bridgePending: "Professional bridge screen ready for Polygon USDT ↔ INRI iUSD.",
-      bridgeReady: "Bridge configured and ready.",
-      previewFee:
-        "This bridge layout is ready for your real flow. Replace the placeholder PNGs later and then connect the final contracts/API.",
-      logoSlots: "Logo slots",
-      slotHint: "Ready for your final PNG",
-      slotReady: "Current iUSD PNG already connected",
+      bridge: "Bridge", direction: "Direction", depositFlow: "Polygon USDT → INRI iUSD", withdrawFlow: "INRI iUSD → Polygon USDT", summary: "Transfer summary", route: "Route", assetFlow: "Asset flow", destination: "Destination wallet", fee: "Bridge fee", status: "Status", live: "Live", awaitingContracts: "Awaiting contract integration", waitingConfig: "Bridge contracts not connected yet", bridgeNow: "Bridge now", bridgePending: "Professional bridge screen ready for Polygon USDT ↔ INRI iUSD.", bridgeReady: "Bridge configured and ready.", previewFee: "This bridge layout is ready for your real flow. Replace the placeholders later and connect the final contracts or API.", logoSlots: "Visual assets", slotHint: "Ready for your final logo", slotReady: "Current iUSD logo already connected",
     },
     pt: {
-      bridge: "Bridge",
-      direction: "Direção",
-      depositFlow: "Polygon USDT → INRI iUSD",
-      withdrawFlow: "INRI iUSD → Polygon USDT",
-      summary: "Resumo da transferência",
-      route: "Rota",
-      assetFlow: "Fluxo do ativo",
-      destination: "Carteira de destino",
-      fee: "Taxa do bridge",
-      status: "Status",
-      live: "Ao vivo",
-      awaitingContracts: "Aguardando integração dos contratos",
-      waitingConfig: "Contratos do bridge ainda não conectados",
-      bridgeNow: "Fazer bridge",
-      bridgePending: "Tela profissional do bridge pronta para Polygon USDT ↔ INRI iUSD.",
-      bridgeReady: "Bridge configurado e pronto.",
-      previewFee:
-        "Este layout do bridge está pronto para seu fluxo real. Troque os PNGs temporários depois e então ligue os contratos/API finais.",
-      logoSlots: "Espaços para logos",
-      slotHint: "Pronto para seu PNG final",
-      slotReady: "PNG atual do iUSD já conectado",
+      bridge: "Bridge", direction: "Direção", depositFlow: "Polygon USDT → INRI iUSD", withdrawFlow: "INRI iUSD → Polygon USDT", summary: "Resumo da transferência", route: "Rota", assetFlow: "Fluxo do ativo", destination: "Carteira de destino", fee: "Taxa do bridge", status: "Status", live: "Ao vivo", awaitingContracts: "Aguardando integração dos contratos", waitingConfig: "Contratos do bridge ainda não conectados", bridgeNow: "Fazer bridge", bridgePending: "Tela profissional do bridge pronta para Polygon USDT ↔ INRI iUSD.", bridgeReady: "Bridge configurado e pronto.", previewFee: "Este layout do bridge está pronto para seu fluxo real. Troque os elementos temporários depois e então ligue os contratos ou a API final.", logoSlots: "Elementos visuais", slotHint: "Pronto para sua logo final", slotReady: "Logo atual do iUSD já conectada",
+    },
+    es: {
+      bridge: "Bridge", direction: "Dirección", depositFlow: "Polygon USDT → INRI iUSD", withdrawFlow: "INRI iUSD → Polygon USDT", summary: "Resumen de la transferencia", route: "Ruta", assetFlow: "Flujo del activo", destination: "Wallet de destino", fee: "Comisión del bridge", status: "Estado", live: "Activo", awaitingContracts: "Esperando la integración de contratos", waitingConfig: "Los contratos del bridge aún no están conectados", bridgeNow: "Hacer bridge", bridgePending: "Pantalla profesional del bridge lista para Polygon USDT ↔ INRI iUSD.", bridgeReady: "Bridge configurado y listo.", previewFee: "Este diseño del bridge está listo para tu flujo real. Sustituye los elementos temporales después y conecta los contratos o la API final.", logoSlots: "Elementos visuales", slotHint: "Listo para tu logo final", slotReady: "El logo actual de iUSD ya está conectado",
     },
   };
 
+  map.fr ||= map.en;
+  map.de ||= map.en;
+  map.it ||= map.en;
+  map.ru ||= map.en;
+  map.zh ||= map.en;
+  map.ja ||= map.en;
+  map.ko ||= map.en;
+  map.tr ||= map.en;
   return map[lang] || map.en;
 }
+
 
 function wrap(isLight: boolean): React.CSSProperties {
   return {
