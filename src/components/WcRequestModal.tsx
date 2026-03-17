@@ -1,178 +1,166 @@
 import React from "react";
-import { buildWcRequestDetails } from "../lib/wcRequestDetails";
+import { parseTypedDataPayload, getTypedDataRiskHints, formatValuePreview } from "../lib/wcTypedData";
 
 type Props = {
   open: boolean;
   theme: "dark" | "light";
   request: any | null;
-  approving?: boolean;
   onApprove: () => void;
   onReject: () => void;
 };
 
-export default function WcRequestModal({
-  open,
-  theme,
-  request,
-  approving = false,
-  onApprove,
-  onReject,
-}: Props) {
+function methodTitle(method: string) {
+  if (method === "eth_signTypedData_v4") return "Sign typed data";
+  if (method === "eth_signTypedData_v3") return "Sign typed data v3";
+  if (method === "eth_signTypedData") return "Sign typed data";
+  if (method === "personal_sign") return "Sign message";
+  if (method === "eth_sendTransaction") return "Confirm transaction";
+  return "Confirm request";
+}
+
+function tone(theme: "dark" | "light") {
+  return {
+    bg: theme === "light" ? "#fff" : "#111722",
+    text: theme === "light" ? "#10131a" : "#fff",
+    sub: theme === "light" ? "#5f6b7d" : "#9aa4b5",
+    border: theme === "light" ? "#dbe2ef" : "#273042",
+    soft: theme === "light" ? "#f4f7fb" : "#0a0f18",
+    softBorder: theme === "light" ? "#dbe3f0" : "#243045",
+    warningBg: theme === "light" ? "rgba(255,190,92,.12)" : "rgba(255,190,92,.10)",
+    warningBorder: "rgba(255,190,92,.35)",
+  };
+}
+
+function InfoRow({ label, value, text, sub }: { label: string; value: any; text: string; sub: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "8px 0" }}>
+      <div style={{ color: sub }}>{label}</div>
+      <div style={{ color: text, fontWeight: 800, textAlign: "right", wordBreak: "break-word" }}>{value}</div>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+export default function WcRequestModal({ open, theme, request, onApprove, onReject }: Props) {
   if (!open || !request) return null;
 
-  const text = theme === "light" ? "#10131a" : "#fff";
-  const sub = theme === "light" ? "#5f6b7d" : "#9aa4b5";
-  const details = buildWcRequestDetails(request);
+  const c = tone(theme);
+  const method = String(request.method || "");
+
+  let typedData: ReturnType<typeof parseTypedDataPayload> | null = null;
+  let typedHints: string[] = [];
+  if (method === "eth_signTypedData" || method === "eth_signTypedData_v3" || method === "eth_signTypedData_v4") {
+    try {
+      typedData = parseTypedDataPayload(method, request.params);
+      typedHints = getTypedDataRiskHints(typedData);
+    } catch {
+      typedData = null;
+    }
+  }
 
   return (
     <div style={overlayStyle}>
       <div style={panelStyle(theme)}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-          {details.networkLogo ? (
-            <img
-              src={details.networkLogo}
-              alt={details.networkName}
-              style={{ width: 42, height: 42, borderRadius: 12, objectFit: "cover" }}
-            />
-          ) : (
-            <div style={iconFallback(theme)}>{details.networkName.slice(0, 1).toUpperCase()}</div>
-          )}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 22, fontWeight: 800 }}>{details.title}</div>
-            <div style={{ color: sub, fontSize: 14, lineHeight: 1.4 }}>{details.subtitle}</div>
-            <div style={{ color: text, fontWeight: 700, marginTop: 4 }}>{details.dappName}</div>
-            {!!details.dappUrl && (
-              <div style={{ color: sub, fontSize: 13, wordBreak: "break-all" }}>{details.dappUrl}</div>
-            )}
-          </div>
+        <div style={{ fontSize: 24, fontWeight: 900, marginBottom: 6 }}>
+          {methodTitle(method)}
         </div>
 
-        <div style={heroBox(theme)}>
-          <InfoRow label="Method" value={details.displayMethod || details.methodLabel || details.method} text={text} sub={sub} />
-          <InfoRow label="Network" value={details.networkName} text={text} sub={sub} />
-          <InfoRow label="Chain" value={details.chainLabel} text={text} sub={sub} />
+        <div style={{ color: c.sub, marginBottom: 14 }}>
+          Review the request before approving it in your wallet.
         </div>
 
-        {details.kind === "transaction" && (
-          <>
-            <SectionTitle text="Transaction details" />
-            <div style={gridStyle}>
-              <Card theme={theme} label="To" value={details.to} hint={details.toFull || "Destination address"} />
-              <Card theme={theme} label="Value" value={details.valueNative} hint="Native asset amount" />
-              <Card theme={theme} label="Gas limit" value={details.gasLimit} hint="Requested execution gas" />
-              <Card
-                theme={theme}
-                label="Estimated fee"
-                value={details.estimatedFeeNative}
-                hint={details.maxFeePerGas !== "-" ? `Max fee ${details.maxFeePerGas}` : "Network will estimate"}
-              />
-              <Card
-                theme={theme}
-                label="Priority fee"
-                value={details.maxPriorityFeePerGas}
-                hint={details.gasPrice !== "-" ? `Legacy gas ${details.gasPrice}` : "EIP-1559 or legacy"}
-              />
-              <Card
-                theme={theme}
-                label="Interaction"
-                value={details.contractInteraction ? "Contract call" : "Native transfer"}
-                hint={details.dataPreview}
-              />
-            </div>
-          </>
-        )}
-
-        {details.kind === "message" && (
-          <>
-            <SectionTitle text="Message preview" />
-            <pre style={preStyle(theme)}>{details.preview || "Empty message"}</pre>
-          </>
-        )}
-
-        {details.kind === "typedData" && (
-          <>
-            <SectionTitle text="Typed data summary" />
-            <div style={gridStyle}>
-              <Card theme={theme} label="Domain" value={details.summary?.domainName || "Unknown"} hint="Signing domain" />
-              <Card theme={theme} label="Primary type" value={details.summary?.primaryType || "Unknown"} hint="Main structured type" />
-              <Card
-                theme={theme}
-                label="Fields"
-                value={String(details.summary?.fieldCount || 0)}
-                hint={(details.summary?.fields || []).join(", ") || "No visible fields"}
-              />
-            </div>
-            <pre style={preStyle(theme)}>{JSON.stringify(request.params, null, 2)}</pre>
-          </>
-        )}
-
-        {details.kind === "raw" && <pre style={preStyle(theme)}>{JSON.stringify(request.params, null, 2)}</pre>}
-
-        <SectionTitle text="Security notice" />
-        <div style={riskBox(theme)}>
-          {details.riskItems.map((item: string, index: number) => (
-            <div key={index} style={{ display: "flex", gap: 8, color: sub, lineHeight: 1.45 }}>
-              <span style={{ color: "#ffb020", fontWeight: 900 }}>•</span>
-              <span>{item}</span>
-            </div>
-          ))}
+        <div style={cardStyle(theme)}>
+          <InfoRow label="Method" value={method.replace(/^eth_/, "")} text={c.text} sub={c.sub} />
+          <InfoRow label="Chain" value={request.chainId || "-"} text={c.text} sub={c.sub} />
         </div>
+
+        {typedData ? (
+          <>
+            <Section title="Domain">
+              <div style={cardStyle(theme)}>
+                <InfoRow label="Name" value={typedData.domain.name || "-"} text={c.text} sub={c.sub} />
+                <InfoRow label="Version" value={typedData.domain.version || "-"} text={c.text} sub={c.sub} />
+                <InfoRow label="Chain ID" value={typedData.domain.chainId ?? "-"} text={c.text} sub={c.sub} />
+                <InfoRow
+                  label="Verifier"
+                  value={formatValuePreview(typedData.domain.verifyingContract)}
+                  text={c.text}
+                  sub={c.sub}
+                />
+                <InfoRow label="Primary type" value={typedData.primaryType} text={c.text} sub={c.sub} />
+              </div>
+            </Section>
+
+            <Section title="Fields">
+              <div style={cardStyle(theme)}>
+                {Object.entries(typedData.message).length === 0 ? (
+                  <div style={{ color: c.sub }}>No structured message fields.</div>
+                ) : (
+                  Object.entries(typedData.message).map(([key, value]) => (
+                    <InfoRow
+                      key={key}
+                      label={key}
+                      value={formatValuePreview(value)}
+                      text={c.text}
+                      sub={c.sub}
+                    />
+                  ))
+                )}
+              </div>
+            </Section>
+
+            <Section title="Type definitions">
+              <div style={preStyle(theme)}>
+                {JSON.stringify(typedData.types, null, 2)}
+              </div>
+            </Section>
+
+            <Section title="Security notice">
+              <div style={{ ...cardStyle(theme), background: c.warningBg, borderColor: c.warningBorder }}>
+                <div style={{ color: c.text, fontWeight: 700, marginBottom: typedHints.length ? 8 : 0 }}>
+                  Typed data signatures can authorize actions without sending an on-chain transaction.
+                </div>
+                {typedHints.length ? (
+                  <ul style={{ margin: 0, paddingLeft: 18, color: c.sub }}>
+                    {typedHints.map((hint) => (
+                      <li key={hint} style={{ marginBottom: 4 }}>{hint}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div style={{ color: c.sub }}>Verify the domain, contract and message fields carefully.</div>
+                )}
+              </div>
+            </Section>
+          </>
+        ) : method === "personal_sign" ? (
+          <Section title="Message">
+            <div style={preStyle(theme)}>
+              {Array.isArray(request.params) ? String(request.params[0] ?? request.params[1] ?? "") : ""}
+            </div>
+          </Section>
+        ) : (
+          <Section title="Request payload">
+            <div style={preStyle(theme)}>{JSON.stringify(request.params, null, 2)}</div>
+          </Section>
+        )}
 
         <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-          <button style={secondaryBtn(theme)} onClick={onReject} disabled={approving}>
+          <button style={secondaryBtn(theme)} onClick={onReject}>
             Reject
           </button>
-          <button style={primaryBtn(approving)} onClick={onApprove} disabled={approving}>
-            {approving ? "Approving..." : "Approve"}
+          <button style={primaryBtn()} onClick={onApprove}>
+            Approve
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function SectionTitle({ text }: { text: string }) {
-  return <div style={{ fontSize: 15, fontWeight: 800, margin: "16px 0 10px" }}>{text}</div>;
-}
-
-function InfoRow({
-  label,
-  value,
-  text,
-  sub,
-}: {
-  label: string;
-  value: string;
-  text: string;
-  sub: string;
-}) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-      <span style={{ color: sub }}>{label}</span>
-      <strong style={{ color: text, textAlign: "right" }}>{value}</strong>
-    </div>
-  );
-}
-
-function Card({
-  theme,
-  label,
-  value,
-  hint,
-}: {
-  theme: "dark" | "light";
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  const sub = theme === "light" ? "#5f6b7d" : "#9aa4b5";
-  const text = theme === "light" ? "#10131a" : "#fff";
-
-  return (
-    <div style={cardStyle(theme)}>
-      <div style={{ color: sub, fontSize: 12, marginBottom: 6 }}>{label}</div>
-      <div style={{ color: text, fontSize: 15, fontWeight: 800, lineHeight: 1.35, wordBreak: "break-word" }}>{value}</div>
-      {hint ? <div style={{ color: sub, fontSize: 12, marginTop: 6, lineHeight: 1.35 }}>{hint}</div> : null}
     </div>
   );
 }
@@ -199,44 +187,15 @@ function panelStyle(theme: "dark" | "light"): React.CSSProperties {
     borderRadius: 24,
     padding: 20,
     boxSizing: "border-box",
-    boxShadow: theme === "light" ? "0 24px 80px rgba(20,30,50,.14)" : "0 24px 80px rgba(0,0,0,.45)",
   };
 }
-
-function heroBox(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    display: "grid",
-    gap: 8,
-    padding: 14,
-    borderRadius: 16,
-    background: theme === "light" ? "#f4f7fb" : "#0a1018",
-    border: `1px solid ${theme === "light" ? "#dbe3f0" : "#243045"}`,
-  };
-}
-
-const gridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 10,
-};
 
 function cardStyle(theme: "dark" | "light"): React.CSSProperties {
   return {
-    padding: 14,
+    background: theme === "light" ? "#f4f7fb" : "#0a0f18",
+    border: `1px solid ${theme === "light" ? "#dbe3f0" : "#243045"}`,
     borderRadius: 16,
-    background: theme === "light" ? "#f8fbff" : "#0d1420",
-    border: `1px solid ${theme === "light" ? "#dde6f3" : "#223044"}`,
-  };
-}
-
-function riskBox(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    display: "grid",
-    gap: 8,
-    padding: 14,
-    borderRadius: 16,
-    background: theme === "light" ? "#fff7eb" : "rgba(255,176,32,.08)",
-    border: `1px solid ${theme === "light" ? "#ffe0ae" : "rgba(255,176,32,.22)"}`,
+    padding: 12,
   };
 }
 
@@ -251,47 +210,31 @@ function preStyle(theme: "dark" | "light"): React.CSSProperties {
     wordBreak: "break-word",
     maxHeight: 260,
     overflow: "auto",
-    lineHeight: 1.45,
   };
 }
 
-function primaryBtn(disabled: boolean): React.CSSProperties {
+function primaryBtn(): React.CSSProperties {
   return {
     flex: 1,
-    height: 48,
+    height: 46,
     borderRadius: 14,
     border: "none",
-    background: disabled ? "#6f89c9" : "#3f7cff",
+    background: "#3f7cff",
     color: "#fff",
     fontWeight: 800,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.85 : 1,
+    cursor: "pointer",
   };
 }
 
 function secondaryBtn(theme: "dark" | "light"): React.CSSProperties {
   return {
     flex: 1,
-    height: 48,
+    height: 46,
     borderRadius: 14,
     border: `1px solid ${theme === "light" ? "#d3dceb" : "#2c3950"}`,
     background: "transparent",
     color: theme === "light" ? "#10131a" : "#fff",
     fontWeight: 800,
     cursor: "pointer",
-  };
-}
-
-function iconFallback(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    display: "grid",
-    placeItems: "center",
-    fontWeight: 900,
-    background: theme === "light" ? "#e6eefc" : "#1b2740",
-    color: theme === "light" ? "#234692" : "#8fb0ff",
-    flexShrink: 0,
   };
 }

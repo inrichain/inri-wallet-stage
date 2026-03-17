@@ -16,9 +16,6 @@ export default defineConfig({
         "pwa-192.png",
         "pwa-512.png"
       ],
-      workbox: {
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
-      },
       manifest: {
         id: "/",
         name: "INRI Wallet",

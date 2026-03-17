@@ -78,12 +78,12 @@ export default function SendScreen({
   theme = "dark",
   lang = "en",
   address,
-  privateKey,
+  mnemonic,
 }: {
   theme?: "dark" | "light";
   lang?: string;
   address: string;
-  privateKey: string;
+  mnemonic: string;
 }) {
   const isLight = theme === "light";
   const [networkKey, setNetworkKey] = useState(getStoredNetwork().key);
@@ -222,7 +222,7 @@ export default function SendScreen({
   }
 
   async function handleSend() {
-    if (!privateKey) {
+    if (!mnemonic) {
       showMessage(t.noWallet);
       return;
     }
@@ -252,7 +252,7 @@ export default function SendScreen({
 
     try {
       const activeNetwork = getStoredNetwork();
-      const wallet = new ethers.Wallet(privateKey, getProvider(networkKey));
+      const wallet = ethers.Wallet.fromPhrase(mnemonic).connect(getProvider(networkKey));
 
       let tx: any;
 
