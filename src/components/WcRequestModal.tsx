@@ -5,6 +5,7 @@ type Props = {
   open: boolean;
   theme: "dark" | "light";
   request: any | null;
+  approving?: boolean;
   onApprove: () => void;
   onReject: () => void;
 };
@@ -13,6 +14,7 @@ export default function WcRequestModal({
   open,
   theme,
   request,
+  approving = false,
   onApprove,
   onReject,
 }: Props) {
@@ -21,24 +23,31 @@ export default function WcRequestModal({
   const text = theme === "light" ? "#10131a" : "#fff";
   const sub = theme === "light" ? "#5f6b7d" : "#9aa4b5";
   const details = buildWcRequestDetails(request);
+  const primaryIcon = details.kind === "transaction" ? (details.networkIcon || details.dappIcon) : (details.dappIcon || details.networkIcon);
+  const [iconFailed, setIconFailed] = React.useState(false);
 
   return (
     <div style={overlayStyle}>
       <div style={panelStyle(theme)}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-          {details.dappIcon ? (
+          {!iconFailed && primaryIcon ? (
             <img
-              src={details.dappIcon}
-              alt={details.dappName}
+              src={primaryIcon}
+              alt={details.kind === "transaction" ? details.networkName : details.dappName}
+              onError={() => setIconFailed(true)}
               style={{ width: 42, height: 42, borderRadius: 12, objectFit: "cover" }}
             />
           ) : (
-            <div style={iconFallback(theme)}>{details.dappName.slice(0, 1).toUpperCase()}</div>
+            <div style={iconFallback(theme)}>
+              {(details.kind === "transaction" ? details.networkName : details.dappName).slice(0, 1).toUpperCase()}
+            </div>
           )}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 22, fontWeight: 800 }}>{details.title}</div>
             <div style={{ color: sub, fontSize: 14, lineHeight: 1.4 }}>{details.subtitle}</div>
-            <div style={{ color: text, fontWeight: 700, marginTop: 4 }}>{details.dappName}</div>
+            <div style={{ color: text, fontWeight: 700, marginTop: 4 }}>
+              {details.kind === "transaction" ? details.networkName : details.dappName}
+            </div>
             {!!details.dappUrl && (
               <div style={{ color: sub, fontSize: 13, wordBreak: "break-all" }}>{details.dappUrl}</div>
             )}
@@ -46,7 +55,7 @@ export default function WcRequestModal({
         </div>
 
         <div style={heroBox(theme)}>
-          <InfoRow label="Method" value={details.method} text={text} sub={sub} />
+          <InfoRow label="Method" value={details.methodLabel || details.method} text={text} sub={sub} />
           <InfoRow label="Network" value={details.networkName} text={text} sub={sub} />
           <InfoRow label="Chain" value={details.chainLabel} text={text} sub={sub} />
         </div>
@@ -127,11 +136,11 @@ export default function WcRequestModal({
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-          <button style={secondaryBtn(theme)} onClick={onReject}>
+          <button style={secondaryBtn(theme)} onClick={onReject} disabled={approving}>
             Reject
           </button>
-          <button style={primaryBtn()} onClick={onApprove}>
-            Approve
+          <button style={primaryBtn(approving)} onClick={onApprove} disabled={approving}>
+            {approving ? "Approving..." : "Approve"}
           </button>
         </div>
       </div>
@@ -263,7 +272,7 @@ function preStyle(theme: "dark" | "light"): React.CSSProperties {
   };
 }
 
-function primaryBtn(): React.CSSProperties {
+function primaryBtn(disabled = false): React.CSSProperties {
   return {
     flex: 1,
     height: 48,
@@ -272,7 +281,8 @@ function primaryBtn(): React.CSSProperties {
     background: "#3f7cff",
     color: "#fff",
     fontWeight: 800,
-    cursor: "pointer",
+    cursor: disabled ? "wait" : "pointer",
+    opacity: disabled ? 0.82 : 1,
   };
 }
 
@@ -285,7 +295,8 @@ function secondaryBtn(theme: "dark" | "light"): React.CSSProperties {
     background: "transparent",
     color: theme === "light" ? "#10131a" : "#fff",
     fontWeight: 800,
-    cursor: "pointer",
+    cursor: disabled ? "wait" : "pointer",
+    opacity: disabled ? 0.82 : 1,
   };
 }
 

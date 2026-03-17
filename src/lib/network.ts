@@ -81,7 +81,30 @@ export function getStoredNetwork(): NetworkItem {
     const raw = localStorage.getItem(NETWORKS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed?.key && parsed?.chainId && parsed?.rpcUrl) return parsed;
+      const matchedDefault = DEFAULT_NETWORKS.find(
+        (item) => item.key === parsed?.key || Number(item.chainId) === Number(parsed?.chainId)
+      );
+
+      if (matchedDefault) {
+        return {
+          ...matchedDefault,
+          ...parsed,
+          key: matchedDefault.key,
+          name: matchedDefault.name,
+          chainId: matchedDefault.chainId,
+          symbol: matchedDefault.symbol,
+          logo: matchedDefault.logo,
+          explorerAddressUrl: parsed?.explorerAddressUrl || matchedDefault.explorerAddressUrl,
+          explorerTxUrl: parsed?.explorerTxUrl || matchedDefault.explorerTxUrl,
+        };
+      }
+
+      if (parsed?.key && parsed?.chainId && parsed?.rpcUrl) {
+        return {
+          ...parsed,
+          logo: typeof parsed?.logo === "string" && parsed.logo.trim() ? parsed.logo : DEFAULT_NETWORKS[0].logo,
+        };
+      }
     }
   } catch {}
   return DEFAULT_NETWORKS[0];

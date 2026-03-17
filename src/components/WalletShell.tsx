@@ -94,6 +94,7 @@ export default function WalletShell() {
   const [reauthOpen, setReauthOpen] = useState(false);
   const [reauthPassword, setReauthPassword] = useState("");
   const [reauthError, setReauthError] = useState("");
+  const [approvingRequest, setApprovingRequest] = useState(false);
 
   const autoLockTimerRef = useRef<number | null>(null);
   const hiddenLockTimerRef = useRef<number | null>(null);
@@ -190,6 +191,18 @@ export default function WalletShell() {
     sync();
     return wcStoreSubscribe(sync);
   }, []);
+
+  useEffect(() => {
+    wcProposalRef.current = wcProposal;
+  }, [wcProposal]);
+
+  useEffect(() => {
+    wcRequestRef.current = wcRequest;
+  }, [wcRequest]);
+
+  useEffect(() => {
+    reauthOpenRef.current = reauthOpen;
+  }, [reauthOpen]);
 
   function ensureFavicon() {
     let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
@@ -491,6 +504,7 @@ export default function WalletShell() {
   }
 
   async function confirmSensitiveAction() {
+    if (approvingRequest) return;
     const vault = wallets.find((w) => w.id === (unlockedWallet?.id || selectedWalletId));
 
     if (!vault) {
@@ -522,8 +536,13 @@ export default function WalletShell() {
       setReauthError("");
 
       if (action) {
-        await action(decrypted.privateKey);
-        markActivity();
+        setApprovingRequest(true);
+        try {
+          await action(decrypted.privateKey);
+          markActivity();
+        } finally {
+          setApprovingRequest(false);
+        }
       }
     } catch {
       setReauthError("Wrong password");
@@ -585,8 +604,10 @@ export default function WalletShell() {
       showMessage("Unlock the wallet first");
       return;
     }
+    if (approvingRequest) return;
 
     await runSensitiveAction(async (overridePrivateKey?: string) => {
+      setApprovingRequest(true);
       try {
         const result = await handleRequestMethod({
           method: wcRequest.method,
@@ -600,6 +621,8 @@ export default function WalletShell() {
       } catch (err: any) {
         console.error(err);
         showMessage(err?.message || "Failed to approve request");
+      } finally {
+        setApprovingRequest(false);
       }
     });
   }
@@ -964,6 +987,7 @@ export default function WalletShell() {
         open={!!wcRequest}
         theme={theme}
         request={wcRequest}
+        approving={approvingRequest}
         onApprove={onApproveRequest}
         onReject={onRejectRequest}
       />
@@ -1026,7 +1050,7 @@ function overlayStyle(): React.CSSProperties {
     display: "grid",
     placeItems: "center",
     padding: 20,
-    zIndex: 1200,
+    zIndex: 15000,
   };
 }
 

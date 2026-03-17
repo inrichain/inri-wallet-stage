@@ -59,6 +59,19 @@ function summarizeTypedData(payload: any) {
   };
 }
 
+function getMethodLabel(method: string) {
+  switch (method) {
+    case "eth_sendTransaction":
+      return "sendTransaction";
+    case "personal_sign":
+      return "personalSign";
+    case "eth_signTypedData_v4":
+      return "signTypedData_v4";
+    default:
+      return method;
+  }
+}
+
 export function buildWcRequestDetails(request: any) {
   const network = getStoredNetwork();
   const chainId = Number(network?.chainId || 3777);
@@ -66,8 +79,10 @@ export function buildWcRequestDetails(request: any) {
 
   const base = {
     method,
+    methodLabel: getMethodLabel(method),
     chainLabel: request?.chainId || `eip155:${chainId}`,
     networkName: network?.name || "Current network",
+    networkIcon: network?.logo || "",
     dappName: request?.peerMetadata?.name || "Unknown dApp",
     dappUrl: request?.peerMetadata?.url || "",
     dappIcon: request?.peerMetadata?.icons?.[0] || "",
@@ -97,7 +112,7 @@ export function buildWcRequestDetails(request: any) {
     return {
       ...base,
       kind: "transaction",
-      title: "Confirm transaction",
+      title: `${network?.name || "Wallet"} send transaction`,
       subtitle: "Review the action before sending it on-chain.",
       from: tx?.from ? shorten(tx.from) : "Current wallet",
       to: tx?.to ? shorten(tx.to) : "New contract",
@@ -138,7 +153,7 @@ export function buildWcRequestDetails(request: any) {
     return {
       ...base,
       kind: "message",
-      title: "Sign message",
+      title: `${network?.name || "Wallet"} sign message`,
       subtitle: "Signing proves wallet control but does not send funds by itself.",
       preview: messageText,
       riskItems: [
@@ -155,7 +170,7 @@ export function buildWcRequestDetails(request: any) {
     return {
       ...base,
       kind: "typedData",
-      title: "Sign typed data",
+      title: `${network?.name || "Wallet"} sign typed data`,
       subtitle: "Typed data is commonly used for permits, login, and advanced dApp actions.",
       summary,
       riskItems: [
