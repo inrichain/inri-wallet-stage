@@ -2,11 +2,7 @@ import { Core } from "@walletconnect/core";
 import { Web3Wallet } from "@walletconnect/web3wallet";
 import { buildApprovedNamespaces, getSdkError } from "@walletconnect/utils";
 import { wcStoreSetProposal, wcStoreSetRequest } from "./wcSessionStore";
-import {
-  approveRequestWithResult,
-  rejectRequestUserRejected,
-  getSupportedNamespaces,
-} from "./wcRequestHandlers";
+import { getSupportedNamespaces } from "./wcRequestHandlers";
 
 export const projectId = "bfc7a39282888507c8c1dca6d8b2dbfe";
 
@@ -76,7 +72,8 @@ export async function initWalletConnect(address: string, chainId = 3777) {
 
 export async function pairWalletConnect(uri: string) {
   if (!web3wallet) throw new Error("WalletConnect not initialized");
-  await web3wallet.pair({ uri });
+  if (!uri?.startsWith("wc:")) throw new Error("Invalid WalletConnect URI");
+  await web3wallet.pair({ uri: uri.trim() });
 }
 
 export async function approveSessionProposal(proposal: any, address: string) {
@@ -108,13 +105,34 @@ export async function rejectSessionProposal(proposalId: number) {
 
 export async function approveSessionRequest(request: any, result: any) {
   if (!web3wallet) throw new Error("WalletConnect not initialized");
-  await approveRequestWithResult(web3wallet, request.raw, result);
+
+  await web3wallet.respondSessionRequest({
+    topic: request.raw.topic,
+    response: {
+      id: request.raw.id,
+      jsonrpc: "2.0",
+      result,
+    },
+  });
+
   wcStoreSetRequest(null);
 }
 
 export async function rejectSessionRequest(request: any) {
   if (!web3wallet) throw new Error("WalletConnect not initialized");
-  await rejectRequestUserRejected(web3wallet, request.raw);
+
+  await web3wallet.respondSessionRequest({
+    topic: request.raw.topic,
+    response: {
+      id: request.raw.id,
+      jsonrpc: "2.0",
+      error: {
+        code: 4001,
+        message: "User rejected the request",
+      },
+    },
+  });
+
   wcStoreSetRequest(null);
 }
 
@@ -128,4 +146,38 @@ export function getCurrentWcAddress() {
 
 export function getCurrentWcChainId() {
   return currentChainId;
+}
+
+export function getActiveSessions() {
+  if (!web3wallet) return [];
+
+  const sessionsObj = web3wallet.getActiveSessions?.() || {};
+  const topics = Object.keys(sessionsObj);
+
+  return topics.map((topic) => {
+    const s = sessionsObj[topic];
+    return {
+      topic,
+      name: s?.peer?.metadata?.name || "Unknown dApp",
+      url: s?.peer?.metadata?.url || "",
+      icons: s?.peer?.metadata?.icons || [],
+      namespaces: s?.namespaces || {},
+    };
+  });
+}
+
+export async function disconnectSession(topic: string) {
+  if (!web3wallet) throw new Error("WalletConnect not initialized");
+
+  await web3wallet.disconnectSession({
+    topic,
+    reason: getSdkError("USER_DISCONNECTED"),
+  });
+}
+
+export async function disconnectAllSessions() {
+  const sessions = getActiveSessions();
+  for (const s of sessions) {
+    await disconnectSession(s.topic);
+  }
 }
