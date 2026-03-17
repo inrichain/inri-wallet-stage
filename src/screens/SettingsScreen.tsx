@@ -6,7 +6,7 @@ import {
   saveStoredNetwork,
   type NetworkItem,
 } from "../lib/network";
-import { tr } from "../i18n/translations";
+import { tr, trf } from "../i18n/translations";
 import {
   pairWalletConnect,
   getActiveSessions,
@@ -43,6 +43,27 @@ export default function SettingsScreen({
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const t = {
+    rpcPlaceholder: tr(lang, "settings_rpc_placeholder"),
+    wcTitle: tr(lang, "settings_walletconnect_title"),
+    wcHint: tr(lang, "settings_walletconnect_hint"),
+    wcConnecting: tr(lang, "settings_walletconnect_connecting"),
+    wcConnectUri: tr(lang, "settings_walletconnect_connect_uri"),
+    wcScanQr: tr(lang, "settings_walletconnect_scan_qr"),
+    wcRefresh: tr(lang, "settings_walletconnect_refresh"),
+    wcDisconnectAll: tr(lang, "settings_walletconnect_disconnect_all"),
+    wcActiveSessions: tr(lang, "settings_walletconnect_active_sessions"),
+    wcNoSessions: tr(lang, "settings_walletconnect_no_sessions"),
+    wcNoUrl: tr(lang, "settings_walletconnect_no_url"),
+    wcTopic: tr(lang, "settings_walletconnect_topic"),
+    wcDisconnect: tr(lang, "settings_walletconnect_disconnect"),
+    securityTitle: tr(lang, "settings_security_title"),
+    securityAutolock: tr(lang, "settings_security_autolock"),
+    securityAutolockHint: tr(lang, "settings_security_autolock_hint"),
+    securityAutolockMinutes: tr(lang, "settings_security_autolock_minutes"),
+    securityLockHidden: tr(lang, "settings_security_lock_hidden"),
+    securityLockHiddenHint: tr(lang, "settings_security_lock_hidden_hint"),
+    securityRequirePassword: tr(lang, "settings_security_require_password"),
+    securityRequirePasswordHint: tr(lang, "settings_security_require_password_hint"),
     settings: tr(lang, "settings"),
     subtitle: tr(lang, "settings_subtitle"),
     language: tr(lang, "settings_language"),
@@ -94,7 +115,7 @@ export default function SettingsScreen({
     setNetwork(item);
     setCustomRpc(item.rpcUrl || "");
     window.dispatchEvent(new Event("wallet-network-updated"));
-    showWcMessage(`Network changed to ${item.name} (${item.chainId})`);
+    showWcMessage(trf(lang, "settings_network_changed", { name: item.name, chainId: item.chainId }));
   }
 
   function handleSaveRpc() {
@@ -106,14 +127,14 @@ export default function SettingsScreen({
     saveStoredNetwork(next);
     setNetwork(next);
     window.dispatchEvent(new Event("wallet-network-updated"));
-    showWcMessage("RPC saved");
+    showWcMessage(tr(lang, "settings_rpc_saved"));
   }
 
   function handleSecurityPatch(patch: Partial<SecuritySettings>) {
     const next = { ...securityState, ...patch };
     setSecurityState(next);
     saveSecuritySettings(next);
-    showWcMessage("Security settings saved");
+    showWcMessage(tr(lang, "settings_security_saved"));
   }
 
   function handleUploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
@@ -140,13 +161,13 @@ export default function SettingsScreen({
 
   async function handleConnectWc() {
     if (!wcUri.trim()) {
-      showWcMessage("Paste a WalletConnect URI");
+      showWcMessage(tr(lang, "settings_wc_paste_uri"));
       return;
     }
 
     const current = getStoredNetwork();
     if (Number(current?.chainId) !== 3777) {
-      showWcMessage("Select INRI network (3777) before connecting.");
+      showWcMessage(tr(lang, "settings_wc_select_inri"));
       return;
     }
 
@@ -156,10 +177,10 @@ export default function SettingsScreen({
       await pairWalletConnect(wcUri.trim());
       setWcUri("");
       refreshSessions();
-      showWcMessage("WalletConnect pairing started");
+      showWcMessage(tr(lang, "settings_wc_pairing_started"));
     } catch (err: any) {
       console.error(err);
-      showWcMessage(err?.message || "Failed to connect WalletConnect");
+      showWcMessage(err?.message || tr(lang, "settings_wc_failed_connect"));
     } finally {
       setWcLoading(false);
     }
@@ -171,10 +192,10 @@ export default function SettingsScreen({
     try {
       await disconnectSession(topic);
       refreshSessions();
-      showWcMessage("Session disconnected");
+      showWcMessage(tr(lang, "settings_wc_session_disconnected"));
     } catch (err: any) {
       console.error(err);
-      showWcMessage(err?.message || "Failed to disconnect session");
+      showWcMessage(err?.message || tr(lang, "settings_wc_failed_disconnect"));
     } finally {
       setWcLoading(false);
     }
@@ -186,10 +207,10 @@ export default function SettingsScreen({
     try {
       await disconnectAllSessions();
       refreshSessions();
-      showWcMessage("All sessions disconnected");
+      showWcMessage(tr(lang, "settings_wc_all_disconnected"));
     } catch (err: any) {
       console.error(err);
-      showWcMessage(err?.message || "Failed to disconnect all sessions");
+      showWcMessage(err?.message || tr(lang, "settings_wc_failed_disconnect_all"));
     } finally {
       setWcLoading(false);
     }
@@ -198,7 +219,7 @@ export default function SettingsScreen({
   function handleScannedUri(value: string) {
     setScannerOpen(false);
     setWcUri(value);
-    showWcMessage("WalletConnect QR detected");
+    showWcMessage(tr(lang, "settings_wc_qr_detected"));
   }
 
   return (
@@ -210,27 +231,6 @@ export default function SettingsScreen({
           </h2>
           <div style={{ marginTop: 8, color: isLight ? "#5b6578" : "#97a0b3" }}>
             {t.subtitle}
-          </div>
-        </div>
-
-        <div style={cardStyle(isLight)}>
-          <div style={labelStyle(isLight)}>Desktop provider</div>
-          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", lineHeight: 1.6 }}>
-            INRI Wallet now exposes an EIP-1193 provider on desktop in this browser context as <b>window.ethereum</b>, with EIP-6963 announcement support.
-          </div>
-          <div
-            style={{
-              marginTop: 12,
-              border: `1px solid ${isLight ? "#dbe2f0" : "#242b3a"}`,
-              borderRadius: 16,
-              padding: 12,
-              color: isLight ? "#42506a" : "#c3cbe0",
-              background: isLight ? "#f8fbff" : "rgba(255,255,255,.02)",
-              lineHeight: 1.55,
-              fontSize: 13,
-            }}
-          >
-            Works for desktop provider flows and testing in the current browser context. For third-party sites in separate tabs, a browser extension is still the final step for full injection everywhere.
           </div>
         </div>
 
@@ -369,7 +369,7 @@ export default function SettingsScreen({
           <input
             value={customRpc}
             onChange={(e) => setCustomRpc(e.target.value)}
-            placeholder="https://rpc.inri.life"
+            placeholder={t.rpcPlaceholder}
             style={{ ...inputStyle(isLight), marginTop: 14 }}
           />
 
@@ -389,7 +389,7 @@ export default function SettingsScreen({
               marginBottom: 8,
             }}
           >
-            WalletConnect
+            {t.wcTitle}
           </div>
 
           <div
@@ -399,8 +399,7 @@ export default function SettingsScreen({
               lineHeight: 1.55,
             }}
           >
-            Select the INRI network first, then scan a WalletConnect QR code or paste a
-            <strong> wc:</strong> URI.
+            {t.wcHint}
           </div>
 
           <textarea
@@ -428,7 +427,7 @@ export default function SettingsScreen({
               disabled={wcLoading}
               style={mainButtonStyle()}
             >
-              {wcLoading ? "Connecting..." : "Connect URI"}
+              {wcLoading ? t.wcConnecting : t.wcConnectUri}
             </button>
 
             <button
@@ -436,7 +435,7 @@ export default function SettingsScreen({
               disabled={wcLoading}
               style={secondaryButtonStyle(isLight)}
             >
-              Scan QR Code
+              {t.wcScanQr}
             </button>
 
             <button
@@ -444,7 +443,7 @@ export default function SettingsScreen({
               disabled={wcLoading}
               style={secondaryButtonStyle(isLight)}
             >
-              Refresh
+              {t.wcRefresh}
             </button>
 
             <button
@@ -452,7 +451,7 @@ export default function SettingsScreen({
               disabled={wcLoading || wcSessions.length === 0}
               style={secondaryButtonStyle(isLight)}
             >
-              Disconnect All
+              {t.wcDisconnectAll}
             </button>
           </div>
 
@@ -477,7 +476,7 @@ export default function SettingsScreen({
               marginBottom: 10,
             }}
           >
-            Active Sessions
+            {t.wcActiveSessions}
           </div>
 
           {wcSessions.length === 0 ? (
@@ -487,7 +486,7 @@ export default function SettingsScreen({
                 fontSize: 13,
               }}
             >
-              No active WalletConnect sessions.
+              {t.wcNoSessions}
             </div>
           ) : (
             <div style={{ display: "grid", gap: 10 }}>
@@ -519,7 +518,7 @@ export default function SettingsScreen({
                       wordBreak: "break-word",
                     }}
                   >
-                    {session.url || "No URL"}
+                    {session.url || t.wcNoUrl}
                   </div>
 
                   <div
@@ -530,7 +529,7 @@ export default function SettingsScreen({
                       wordBreak: "break-word",
                     }}
                   >
-                    Topic: {session.topic}
+                    {t.wcTopic}: {session.topic}
                   </div>
 
                   <button
@@ -538,90 +537,12 @@ export default function SettingsScreen({
                     disabled={wcLoading}
                     style={secondaryButtonStyle(isLight)}
                   >
-                    Disconnect
+                    {t.wcDisconnect}
                   </button>
                 </div>
               ))}
             </div>
           )}
-        </div>
-
-        <div style={cardStyle(isLight)}>
-          <div
-            style={{
-              fontWeight: 800,
-              color: isLight ? "#10131a" : "#ffffff",
-              fontSize: 18,
-              marginBottom: 8,
-            }}
-          >
-            Security
-          </div>
-
-          <div
-            style={{
-              color: isLight ? "#5b6578" : "#97a0b3",
-              marginBottom: 16,
-              lineHeight: 1.55,
-            }}
-          >
-            Auto-lock protects the wallet after inactivity, when the app goes to background, and before WalletConnect approvals.
-          </div>
-
-          <div style={{ display: "grid", gap: 14 }}>
-            <label style={switchRowStyle(isLight)}>
-              <div>
-                <div style={switchTitleStyle(isLight)}>Enable auto-lock</div>
-                <div style={switchHintStyle(isLight)}>Locks the wallet after inactivity.</div>
-              </div>
-              <input
-                type="checkbox"
-                checked={securityState.autoLockEnabled}
-                onChange={(e) => handleSecurityPatch({ autoLockEnabled: e.target.checked })}
-              />
-            </label>
-
-            <div>
-              <div style={labelStyle(isLight)}>Auto-lock time (minutes)</div>
-              <select
-                value={securityState.autoLockMinutes}
-                onChange={(e) => handleSecurityPatch({ autoLockMinutes: Number(e.target.value) })}
-                style={inputStyle(isLight)}
-              >
-                {[1, 3, 5, 10, 15, 30, 60].map((minutes) => (
-                  <option key={minutes} value={minutes}>
-                    {minutes} minute{minutes > 1 ? "s" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <label style={switchRowStyle(isLight)}>
-              <div>
-                <div style={switchTitleStyle(isLight)}>Lock when app goes to background</div>
-                <div style={switchHintStyle(isLight)}>Useful on mobile and shared desktops.</div>
-              </div>
-              <input
-                type="checkbox"
-                checked={securityState.lockOnHidden}
-                onChange={(e) => handleSecurityPatch({ lockOnHidden: e.target.checked })}
-              />
-            </label>
-
-            <label style={switchRowStyle(isLight)}>
-              <div>
-                <div style={switchTitleStyle(isLight)}>Password for WalletConnect approvals</div>
-                <div style={switchHintStyle(isLight)}>Ask again before signing requests and transactions.</div>
-              </div>
-              <input
-                type="checkbox"
-                checked={securityState.requirePasswordForSensitiveActions}
-                onChange={(e) =>
-                  handleSecurityPatch({ requirePasswordForSensitiveActions: e.target.checked })
-                }
-              />
-            </label>
-          </div>
         </div>
 
         <div style={cardStyle(isLight)}>
@@ -703,11 +624,62 @@ export default function SettingsScreen({
             {t.avatarHint}
           </div>
         </div>
+
+        <div style={cardStyle(isLight)}>
+          <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18, marginBottom: 8 }}>
+            {t.securityTitle}
+          </div>
+
+          <div style={{ display: "grid", gap: 14 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle(isLight)}>{t.securityAutolock}</span>
+              <span style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>{t.securityAutolockHint}</span>
+              <input
+                type="checkbox"
+                checked={securityState.autoLockEnabled}
+                onChange={(e) => handleSecurityPatch({ autoLockEnabled: e.target.checked })}
+              />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle(isLight)}>{t.securityAutolockMinutes}</span>
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={securityState.autoLockMinutes}
+                onChange={(e) => handleSecurityPatch({ autoLockMinutes: Math.max(1, Number(e.target.value || 5)) })}
+                style={inputStyle(isLight)}
+              />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle(isLight)}>{t.securityLockHidden}</span>
+              <span style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>{t.securityLockHiddenHint}</span>
+              <input
+                type="checkbox"
+                checked={securityState.lockOnHidden}
+                onChange={(e) => handleSecurityPatch({ lockOnHidden: e.target.checked })}
+              />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={labelStyle(isLight)}>{t.securityRequirePassword}</span>
+              <span style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>{t.securityRequirePasswordHint}</span>
+              <input
+                type="checkbox"
+                checked={securityState.requirePasswordForSensitiveActions}
+                onChange={(e) => handleSecurityPatch({ requirePasswordForSensitiveActions: e.target.checked })}
+              />
+            </label>
+          </div>
+        </div>
       </div>
 
       <WalletConnectQrScanner
         open={scannerOpen}
         theme={theme}
+        lang={lang}
         onClose={() => setScannerOpen(false)}
         onScan={handleScannedUri}
       />

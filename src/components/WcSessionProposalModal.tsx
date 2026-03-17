@@ -1,8 +1,10 @@
 import React from "react";
+import { tr } from "../i18n/translations";
 
 type Props = {
   open: boolean;
   theme: "dark" | "light";
+  lang?: string;
   proposal: any | null;
   onApprove: () => void;
   onReject: () => void;
@@ -11,6 +13,7 @@ type Props = {
 export default function WcSessionProposalModal({
   open,
   theme,
+  lang = "en",
   proposal,
   onApprove,
   onReject,
@@ -21,6 +24,8 @@ export default function WcSessionProposalModal({
   const border = theme === "light" ? "#d9e1ef" : "#273042";
   const text = theme === "light" ? "#10131a" : "#ffffff";
   const sub = theme === "light" ? "#5f6b7d" : "#9aa4b5";
+
+  const t = (key: string) => tr(lang, key);
 
   const requested =
     proposal.requiredNamespaces &&
@@ -42,7 +47,7 @@ export default function WcSessionProposalModal({
         }}
       >
         <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>
-          Connect Wallet
+          {t("wc_proposal_title")}
         </div>
 
         <div style={{ color: sub, marginBottom: 16 }}>
@@ -51,7 +56,7 @@ export default function WcSessionProposalModal({
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Requested access</div>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>{t("wc_proposal_requested_access")}</div>
           <pre style={preStyle(theme)}>
             {JSON.stringify(requested, null, 2)}
           </pre>
@@ -59,10 +64,10 @@ export default function WcSessionProposalModal({
 
         <div style={{ display: "flex", gap: 10 }}>
           <button style={secondaryBtn(theme)} onClick={onReject}>
-            Reject
+            {t("wc_proposal_reject")}
           </button>
           <button style={primaryBtn()} onClick={onApprove}>
-            Approve
+            {t("wc_proposal_approve")}
           </button>
         </div>
       </div>

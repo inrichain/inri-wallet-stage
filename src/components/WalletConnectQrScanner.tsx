@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+import { tr } from "../i18n/translations";
 
 type Props = {
   open: boolean;
   theme: "dark" | "light";
+  lang?: string;
   onClose: () => void;
   onScan: (value: string) => void;
 };
@@ -11,6 +13,7 @@ type Props = {
 export default function WalletConnectQrScanner({
   open,
   theme,
+  lang = "en",
   onClose,
   onScan,
 }: Props) {
@@ -20,6 +23,7 @@ export default function WalletConnectQrScanner({
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const [cameraError, setCameraError] = useState("");
   const [scannedText, setScannedText] = useState("");
+  const t = (key: string) => tr(lang, key);
 
   useEffect(() => {
     if (!open) return;
@@ -83,7 +87,7 @@ export default function WalletConnectQrScanner({
       await new Promise((resolve) => setTimeout(resolve, 120));
 
       if (!videoRef.current || !readerRef.current) {
-        setCameraError("Camera unavailable.");
+        setCameraError(t("scanner_camera_unavailable"));
         return;
       }
 
@@ -127,7 +131,7 @@ export default function WalletConnectQrScanner({
       });
     } catch (err: any) {
       console.error(err);
-      setCameraError(err?.message || "Could not open camera.");
+      setCameraError(err?.message || t("scanner_could_not_open"));
     }
   }
 
@@ -150,9 +154,9 @@ export default function WalletConnectQrScanner({
       }
 
       URL.revokeObjectURL(url);
-      setCameraError("This QR code does not contain a WalletConnect URI.");
+      setCameraError(t("scanner_not_walletconnect"));
     } catch {
-      setCameraError("No valid WalletConnect QR code was found in the image.");
+      setCameraError(t("scanner_no_valid_qr"));
     } finally {
       event.target.value = "";
     }
@@ -183,7 +187,7 @@ export default function WalletConnectQrScanner({
         }}
       >
         <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>
-          Scan WalletConnect QR
+          {t("scanner_title")}
         </div>
 
         <div
@@ -193,7 +197,7 @@ export default function WalletConnectQrScanner({
             lineHeight: 1.5,
           }}
         >
-          Point the rear camera at a QR code containing a <strong>wc:</strong> WalletConnect URI.
+          {t("scanner_hint")}
         </div>
 
         <div
@@ -220,15 +224,15 @@ export default function WalletConnectQrScanner({
 
         <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
           <button onClick={() => fileRef.current?.click()} style={secondaryBtn(isLight)}>
-            Scan from Image
+            {t("scanner_from_image")}
           </button>
 
           <button onClick={openCamera} style={secondaryBtn(isLight)}>
-            Retry Camera
+            {t("scanner_retry")}
           </button>
 
           <button onClick={handleClose} style={secondaryBtn(isLight)}>
-            Close
+            {t("scanner_close")}
           </button>
         </div>
 

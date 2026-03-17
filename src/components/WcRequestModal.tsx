@@ -1,9 +1,11 @@
 import React from "react";
+import { tr } from "../i18n/translations";
 import { buildWcRequestDetails } from "../lib/wcRequestDetails";
 
 type Props = {
   open: boolean;
   theme: "dark" | "light";
+  lang?: string;
   request: any | null;
   approving?: boolean;
   onApprove: () => void;
@@ -13,6 +15,7 @@ type Props = {
 export default function WcRequestModal({
   open,
   theme,
+  lang = "en",
   request,
   approving = false,
   onApprove,
@@ -22,7 +25,8 @@ export default function WcRequestModal({
 
   const text = theme === "light" ? "#10131a" : "#fff";
   const sub = theme === "light" ? "#5f6b7d" : "#9aa4b5";
-  const details = buildWcRequestDetails(request);
+  const details = buildWcRequestDetails(request, lang);
+  const t = (key: string) => tr(lang, key);
 
   return (
     <div style={overlayStyle}>
@@ -48,34 +52,34 @@ export default function WcRequestModal({
         </div>
 
         <div style={heroBox(theme)}>
-          <InfoRow label="Method" value={details.displayMethod || details.methodLabel || details.method} text={text} sub={sub} />
-          <InfoRow label="Network" value={details.networkName} text={text} sub={sub} />
-          <InfoRow label="Chain" value={details.chainLabel} text={text} sub={sub} />
+          <InfoRow label={t("wc_request_method")} value={details.displayMethod || details.methodLabel || details.method} text={text} sub={sub} />
+          <InfoRow label={t("wc_request_network")} value={details.networkName} text={text} sub={sub} />
+          <InfoRow label={t("wc_request_chain")} value={details.chainLabel} text={text} sub={sub} />
         </div>
 
         {details.kind === "transaction" && (
           <>
-            <SectionTitle text="Transaction details" />
+            <SectionTitle text={t("wc_request_transaction_details")} />
             <div style={gridStyle}>
-              <Card theme={theme} label="To" value={details.to} hint={details.toFull || "Destination address"} />
-              <Card theme={theme} label="Value" value={details.valueNative} hint="Native asset amount" />
-              <Card theme={theme} label="Gas limit" value={details.gasLimit} hint="Requested execution gas" />
+              <Card theme={theme} label={t("wc_request_to")} value={details.to} hint={details.toFull || t("wc_request_destination_address")} />
+              <Card theme={theme} label={t("wc_request_value")} value={details.valueNative} hint={t("wc_request_native_asset_amount")} />
+              <Card theme={theme} label={t("wc_request_gas_limit")} value={details.gasLimit} hint={t("wc_request_requested_execution_gas")} />
               <Card
                 theme={theme}
-                label="Estimated fee"
+                label={t("wc_request_estimated_fee")}
                 value={details.estimatedFeeNative}
-                hint={details.maxFeePerGas !== "-" ? `Max fee ${details.maxFeePerGas}` : "Network will estimate"}
+                hint={details.maxFeePerGas !== "-" ? `Max fee ${details.maxFeePerGas}` : t("wc_request_network_estimate")}
               />
               <Card
                 theme={theme}
-                label="Priority fee"
+                label={t("wc_request_priority_fee")}
                 value={details.maxPriorityFeePerGas}
-                hint={details.gasPrice !== "-" ? `Legacy gas ${details.gasPrice}` : "EIP-1559 or legacy"}
+                hint={details.gasPrice !== "-" ? `Legacy gas ${details.gasPrice}` : t("wc_request_eip_legacy")}
               />
               <Card
                 theme={theme}
-                label="Interaction"
-                value={details.contractInteraction ? "Contract call" : "Native transfer"}
+                label={t("wc_request_interaction")}
+                value={details.contractInteraction ? t("wc_request_contract_call") : t("wc_request_native_transfer")}
                 hint={details.dataPreview}
               />
             </div>
@@ -84,22 +88,22 @@ export default function WcRequestModal({
 
         {details.kind === "message" && (
           <>
-            <SectionTitle text="Message preview" />
-            <pre style={preStyle(theme)}>{details.preview || "Empty message"}</pre>
+            <SectionTitle text={t("wc_request_message_preview")} />
+            <pre style={preStyle(theme)}>{details.preview || t("wc_request_empty_message")}</pre>
           </>
         )}
 
         {details.kind === "typedData" && (
           <>
-            <SectionTitle text="Typed data summary" />
+            <SectionTitle text={t("wc_request_typed_data_summary")} />
             <div style={gridStyle}>
-              <Card theme={theme} label="Domain" value={details.summary?.domainName || "Unknown"} hint="Signing domain" />
-              <Card theme={theme} label="Primary type" value={details.summary?.primaryType || "Unknown"} hint="Main structured type" />
+              <Card theme={theme} label={t("wc_request_domain")} value={details.summary?.domainName || t("wc_details_unknown")} hint={t("wc_request_signing_domain")} />
+              <Card theme={theme} label={t("wc_request_primary_type")} value={details.summary?.primaryType || t("wc_details_unknown")} hint={t("wc_request_main_structured_type")} />
               <Card
                 theme={theme}
-                label="Fields"
+                label={t("wc_request_fields")}
                 value={String(details.summary?.fieldCount || 0)}
-                hint={(details.summary?.fields || []).join(", ") || "No visible fields"}
+                hint={(details.summary?.fields || []).join(", ") || t("wc_request_no_visible_fields")}
               />
             </div>
             <pre style={preStyle(theme)}>{JSON.stringify(request.params, null, 2)}</pre>
@@ -108,7 +112,7 @@ export default function WcRequestModal({
 
         {details.kind === "raw" && <pre style={preStyle(theme)}>{JSON.stringify(request.params, null, 2)}</pre>}
 
-        <SectionTitle text="Security notice" />
+        <SectionTitle text={t("wc_request_security_notice")} />
         <div style={riskBox(theme)}>
           {details.riskItems.map((item: string, index: number) => (
             <div key={index} style={{ display: "flex", gap: 8, color: sub, lineHeight: 1.45 }}>
@@ -120,10 +124,10 @@ export default function WcRequestModal({
 
         <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
           <button style={secondaryBtn(theme)} onClick={onReject} disabled={approving}>
-            Reject
+            {t("wc_request_reject")}
           </button>
           <button style={primaryBtn(approving)} onClick={onApprove} disabled={approving}>
-            {approving ? "Approving..." : "Approve"}
+            {approving ? t("wc_request_approving") : t("wc_request_approve")}
           </button>
         </div>
       </div>

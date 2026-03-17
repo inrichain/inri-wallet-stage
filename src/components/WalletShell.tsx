@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ethers } from "ethers";
 import { initWalletConnect } from "../lib/walletconnect";
-import { tr } from "../i18n/translations";
+import { tr, trf } from "../i18n/translations";
 import Header from "./Header";
 import BottomNav from "./BottomNav";
 import DashboardScreen from "../screens/DashboardScreen";
@@ -26,7 +26,6 @@ import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
 import { isValidSeedPhrase, normalizeSeed, shortAddress } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
-import { installDesktopEthereumProvider } from "../lib/desktopProvider";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const VAULTS_KEY = "inri_wallet_vaults_v2";
@@ -207,10 +206,10 @@ export default function WalletShell() {
     localStorage.setItem(VAULTS_KEY, JSON.stringify(next));
   }
 
-  const showMessage = useCallback((text: string) => {
+  function showMessage(text: string) {
     setMessage(text);
     window.setTimeout(() => setMessage(""), 2600);
-  }, []);
+  }
 
   function generateSeedPhrase() {
     try {
@@ -406,7 +405,7 @@ export default function WalletShell() {
     }
 
     autoLockTimerRef.current = window.setTimeout(() => {
-      lockWallet(`Auto-locked after ${security.autoLockMinutes} minutes of inactivity`);
+      lockWallet(trf(lang, "security_locked_inactivity", { minutes: security.autoLockMinutes }));
     }, security.autoLockMinutes * 60 * 1000);
   }, [lockWallet, security.autoLockEnabled, security.autoLockMinutes, unlockedWallet]);
 
@@ -430,7 +429,7 @@ export default function WalletShell() {
 
     const handleVisibility = () => {
       if (document.hidden && security.lockOnHidden) {
-        lockWallet("Wallet locked because the app went to background");
+        lockWallet(tr(lang, "security_locked_background"));
         return;
       }
 
@@ -468,12 +467,12 @@ export default function WalletShell() {
     const vault = wallets.find((w) => w.id === (unlockedWallet?.id || selectedWalletId));
 
     if (!vault) {
-      setReauthError("Wallet vault not found");
+      setReauthError(tr(lang, "security_vault_not_found"));
       return;
     }
 
     if (!reauthPassword.trim()) {
-      setReauthError("Enter your password");
+      setReauthError(tr(lang, "security_enter_password"));
       return;
     }
 
@@ -500,7 +499,7 @@ export default function WalletShell() {
         markActivity();
       }
     } catch {
-      setReauthError("Wrong password");
+      setReauthError(tr(lang, "security_wrong_password"));
     }
   }
 
@@ -527,45 +526,18 @@ export default function WalletShell() {
     });
   }, [activeAddress]);
 
-  useEffect(() => {
-    const cleanup = installDesktopEthereumProvider({
-      getAddress: () => unlockedWallet?.address || "",
-      getPrivateKey: () => unlockedWallet?.privateKey || "",
-      requireSensitiveApproval: async ({ method, params, address, privateKey }) => {
-        return await new Promise((resolve, reject) => {
-          runSensitiveAction(async (overridePrivateKey?: string) => {
-            try {
-              const result = await handleRequestMethod({
-                method,
-                params,
-                address,
-                privateKey: overridePrivateKey || privateKey,
-              });
-              resolve(result);
-            } catch (err) {
-              reject(err);
-            }
-          }).catch(reject);
-        });
-      },
-      showMessage,
-    });
-
-    return cleanup;
-  }, [showMessage, unlockedWallet, wallets, selectedWalletId, security.requirePasswordForSensitiveActions]);
-
   async function onApproveProposal() {
     if (!unlockedWallet || !wcProposal) {
-      showMessage("Unlock the wallet first");
+      showMessage(tr(lang, "shell_unlock_first"));
       return;
     }
 
     try {
       await approveSessionProposal(wcProposal, unlockedWallet.address);
-      showMessage("WalletConnect connected");
+      showMessage(tr(lang, "shell_wc_connected"));
     } catch (err) {
       console.error(err);
-      showMessage("Failed to approve connection");
+      showMessage(tr(lang, "shell_wc_approve_failed"));
     }
   }
 
@@ -574,16 +546,16 @@ export default function WalletShell() {
 
     try {
       await rejectSessionProposal(wcProposal.id);
-      showMessage("Connection rejected");
+      showMessage(tr(lang, "shell_connection_rejected"));
     } catch (err) {
       console.error(err);
-      showMessage("Failed to reject connection");
+      showMessage(tr(lang, "shell_reject_failed"));
     }
   }
 
   async function onApproveRequest() {
     if (!unlockedWallet || !wcRequest) {
-      showMessage("Unlock the wallet first");
+      showMessage(tr(lang, "shell_unlock_first"));
       return;
     }
 
@@ -601,10 +573,10 @@ export default function WalletShell() {
           });
 
           await approveSessionRequest(wcRequest, result);
-          showMessage("Request approved");
+          showMessage(tr(lang, "shell_request_approved"));
         } catch (err: any) {
           console.error(err);
-          showMessage(err?.message || "Failed to approve request");
+          showMessage(err?.message || tr(lang, "shell_request_approve_failed"));
         } finally {
           setWcApproving(false);
         }
@@ -619,10 +591,10 @@ export default function WalletShell() {
 
     try {
       await rejectSessionRequest(wcRequest);
-      showMessage("Request rejected");
+      showMessage(tr(lang, "shell_request_rejected"));
     } catch (err) {
       console.error(err);
-      showMessage("Failed to reject request");
+      showMessage(tr(lang, "shell_request_reject_failed"));
     }
   }
 
@@ -965,6 +937,7 @@ export default function WalletShell() {
       <WcSessionProposalModal
         open={!!wcProposal}
         theme={theme}
+        lang={lang}
         proposal={wcProposal}
         onApprove={onApproveProposal}
         onReject={onRejectProposal}
@@ -973,6 +946,7 @@ export default function WalletShell() {
       <WcRequestModal
         open={!!wcRequest}
         theme={theme}
+        lang={lang}
         request={wcRequest}
         approving={wcApproving}
         onApprove={onApproveRequest}
@@ -983,7 +957,7 @@ export default function WalletShell() {
         <div style={overlayStyle()}>
           <div style={reauthCardStyle(theme === "light")}>
             <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>
-              Confirm sensitive action
+              {tr(lang, "security_confirm_title")}
             </div>
             <div
               style={{
@@ -992,13 +966,13 @@ export default function WalletShell() {
                 marginBottom: 14,
               }}
             >
-              Re-enter your password before approving WalletConnect signatures or transactions.
+              {tr(lang, "security_confirm_hint")}
             </div>
             <input
               type="password"
               value={reauthPassword}
               onChange={(e) => setReauthPassword(e.target.value)}
-              placeholder="Wallet password"
+              placeholder={tr(lang, "security_wallet_password")}
               style={authInputStyle(theme)}
             />
             {reauthError ? (
@@ -1008,7 +982,7 @@ export default function WalletShell() {
             ) : null}
             <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
               <button onClick={confirmSensitiveAction} style={primaryActionStyle()}>
-                Confirm
+                {tr(lang, "security_confirm")}
               </button>
               <button
                 onClick={() => {
@@ -1020,7 +994,7 @@ export default function WalletShell() {
                 }}
                 style={secondaryActionStyle(theme === "light")}
               >
-                Cancel
+                {tr(lang, "security_cancel")}
               </button>
             </div>
           </div>

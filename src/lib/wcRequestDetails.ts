@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import { tr, trf } from "../i18n/translations";
 import { getStoredNetwork } from "./network";
 
 function shorten(value: string, left = 8, right = 6) {
@@ -7,8 +8,8 @@ function shorten(value: string, left = 8, right = 6) {
   return `${value.slice(0, left)}...${value.slice(-right)}`;
 }
 
-function prettyMethod(method: string) {
-  if (!method) return "unknown";
+function prettyMethod(method: string, lang = "en") {
+  if (!method) return tr(lang, "wc_details_unknown");
   return method.replace(/^eth_/, "").replace(/^personal_/, "").replace(/^wallet_/, "");
 }
 
@@ -59,10 +60,10 @@ function parseJsonSafe(value: string) {
   }
 }
 
-function summarizeTypedData(payload: any) {
+function summarizeTypedData(payload: any, lang = "en") {
   if (!payload) return null;
-  const domainName = payload?.domain?.name || "Unknown domain";
-  const primaryType = payload?.primaryType || "Unknown type";
+  const domainName = payload?.domain?.name || tr(lang, "wc_details_unknown_domain");
+  const primaryType = payload?.primaryType || tr(lang, "wc_details_unknown_type");
   const keys = Object.keys(payload?.message || {});
 
   return {
@@ -73,20 +74,20 @@ function summarizeTypedData(payload: any) {
   };
 }
 
-export function buildWcRequestDetails(request: any) {
+export function buildWcRequestDetails(request: any, lang = "en") {
   const network = getStoredNetwork();
   const chainId = Number(network?.chainId || 3777);
-  const method = request?.method || "unknown";
-  const cleanMethod = prettyMethod(method);
+  const method = request?.method || tr(lang, "wc_details_unknown");
+  const cleanMethod = prettyMethod(method, lang);
   const cleanMethodLabel = titleCase(cleanMethod);
 
   const base = {
     method,
     methodLabel: cleanMethod,
     chainLabel: request?.chainId || `eip155:${chainId}`,
-    networkName: network?.name || "Current network",
+    networkName: network?.name || tr(lang, "wc_details_current_network"),
     networkLogo: network?.logo || "",
-    dappName: request?.peerMetadata?.name || "Unknown dApp",
+    dappName: request?.peerMetadata?.name || tr(lang, "wc_details_unknown_dapp"),
     dappUrl: request?.peerMetadata?.url || "",
     dappIcon: request?.peerMetadata?.icons?.[0] || "",
     rawParams: request?.params,
@@ -105,18 +106,18 @@ export function buildWcRequestDetails(request: any) {
     const hasData = !!tx?.data && tx.data !== "0x";
 
     const riskItems: string[] = [];
-    if (!tx?.to) riskItems.push("Contract creation or malformed transaction without destination.");
-    if (hasData) riskItems.push("This transaction calls contract code. Review method intent carefully.");
-    if (value > 0n) riskItems.push("This will move native funds from your wallet.");
-    if (riskItems.length === 0) riskItems.push("Confirm the destination and requested action before sending.");
+    if (!tx?.to) riskItems.push(tr(lang, "wc_details_contract_creation"));
+    if (hasData) riskItems.push(tr(lang, "wc_details_calls_contract"));
+    if (value > 0n) riskItems.push(tr(lang, "wc_details_moves_funds"));
+    if (riskItems.length === 0) riskItems.push(tr(lang, "wc_details_confirm_destination"));
 
     return {
       ...base,
       kind: "transaction",
-      title: `${network?.name || "Wallet"} send transaction`,
-      subtitle: "Review the action before sending it on-chain.",
-      from: tx?.from ? shorten(tx.from) : "Current wallet",
-      to: tx?.to ? shorten(tx.to) : "New contract",
+      title: trf(lang, "wc_details_send_title", { network: network?.name || "Wallet" }),
+      subtitle: tr(lang, "wc_details_send_subtitle"),
+      from: tx?.from ? shorten(tx.from) : tr(lang, "wc_details_current_wallet"),
+      to: tx?.to ? shorten(tx.to) : tr(lang, "wc_details_new_contract"),
       toFull: tx?.to || "",
       contractInteraction: hasData,
       valueNative: `${formatUnitsSafe(value, 18, 6)} ${network?.symbol || "INRI"}`,
@@ -128,8 +129,8 @@ export function buildWcRequestDetails(request: any) {
       estimatedFeeNative:
         estimatedFee !== undefined
           ? `${formatUnitsSafe(estimatedFee, 18, 6)} ${network?.symbol || "INRI"}`
-          : "Will be estimated by network",
-      dataPreview: hasData ? shorten(tx.data, 14, 10) : "No calldata",
+          : tr(lang, "wc_details_estimated_by_network"),
+      dataPreview: hasData ? shorten(tx.data, 14, 10) : tr(lang, "wc_details_no_calldata"),
       rawTx: tx,
       riskItems,
       displayMethod: cleanMethodLabel,
@@ -153,10 +154,10 @@ export function buildWcRequestDetails(request: any) {
     return {
       ...base,
       kind: "message",
-      title: `${network?.name || "Wallet"} sign message`,
-      subtitle: "Signing proves wallet control but does not send funds by itself.",
+      title: trf(lang, "wc_details_sign_message_title", { network: network?.name || "Wallet" }),
+      subtitle: tr(lang, "wc_details_sign_message_subtitle"),
       preview: messageText,
-      riskItems: ["Only sign messages you trust. They can authorize off-chain actions."],
+      riskItems: [tr(lang, "wc_details_sign_message_risk")],
       displayMethod: cleanMethodLabel,
     };
   }
@@ -164,17 +165,17 @@ export function buildWcRequestDetails(request: any) {
   if (method === "eth_signTypedData_v4") {
     const payloadRaw = Array.isArray(request?.params) ? request.params[1] : null;
     const payload = typeof payloadRaw === "string" ? parseJsonSafe(payloadRaw) : payloadRaw;
-    const summary = summarizeTypedData(payload);
+    const summary = summarizeTypedData(payload, lang);
 
     return {
       ...base,
       kind: "typedData",
-      title: `${network?.name || "Wallet"} sign typed data`,
-      subtitle: "Typed data is commonly used for permits, login, and advanced dApp actions.",
+      title: trf(lang, "wc_details_sign_typed_title", { network: network?.name || "Wallet" }),
+      subtitle: tr(lang, "wc_details_sign_typed_subtitle"),
       summary,
       riskItems: [
-        "Typed data can authorize spending permissions or delegated actions.",
-        "Check the domain and primary type before approving.",
+        tr(lang, "wc_details_typed_risk1"),
+        tr(lang, "wc_details_typed_risk2"),
       ],
       displayMethod: cleanMethodLabel,
     };
@@ -184,8 +185,8 @@ export function buildWcRequestDetails(request: any) {
     ...base,
     kind: "raw",
     title: `${network?.name || "Wallet"} confirm request`,
-    subtitle: "Unsupported request preview. Review the raw payload before approving.",
-    riskItems: ["Unknown or advanced method. Approve only if you fully trust this dApp."],
+    subtitle: tr(lang, "wc_details_confirm_subtitle"),
+    riskItems: [tr(lang, "wc_details_unknown_method_risk")],
     displayMethod: cleanMethodLabel,
   };
 }
