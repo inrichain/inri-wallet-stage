@@ -96,10 +96,14 @@ export default function WalletShell() {
   const [reauthError, setReauthError] = useState("");
 
   const autoLockTimerRef = useRef<number | null>(null);
+  const hiddenLockTimerRef = useRef<number | null>(null);
   const pendingSensitiveActionRef = useRef<null | ((overridePrivateKey?: string) => Promise<void>)>(null);
 
   const [wcProposal, setWcProposal] = useState<any | null>(null);
   const [wcRequest, setWcRequest] = useState<any | null>(null);
+  const wcProposalRef = useRef<any | null>(null);
+  const wcRequestRef = useRef<any | null>(null);
+  const reauthOpenRef = useRef(false);
 
   const t = {
     authSubtitle: tr(lang, "auth_subtitle"),
@@ -426,13 +430,33 @@ export default function WalletShell() {
       markActivity();
     };
 
+    const clearHiddenTimer = () => {
+      if (hiddenLockTimerRef.current) {
+        window.clearTimeout(hiddenLockTimerRef.current);
+        hiddenLockTimerRef.current = null;
+      }
+    };
+
     const handleVisibility = () => {
-      if (document.hidden && security.lockOnHidden) {
-        lockWallet("Wallet locked because the app went to background");
+      if (document.hidden) {
+        if (!security.lockOnHidden) return;
+
+        const hasPendingWcFlow = !!wcProposalRef.current || !!wcRequestRef.current || reauthOpenRef.current;
+        if (hasPendingWcFlow) {
+          return;
+        }
+
+        clearHiddenTimer();
+        hiddenLockTimerRef.current = window.setTimeout(() => {
+          if (document.hidden) {
+            lockWallet("Wallet locked after staying in background");
+          }
+        }, 30000);
         return;
       }
 
-      if (!document.hidden) markActivity();
+      clearHiddenTimer();
+      markActivity();
     };
 
     markActivity();
@@ -445,6 +469,10 @@ export default function WalletShell() {
       if (autoLockTimerRef.current) {
         window.clearTimeout(autoLockTimerRef.current);
         autoLockTimerRef.current = null;
+      }
+      if (hiddenLockTimerRef.current) {
+        window.clearTimeout(hiddenLockTimerRef.current);
+        hiddenLockTimerRef.current = null;
       }
     };
   }, [lockWallet, markActivity, security.autoLockEnabled, security.lockOnHidden, unlockedWallet]);

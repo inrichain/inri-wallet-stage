@@ -10,7 +10,7 @@ export type SecuritySettings = {
 export const DEFAULT_SECURITY_SETTINGS: SecuritySettings = {
   autoLockEnabled: true,
   autoLockMinutes: 5,
-  lockOnHidden: true,
+  lockOnHidden: false,
   requirePasswordForSensitiveActions: true,
 };
 
