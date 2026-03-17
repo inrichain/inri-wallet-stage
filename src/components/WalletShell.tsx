@@ -14,7 +14,6 @@ import BridgeScreen from "../screens/BridgeScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import NFTsScreen from "../screens/NFTsScreen";
 import StakingScreen from "../screens/StakingScreen";
-import InstallScreen from "../screens/InstallScreen";
 import {
   getMnemonicFromWallet,
   isValidSeedPhrase,
@@ -418,9 +417,6 @@ export default function WalletShell() {
       case "staking":
         return <StakingScreen theme={theme} lang={lang} />;
 
-      case "install":
-        return <InstallScreen theme={theme} lang={lang} />;
-
       case "settings":
         return (
           <SettingsScreen
@@ -491,25 +487,6 @@ export default function WalletShell() {
             >
               {t.authSubtitle}
             </div>
-
-            <button
-              onClick={() => {
-                setView("wallet");
-                setTab("install");
-              }}
-              style={{
-                marginTop: 14,
-                padding: "12px 16px",
-                borderRadius: 14,
-                border: "1px solid rgba(63,124,255,.35)",
-                background: "rgba(63,124,255,.14)",
-                color: "#3f7cff",
-                cursor: "pointer",
-                fontWeight: 800,
-              }}
-            >
-              {tr(lang, "dashboard_install_app")}
-            </button>
           </div>
 
           <div
@@ -717,7 +694,11 @@ export default function WalletShell() {
         boxSizing: "border-box",
       }}
     >
-      <Header walletName={currentWalletMeta?.name || "INRI Wallet"} theme={theme} lang={lang} />
+      <Header
+        walletName={currentWalletMeta?.name || "INRI Wallet"}
+        theme={theme}
+        lang={lang}
+      />
 
       <main
         style={{
