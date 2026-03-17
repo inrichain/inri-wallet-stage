@@ -11,6 +11,18 @@ let currentAddress = "";
 let currentChainId = 3777;
 let approvingProposalIds = new Set<number>();
 
+function isIgnorableWcError(err: any) {
+  const msg = String(err?.message || err || "").toLowerCase();
+
+  return (
+    msg.includes("recently deleted") ||
+    msg.includes("missing or invalid") ||
+    msg.includes("no proposal") ||
+    msg.includes("no matching key") ||
+    msg.includes("record was recently deleted")
+  );
+}
+
 export async function initWalletConnect(address: string, chainId = 3777) {
   if (!address) return null;
 
@@ -36,33 +48,45 @@ export async function initWalletConnect(address: string, chainId = 3777) {
   });
 
   web3wallet.on("session_proposal", async (proposal: any) => {
-    const meta = proposal?.params?.proposer?.metadata;
-    const requiredNamespaces = proposal?.params?.requiredNamespaces || {};
-    const optionalNamespaces = proposal?.params?.optionalNamespaces || {};
+    try {
+      const meta = proposal?.params?.proposer?.metadata;
+      const requiredNamespaces = proposal?.params?.requiredNamespaces || {};
+      const optionalNamespaces = proposal?.params?.optionalNamespaces || {};
 
-    wcStoreSetProposal({
-      id: proposal.id,
-      proposerName: meta?.name || "Unknown dApp",
-      proposerUrl: meta?.url || "",
-      proposerIcons: meta?.icons || [],
-      requiredNamespaces,
-      optionalNamespaces,
-      raw: proposal,
-    });
+      wcStoreSetProposal({
+        id: proposal.id,
+        proposerName: meta?.name || "Unknown dApp",
+        proposerUrl: meta?.url || "",
+        proposerIcons: meta?.icons || [],
+        requiredNamespaces,
+        optionalNamespaces,
+        raw: proposal,
+      });
+    } catch (err) {
+      if (!isIgnorableWcError(err)) {
+        console.error("WalletConnect session_proposal error:", err);
+      }
+    }
   });
 
   web3wallet.on("session_request", async (event: any) => {
-    const { topic, params, id } = event;
-    const req = params?.request;
+    try {
+      const { topic, params, id } = event;
+      const req = params?.request;
 
-    wcStoreSetRequest({
-      topic,
-      id,
-      chainId: params?.chainId,
-      method: req?.method,
-      params: req?.params,
-      raw: event,
-    });
+      wcStoreSetRequest({
+        topic,
+        id,
+        chainId: params?.chainId,
+        method: req?.method,
+        params: req?.params,
+        raw: event,
+      });
+    } catch (err) {
+      if (!isIgnorableWcError(err)) {
+        console.error("WalletConnect session_request error:", err);
+      }
+    }
   });
 
   web3wallet.on("session_delete", async () => {
@@ -118,19 +142,11 @@ export async function approveSessionProposal(proposal: any, address: string) {
     });
 
     wcStoreSetProposal(null);
-  } catch (err: any) {
-    const msg = String(err?.message || "");
-
-    if (
-      msg.includes("recently deleted") ||
-      msg.includes("No matching key") ||
-      msg.includes("No proposal") ||
-      msg.includes("Missing or invalid")
-    ) {
+  } catch (err) {
+    if (isIgnorableWcError(err)) {
       wcStoreSetProposal(null);
       return;
     }
-
     throw err;
   } finally {
     approvingProposalIds.delete(proposal.id);
@@ -145,12 +161,8 @@ export async function rejectSessionProposal(proposalId: number) {
       id: proposalId,
       reason: getSdkError("USER_REJECTED"),
     });
-  } catch (err: any) {
-    const msg = String(err?.message || "");
-    if (
-      !msg.includes("recently deleted") &&
-      !msg.includes("Missing or invalid")
-    ) {
+  } catch (err) {
+    if (!isIgnorableWcError(err)) {
       throw err;
     }
   } finally {
@@ -161,34 +173,46 @@ export async function rejectSessionProposal(proposalId: number) {
 export async function approveSessionRequest(request: any, result: any) {
   if (!web3wallet) throw new Error("WalletConnect not initialized");
 
-  await web3wallet.respondSessionRequest({
-    topic: request.raw.topic,
-    response: {
-      id: request.raw.id,
-      jsonrpc: "2.0",
-      result,
-    },
-  });
-
-  wcStoreSetRequest(null);
+  try {
+    await web3wallet.respondSessionRequest({
+      topic: request.raw.topic,
+      response: {
+        id: request.raw.id,
+        jsonrpc: "2.0",
+        result,
+      },
+    });
+  } catch (err) {
+    if (!isIgnorableWcError(err)) {
+      throw err;
+    }
+  } finally {
+    wcStoreSetRequest(null);
+  }
 }
 
 export async function rejectSessionRequest(request: any) {
   if (!web3wallet) throw new Error("WalletConnect not initialized");
 
-  await web3wallet.respondSessionRequest({
-    topic: request.raw.topic,
-    response: {
-      id: request.raw.id,
-      jsonrpc: "2.0",
-      error: {
-        code: 4001,
-        message: "User rejected the request",
+  try {
+    await web3wallet.respondSessionRequest({
+      topic: request.raw.topic,
+      response: {
+        id: request.raw.id,
+        jsonrpc: "2.0",
+        error: {
+          code: 4001,
+          message: "User rejected the request",
+        },
       },
-    },
-  });
-
-  wcStoreSetRequest(null);
+    });
+  } catch (err) {
+    if (!isIgnorableWcError(err)) {
+      throw err;
+    }
+  } finally {
+    wcStoreSetRequest(null);
+  }
 }
 
 export function getWalletConnectInstance() {
@@ -233,6 +257,12 @@ export async function disconnectSession(topic: string) {
 export async function disconnectAllSessions() {
   const sessions = getActiveSessions();
   for (const s of sessions) {
-    await disconnectSession(s.topic);
+    try {
+      await disconnectSession(s.topic);
+    } catch (err) {
+      if (!isIgnorableWcError(err)) {
+        throw err;
+      }
+    }
   }
 }
