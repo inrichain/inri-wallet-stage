@@ -3,6 +3,7 @@ import { Web3Wallet } from "@walletconnect/web3wallet";
 import { buildApprovedNamespaces, getSdkError } from "@walletconnect/utils";
 import { wcStoreSetProposal, wcStoreSetRequest } from "./wcSessionStore";
 import { getSupportedNamespaces } from "./wcRequestHandlers";
+import { grantSitePermission } from "./sitePermissions";
 
 export const projectId = "bfc7a39282888507c8c1dca6d8b2dbfe";
 
@@ -146,6 +147,24 @@ export async function approveSessionProposal(proposal: any, address: string) {
     await web3wallet.approveSession({
       id: proposal.id,
       namespaces: approvedNamespaces,
+    });
+
+    const requestedChains = [
+      ...(proposal?.requiredNamespaces?.eip155?.chains || []),
+      ...(proposal?.optionalNamespaces?.eip155?.chains || []),
+      ...(proposal?.optionalNamespaces?.eip155?.optionalChains || []),
+    ]
+      .map((value: string) => Number(String(value).replace("eip155:", "")))
+      .filter((value: number) => Number.isFinite(value));
+
+    grantSitePermission({
+      origin: proposal?.proposerUrl || proposal?.proposerName || `wc-${proposal.id}`,
+      name: proposal?.proposerName || "WalletConnect dApp",
+      type: "walletconnect",
+      accounts: [address],
+      chains: requestedChains,
+      methods: approvedNamespaces?.eip155?.methods || supportedNamespaces?.eip155?.methods || [],
+      icon: proposal?.proposerIcons?.[0] || "",
     });
 
     wcStoreSetProposal(null);

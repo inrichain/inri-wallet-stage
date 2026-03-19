@@ -1,26 +1,41 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getSecuritySettings, saveSecuritySettings, type SecuritySettings } from "../lib/security";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  addOrUpdateCustomNetwork,
-  createEmptyCustomNetwork,
-  createNetworkDraft,
-  DEFAULT_NETWORKS,
   getAllNetworks,
-  getCustomNetworks,
   getStoredNetwork,
-  removeCustomNetwork,
   saveStoredNetwork,
+  upsertCustomNetwork,
+  removeCustomNetwork,
   type NetworkItem,
-  validateRpcAgainstChainId,
 } from "../lib/network";
 import { tr, trf } from "../i18n/translations";
-import { pairWalletConnect, getActiveSessions, disconnectSession, disconnectAllSessions } from "../lib/walletconnect";
+import {
+  pairWalletConnect,
+  getActiveSessions,
+  disconnectSession,
+  disconnectAllSessions,
+} from "../lib/walletconnect";
 import WalletConnectQrScanner from "../components/WalletConnectQrScanner";
+import { listSitePermissions, revokeSitePermission } from "../lib/sitePermissions";
 
 const AVATAR_KEY = "wallet_avatar";
 const BASE = import.meta.env.BASE_URL || "/";
 
-export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", setLang, security = getSecuritySettings() }: {
+type CustomNetworkDraft = {
+  name: string;
+  chainId: string;
+  symbol: string;
+  rpcUrl: string;
+  explorerUrl: string;
+};
+
+export default function SettingsScreen({
+  theme = "dark",
+  setTheme,
+  lang = "en",
+  setLang,
+  security = getSecuritySettings(),
+}: {
   theme?: "dark" | "light";
   setTheme: (value: "dark" | "light") => void;
   lang?: string;
@@ -29,7 +44,6 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
 }) {
   const isLight = theme === "light";
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
-  const [allNetworks, setAllNetworks] = useState<NetworkItem[]>(getAllNetworks());
   const [customRpc, setCustomRpc] = useState(getStoredNetwork().rpcUrl || "");
   const [avatar, setAvatar] = useState<string>(localStorage.getItem(AVATAR_KEY) || "");
   const [wcUri, setWcUri] = useState("");
@@ -38,76 +52,152 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
   const [wcMessage, setWcMessage] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [securityState, setSecurityState] = useState<SecuritySettings>(security);
-  const [draft, setDraft] = useState<NetworkItem>(createEmptyCustomNetwork());
-  const [draftChainId, setDraftChainId] = useState("");
-  const [draftBusy, setDraftBusy] = useState(false);
+  const [permissions, setPermissions] = useState<any[]>([]);
+  const [draft, setDraft] = useState<CustomNetworkDraft>({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "" });
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const logoFileRef = useRef<HTMLInputElement | null>(null);
 
   const t = {
-    settings: tr(lang, "settings"), subtitle: tr(lang, "settings_subtitle"), language: tr(lang, "settings_language"), theme: tr(lang, "settings_theme"), dark: tr(lang, "settings_dark"), light: tr(lang, "settings_light"), network: tr(lang, "settings_network"), networkHint: tr(lang, "settings_network_hint"), saveRpc: tr(lang, "settings_save_rpc"), active: tr(lang, "settings_active"), select: tr(lang, "settings_select"), avatar: tr(lang, "settings_avatar"), uploadAvatar: tr(lang, "settings_upload_avatar"), removeAvatar: tr(lang, "settings_remove_avatar"), avatarHint: tr(lang, "settings_avatar_hint"),
-    wcTitle: tr(lang, "settings_walletconnect_title"), wcHint: tr(lang, "settings_walletconnect_hint"), wcConnecting: tr(lang, "settings_walletconnect_connecting"), wcConnectUri: tr(lang, "settings_walletconnect_connect_uri"), wcScanQr: tr(lang, "settings_walletconnect_scan_qr"), wcRefresh: tr(lang, "settings_walletconnect_refresh"), wcDisconnectAll: tr(lang, "settings_walletconnect_disconnect_all"), wcActiveSessions: tr(lang, "settings_walletconnect_active_sessions"), wcNoSessions: tr(lang, "settings_walletconnect_no_sessions"), wcNoUrl: tr(lang, "settings_walletconnect_no_url"), wcTopic: tr(lang, "settings_walletconnect_topic"), wcDisconnect: tr(lang, "settings_walletconnect_disconnect"),
-    securityTitle: tr(lang, "settings_security_title"), securityAutolock: tr(lang, "settings_security_autolock"), securityAutolockHint: tr(lang, "settings_security_autolock_hint"), securityAutolockMinutes: tr(lang, "settings_security_autolock_minutes"), securityLockHidden: tr(lang, "settings_security_lock_hidden"), securityLockHiddenHint: tr(lang, "settings_security_lock_hidden_hint"), securityRequirePassword: tr(lang, "settings_security_require_password"), securityRequirePasswordHint: tr(lang, "settings_security_require_password_hint"),
+    rpcPlaceholder: tr(lang, "settings_rpc_placeholder"),
+    wcTitle: tr(lang, "settings_walletconnect_title"),
+    wcHint: tr(lang, "settings_walletconnect_hint"),
+    wcConnecting: tr(lang, "settings_walletconnect_connecting"),
+    wcConnectUri: tr(lang, "settings_walletconnect_connect_uri"),
+    wcScanQr: tr(lang, "settings_walletconnect_scan_qr"),
+    wcRefresh: tr(lang, "settings_walletconnect_refresh"),
+    wcDisconnectAll: tr(lang, "settings_walletconnect_disconnect_all"),
+    wcActiveSessions: tr(lang, "settings_walletconnect_active_sessions"),
+    wcNoSessions: tr(lang, "settings_walletconnect_no_sessions"),
+    wcNoUrl: tr(lang, "settings_walletconnect_no_url"),
+    wcTopic: tr(lang, "settings_walletconnect_topic"),
+    wcDisconnect: tr(lang, "settings_walletconnect_disconnect"),
+    securityTitle: tr(lang, "settings_security_title"),
+    securityAutolock: tr(lang, "settings_security_autolock"),
+    securityAutolockHint: tr(lang, "settings_security_autolock_hint"),
+    securityAutolockMinutes: tr(lang, "settings_security_autolock_minutes"),
+    securityLockHidden: tr(lang, "settings_security_lock_hidden"),
+    securityLockHiddenHint: tr(lang, "settings_security_lock_hidden_hint"),
+    securityRequirePassword: tr(lang, "settings_security_require_password"),
+    securityRequirePasswordHint: tr(lang, "settings_security_require_password_hint"),
+    settings: tr(lang, "settings"),
+    subtitle: tr(lang, "settings_subtitle"),
+    language: tr(lang, "settings_language"),
+    theme: tr(lang, "settings_theme"),
+    dark: tr(lang, "settings_dark"),
+    light: tr(lang, "settings_light"),
+    network: tr(lang, "settings_network"),
+    networkHint: tr(lang, "settings_network_hint"),
+    saveRpc: tr(lang, "settings_save_rpc"),
+    active: tr(lang, "settings_active"),
+    select: tr(lang, "settings_select"),
+    avatar: tr(lang, "settings_avatar"),
+    uploadAvatar: tr(lang, "settings_upload_avatar"),
+    removeAvatar: tr(lang, "settings_remove_avatar"),
+    avatarHint: tr(lang, "settings_avatar_hint"),
   };
 
-  const customNetworks = useMemo(() => getCustomNetworks(), [allNetworks]);
+  const networks = getAllNetworks();
 
   useEffect(() => {
-    refreshAll();
+    setNetwork(getStoredNetwork());
+    setCustomRpc(getStoredNetwork().rpcUrl || "");
     setSecurityState(security);
+    setPermissions(listSitePermissions());
+    refreshSessions();
   }, [security]);
 
   useEffect(() => {
-    const id = window.setInterval(refreshSessions, 2500);
-    const sync = () => refreshAll();
+    const id = window.setInterval(() => refreshSessions(), 2000);
+    const sync = () => {
+      setNetwork(getStoredNetwork());
+      setPermissions(listSitePermissions());
+    };
+    window.addEventListener("wallet-site-permissions-updated", sync);
     window.addEventListener("wallet-network-updated", sync as EventListener);
-    window.addEventListener("wallet-networks-updated", sync as EventListener);
     return () => {
       window.clearInterval(id);
+      window.removeEventListener("wallet-site-permissions-updated", sync);
       window.removeEventListener("wallet-network-updated", sync as EventListener);
-      window.removeEventListener("wallet-networks-updated", sync as EventListener);
     };
   }, []);
 
-  function refreshAll() {
-    setNetwork(getStoredNetwork());
-    setAllNetworks(getAllNetworks());
-    setCustomRpc(getStoredNetwork().rpcUrl || "");
-    refreshSessions();
-  }
-
   function showWcMessage(text: string) {
     setWcMessage(text);
-    window.setTimeout(() => setWcMessage(""), 3200);
+    window.setTimeout(() => setWcMessage(""), 2800);
   }
 
   function refreshSessions() {
-    try { setWcSessions(Array.isArray(getActiveSessions()) ? getActiveSessions() : []); } catch { setWcSessions([]); }
+    try {
+      const list = getActiveSessions();
+      setWcSessions(Array.isArray(list) ? list : []);
+    } catch {
+      setWcSessions([]);
+    }
   }
 
   function handleSelectNetwork(item: NetworkItem) {
     saveStoredNetwork(item);
     setNetwork(item);
     setCustomRpc(item.rpcUrl || "");
+    window.dispatchEvent(new Event("wallet-network-updated"));
     showWcMessage(trf(lang, "settings_network_changed", { name: item.name, chainId: item.chainId }));
-  }
-
-  function handleResetToInri() {
-    handleSelectNetwork(DEFAULT_NETWORKS[0]);
   }
 
   function handleSaveRpc() {
     const next = { ...network, rpcUrl: customRpc.trim() || network.rpcUrl };
     saveStoredNetwork(next);
+    if (network.isCustom) {
+      upsertCustomNetwork(next);
+    }
     setNetwork(next);
+    window.dispatchEvent(new Event("wallet-network-updated"));
     showWcMessage(tr(lang, "settings_rpc_saved"));
+  }
+
+  function handleAddOrUpdateCustomNetwork() {
+    const chainId = Number(draft.chainId);
+    if (!draft.name.trim() || !Number.isFinite(chainId) || !draft.rpcUrl.trim()) {
+      showWcMessage("Fill network name, chain ID and RPC URL.");
+      return;
+    }
+    const explorer = draft.explorerUrl.trim().replace(/\/$/, "");
+    const created = upsertCustomNetwork({
+      key: `custom-${chainId}`,
+      name: draft.name.trim(),
+      chainId,
+      symbol: draft.symbol.trim() || "ETH",
+      rpcUrl: draft.rpcUrl.trim(),
+      explorerAddressUrl: explorer ? `${explorer}/address/` : "",
+      explorerTxUrl: explorer ? `${explorer}/tx/` : "",
+      logo: networks.find((item) => item.chainId === chainId)?.logo || `${BASE}network-inri.png`,
+      isCustom: true,
+    });
+    setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "" });
+    handleSelectNetwork(created);
+    showWcMessage(`Network saved: ${created.name}`);
+  }
+
+  function handleEditCustomNetwork(item: NetworkItem) {
+    setDraft({
+      name: item.name,
+      chainId: String(item.chainId),
+      symbol: item.symbol,
+      rpcUrl: item.rpcUrl,
+      explorerUrl: (item.explorerAddressUrl || item.explorerTxUrl || "").replace(/\/(address|tx)\/?$/, ""),
+    });
+  }
+
+  function handleDeleteCustomNetwork(item: NetworkItem) {
+    removeCustomNetwork(item.key);
+    if (Number(network.chainId) === Number(item.chainId)) {
+      handleSelectNetwork(getAllNetworks()[0]);
+    }
+    showWcMessage(`Removed network: ${item.name}`);
   }
 
   function handleSecurityPatch(patch: Partial<SecuritySettings>) {
     const next = { ...securityState, ...patch };
     setSecurityState(next);
     saveSecuritySettings(next);
-    window.dispatchEvent(new Event("wallet-security-updated"));
     showWcMessage(tr(lang, "settings_security_saved"));
   }
 
@@ -130,248 +220,247 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
     window.dispatchEvent(new Event("wallet-avatar-updated"));
   }
 
-  async function connectWalletConnect(uri: string) {
+  async function handleConnectWc() {
+    if (!wcUri.trim()) {
+      showWcMessage(tr(lang, "settings_wc_paste_uri"));
+      return;
+    }
     setWcLoading(true);
     try {
-      await pairWalletConnect(uri.trim());
+      await pairWalletConnect(wcUri.trim());
       setWcUri("");
       refreshSessions();
-      showWcMessage("WalletConnect pairing started");
+      showWcMessage(tr(lang, "settings_wc_pairing_started"));
     } catch (err: any) {
-      showWcMessage(err?.message || "Failed to connect WalletConnect");
+      console.error(err);
+      showWcMessage(err?.message || tr(lang, "settings_wc_failed_connect"));
     } finally {
       setWcLoading(false);
     }
   }
 
-  async function handleConnectWc() {
-    if (!wcUri.trim()) return showWcMessage(tr(lang, "settings_wc_paste_uri"));
-    await connectWalletConnect(wcUri);
-  }
-
   async function handleDisconnectSession(topic: string) {
     setWcLoading(true);
-    try { await disconnectSession(topic); refreshSessions(); showWcMessage(tr(lang, "settings_wc_session_disconnected")); }
-    catch (err: any) { showWcMessage(err?.message || tr(lang, "settings_wc_failed_disconnect")); }
-    finally { setWcLoading(false); }
+    try {
+      await disconnectSession(topic);
+      refreshSessions();
+      showWcMessage(tr(lang, "settings_wc_session_disconnected"));
+    } catch (err: any) {
+      console.error(err);
+      showWcMessage(err?.message || tr(lang, "settings_wc_failed_disconnect"));
+    } finally {
+      setWcLoading(false);
+    }
   }
 
   async function handleDisconnectAll() {
     setWcLoading(true);
-    try { await disconnectAllSessions(); refreshSessions(); showWcMessage(tr(lang, "settings_wc_all_disconnected")); }
-    catch (err: any) { showWcMessage(err?.message || tr(lang, "settings_wc_failed_disconnect_all")); }
-    finally { setWcLoading(false); }
+    try {
+      await disconnectAllSessions();
+      refreshSessions();
+      showWcMessage(tr(lang, "settings_wc_all_disconnected"));
+    } catch (err: any) {
+      console.error(err);
+      showWcMessage(err?.message || tr(lang, "settings_wc_failed_disconnect_all"));
+    } finally {
+      setWcLoading(false);
+    }
   }
 
-  async function handleScannedUri(value: string) {
+  function handleScannedUri(value: string) {
     setScannerOpen(false);
     setWcUri(value);
     showWcMessage(tr(lang, "settings_wc_qr_detected"));
-    await connectWalletConnect(value);
   }
 
-  function applyChainIdPreset(value: string) {
-    const clean = value.replace(/[^0-9]/g, "");
-    setDraftChainId(clean);
-    const num = Number(clean || 0);
-    if (!clean) {
-      setDraft(createEmptyCustomNetwork());
-      return;
-    }
-    setDraft(createNetworkDraft(num));
-  }
-
-  function pickDraftFromCustom(item: NetworkItem) {
-    setDraft({ ...item });
-    setDraftChainId(item.chainId ? String(item.chainId) : "");
-  }
-
-  function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setDraft((current) => ({ ...current, logo: String(reader.result || "") }));
-    };
-    reader.readAsDataURL(file);
-    event.target.value = "";
-  }
-
-  function resetDraft() {
-    setDraft(createEmptyCustomNetwork());
-    setDraftChainId("");
-  }
-
-  async function saveCustomNetworkAction() {
-    const chainId = Number(draftChainId || draft.chainId || 0);
-    const normalized: NetworkItem = {
-      ...draft,
-      chainId,
-      key: chainId ? `chain-${chainId}` : `custom-${Date.now()}`,
-      name: draft.name.trim(),
-      symbol: draft.symbol.trim() || "ETH",
-      rpcUrl: draft.rpcUrl.trim(),
-      explorerAddressUrl: draft.explorerAddressUrl.trim(),
-      explorerTxUrl: draft.explorerTxUrl.trim(),
-      logo: draft.logo || `${BASE}network-inri.png`,
-      isCustom: true,
-    };
-    if (!normalized.name || !chainId || !normalized.rpcUrl) {
-      showWcMessage("Fill network name, chain ID and RPC URL.");
-      return;
-    }
-    setDraftBusy(true);
-    try {
-      const ok = await validateRpcAgainstChainId(normalized.rpcUrl, normalized.chainId);
-      if (!ok) {
-        showWcMessage("RPC chainId is different from the informed chain ID.");
-        return;
-      }
-      addOrUpdateCustomNetwork(normalized);
-      setAllNetworks(getAllNetworks());
-      setDraft({ ...normalized });
-      showWcMessage("Custom network saved.");
-    } catch (err: any) {
-      showWcMessage(err?.message || "Could not validate RPC.");
-    } finally {
-      setDraftBusy(false);
-    }
+  function refreshPermissions() {
+    setPermissions(listSitePermissions());
   }
 
   return (
     <>
       <div style={{ display: "grid", gap: 18 }}>
-        <div style={cardStyle(isLight)}>
+        <Panel isLight={isLight}>
           <h2 style={{ margin: 0, color: isLight ? "#10131a" : "#ffffff" }}>{t.settings}</h2>
           <div style={{ marginTop: 8, color: isLight ? "#5b6578" : "#97a0b3" }}>{t.subtitle}</div>
-        </div>
+        </Panel>
 
-        <div style={cardStyle(isLight)}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <div>
-              <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18 }}>Active network</div>
-              <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginTop: 6 }}>The wallet will open on INRI every time you reload the app.</div>
-            </div>
-            <button onClick={handleResetToInri} style={mainButtonStyle()}>Use INRI now</button>
-          </div>
-          <div style={{ marginTop: 12, padding: 12, borderRadius: 16, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: isLight ? "#f8fbff" : "#0f1522", display: "flex", alignItems: "center", gap: 10 }}>
-            <img src={network.logo} alt={network.name} style={{ width: 30, height: 30, borderRadius: 15, objectFit: "contain" }} onError={(e) => ((e.currentTarget as HTMLImageElement).src = `${BASE}network-inri.png`)} />
-            <div>
-              <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff" }}>{network.name}</div>
-              <div style={{ color: isLight ? "#64748b" : "#94a3b8", fontSize: 13 }}>Chain ID {network.chainId} • {network.symbol}</div>
-            </div>
-          </div>
-        </div>
-
-        <div style={cardStyle(isLight)}>
+        <Panel isLight={isLight}>
           <div style={labelStyle(isLight)}>{t.language}</div>
           <select value={lang} onChange={(e) => setLang(e.target.value)} style={inputStyle(isLight)}>
-            <option value="en">English</option><option value="pt">Português</option><option value="es">Español</option><option value="fr">Français</option>
+            <option value="en">English</option><option value="pt">Português</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="ru">Русский</option><option value="zh">中文</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="tr">Türkçe</option>
           </select>
-        </div>
+        </Panel>
 
-        <div style={cardStyle(isLight)}>
+        <Panel isLight={isLight}>
           <div style={labelStyle(isLight)}>{t.theme}</div>
           <select value={theme} onChange={(e) => setTheme(e.target.value as "dark" | "light")} style={inputStyle(isLight)}>
-            <option value="dark">{t.dark}</option><option value="light">{t.light}</option>
+            <option value="dark">{t.dark}</option>
+            <option value="light">{t.light}</option>
           </select>
-        </div>
+        </Panel>
 
-        <div style={cardStyle(isLight)}>
-          <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18, marginBottom: 8 }}>{t.network}</div>
+        <Panel isLight={isLight}>
+          <SectionTitle isLight={isLight}>{t.network}</SectionTitle>
           <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginBottom: 16, lineHeight: 1.55 }}>{t.networkHint}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-            {allNetworks.map((item) => {
-              const active = item.key === network.key && item.chainId === network.chainId;
+          <div style={networkGrid}>
+            {networks.map((item) => {
+              const active = Number(item.chainId) === Number(network.chainId);
               return (
-                <button key={`${item.key}-${item.chainId}`} onClick={() => handleSelectNetwork(item)} style={{ textAlign: "left", padding: 14, borderRadius: 18, border: active ? "1px solid #4d7ef2" : `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: active ? (isLight ? "#eef4ff" : "#16213b") : isLight ? "#ffffff" : "#121621", cursor: "pointer" }}>
+                <button key={`${item.key}-${item.chainId}`} onClick={() => handleSelectNetwork(item)} style={networkCard(isLight, active)}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <img src={item.logo} alt={item.name} onError={(e)=>((e.currentTarget as HTMLImageElement).src=`${BASE}network-inri.png`)} style={{ width: 28, height: 28, borderRadius: 14, objectFit: "contain" }} />
+                    <img src={item.logo} alt={item.name} style={{ width: 28, height: 28, borderRadius: 14, objectFit: "contain" }} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 17 }}>{item.name}</div>
-                      <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginTop: 3 }}>Chain ID {item.chainId} • {item.symbol}</div>
+                      <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginTop: 3 }}>Chain ID {item.chainId} • {item.symbol}{item.isCustom ? " • Custom" : ""}</div>
                     </div>
                     <div style={{ color: active ? "#3f7cff" : isLight ? "#64748b" : "#94a3b8", fontWeight: 800, fontSize: 14 }}>{active ? t.active : t.select}</div>
                   </div>
+                  {item.isCustom ? (
+                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      <button onClick={(e) => { e.stopPropagation(); handleEditCustomNetwork(item); }} style={smallButton(isLight)}>Edit</button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDeleteCustomNetwork(item); }} style={smallDangerButton()}>Remove</button>
+                    </div>
+                  ) : null}
                 </button>
               );
             })}
           </div>
-          <input value={customRpc} onChange={(e) => setCustomRpc(e.target.value)} placeholder="Custom RPC URL for the selected network" style={{ ...inputStyle(isLight), marginTop: 14 }} />
-          <div style={{ marginTop: 14 }}><button onClick={handleSaveRpc} style={mainButtonStyle()}>{t.saveRpc}</button></div>
-        </div>
 
-        <div style={cardStyle(isLight)}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
-            <div>
-              <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18 }}>Add custom network</div>
-              <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginTop: 6, lineHeight: 1.5 }}>Type a known chain ID to auto-fill popular networks. For any non-famous network, fill the data manually and upload your own logo.</div>
-            </div>
-            <button onClick={resetDraft} style={secondaryButtonStyle(isLight)}>New network</button>
+          <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+            <div style={labelStyle(isLight)}>RPC URL</div>
+            <input value={customRpc} onChange={(e) => setCustomRpc(e.target.value)} placeholder={t.rpcPlaceholder} style={inputStyle(isLight)} />
+            <button onClick={handleSaveRpc} style={primaryButton}>{t.saveRpc}</button>
           </div>
-          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-            <input value={draftChainId} onChange={(e) => applyChainIdPreset(e.target.value)} placeholder="Chain ID" style={inputStyle(isLight)} />
+        </Panel>
+
+        <Panel isLight={isLight}>
+          <SectionTitle isLight={isLight}>Custom networks</SectionTitle>
+          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginBottom: 14, lineHeight: 1.55 }}>Add, edit or remove RPC networks so the wallet behaves more like MetaMask and OKX.</div>
+          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
             <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Network name" style={inputStyle(isLight)} />
+            <input value={draft.chainId} onChange={(e) => setDraft({ ...draft, chainId: e.target.value })} placeholder="Chain ID" style={inputStyle(isLight)} />
             <input value={draft.symbol} onChange={(e) => setDraft({ ...draft, symbol: e.target.value })} placeholder="Symbol" style={inputStyle(isLight)} />
             <input value={draft.rpcUrl} onChange={(e) => setDraft({ ...draft, rpcUrl: e.target.value })} placeholder="RPC URL" style={inputStyle(isLight)} />
-            <input value={draft.explorerAddressUrl} onChange={(e) => setDraft({ ...draft, explorerAddressUrl: e.target.value })} placeholder="Explorer address URL" style={inputStyle(isLight)} />
-            <input value={draft.explorerTxUrl} onChange={(e) => setDraft({ ...draft, explorerTxUrl: e.target.value })} placeholder="Explorer tx URL" style={inputStyle(isLight)} />
-            <input value={draft.logo} onChange={(e) => setDraft({ ...draft, logo: e.target.value })} placeholder="Logo URL or data:image" style={{ ...inputStyle(isLight), gridColumn: "1 / -1" }} />
+            <input value={draft.explorerUrl} onChange={(e) => setDraft({ ...draft, explorerUrl: e.target.value })} placeholder="Explorer base URL" style={inputStyle(isLight)} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 22, overflow: "hidden", border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: isLight ? "#f8fafc" : "#0b1120" }}>
-              <img src={draft.logo || `${BASE}network-inri.png`} alt="logo preview" onError={(e) => ((e.currentTarget as HTMLImageElement).src = `${BASE}network-inri.png`)} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-            </div>
-            <button onClick={() => logoFileRef.current?.click()} style={secondaryButtonStyle(isLight)}>Upload logo</button>
-            <button onClick={saveCustomNetworkAction} disabled={draftBusy} style={mainButtonStyle()}>{draftBusy ? "Saving..." : "Save custom network"}</button>
-            {Number(draftChainId || draft.chainId || 0) > 0 ? <button onClick={() => removeCustomNetwork(Number(draftChainId || draft.chainId))} style={secondaryButtonStyle(isLight)}>Delete by chain ID</button> : null}
+          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+            <button onClick={handleAddOrUpdateCustomNetwork} style={primaryButton}>Save custom network</button>
+            <button onClick={() => setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "" })} style={secondaryButton(isLight)}>Clear</button>
           </div>
-          <input ref={logoFileRef} type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: "none" }} />
-          {customNetworks.length ? <div style={{ marginTop: 14, display: "grid", gap: 10 }}>{customNetworks.map((item) => <div key={item.chainId} style={{ padding: 12, borderRadius: 14, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}><div style={{ display: "flex", gap: 10, alignItems: "center" }}><img src={item.logo} alt={item.name} onError={(e) => ((e.currentTarget as HTMLImageElement).src = `${BASE}network-inri.png`)} style={{ width: 28, height: 28, borderRadius: 14, objectFit: "contain" }} /><div><div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff" }}>{item.name}</div><div style={{ color: isLight ? "#64748b" : "#94a3b8", fontSize: 13 }}>Chain ID {item.chainId} • {item.symbol}</div></div></div><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button onClick={() => pickDraftFromCustom(item)} style={secondaryButtonStyle(isLight)}>Edit</button><button onClick={() => handleSelectNetwork(item)} style={secondaryButtonStyle(isLight)}>Use</button><button onClick={() => removeCustomNetwork(item.chainId)} style={secondaryButtonStyle(isLight)}>Delete</button></div></div>)}</div> : <div style={{ marginTop: 14, color: isLight ? "#5b6578" : "#97a0b3" }}>No custom networks saved yet.</div>}
-        </div>
+        </Panel>
 
-        <div style={cardStyle(isLight)}>
-          <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18, marginBottom: 8 }}>{t.wcTitle}</div>
+        <Panel isLight={isLight}>
+          <SectionTitle isLight={isLight}>Connected sites</SectionTitle>
+          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginBottom: 14, lineHeight: 1.55 }}>Permissions are now stored by dApp so users can review and revoke access later.</div>
+          <div style={{ display: "grid", gap: 10 }}>
+            {permissions.length === 0 ? (
+              <div style={emptyBox(isLight)}>No saved site permissions yet.</div>
+            ) : permissions.map((item) => (
+              <div key={item.id} style={sessionCard(isLight)}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>{item.name}</div>
+                    <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, wordBreak: "break-all" }}>{item.origin}</div>
+                    <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12, marginTop: 8 }}>Chains: {(item.chains || []).join(", ") || "-"}</div>
+                    <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12, marginTop: 4 }}>Methods: {(item.methods || []).join(", ") || "-"}</div>
+                  </div>
+                  <button onClick={() => { revokeSitePermission(item.id); refreshPermissions(); }} style={smallDangerButton()}>Revoke</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel isLight={isLight}>
+          <SectionTitle isLight={isLight}>{t.wcTitle}</SectionTitle>
           <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginBottom: 14, lineHeight: 1.55 }}>{t.wcHint}</div>
-          <textarea value={wcUri} onChange={(e) => setWcUri(e.target.value)} placeholder="wc:..." style={{ ...inputStyle(isLight), minHeight: 96, resize: "vertical", marginBottom: 12 }} />
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-            <button onClick={handleConnectWc} disabled={wcLoading} style={mainButtonStyle()}>{wcLoading ? t.wcConnecting : t.wcConnectUri}</button>
-            <button onClick={() => setScannerOpen(true)} disabled={wcLoading} style={secondaryButtonStyle(isLight)}>{t.wcScanQr}</button>
-            <button onClick={refreshSessions} disabled={wcLoading} style={secondaryButtonStyle(isLight)}>{t.wcRefresh}</button>
-            <button onClick={handleDisconnectAll} disabled={wcLoading || wcSessions.length === 0} style={secondaryButtonStyle(isLight)}>{t.wcDisconnectAll}</button>
+          <div style={{ display: "grid", gap: 10 }}>
+            <input value={wcUri} onChange={(e) => setWcUri(e.target.value)} placeholder={t.wcConnectUri} style={inputStyle(isLight)} />
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={handleConnectWc} style={primaryButton} disabled={wcLoading}>{wcLoading ? t.wcConnecting : "Connect"}</button>
+              <button onClick={() => setScannerOpen(true)} style={secondaryButton(isLight)}>{t.wcScanQr}</button>
+              <button onClick={refreshSessions} style={secondaryButton(isLight)}>{t.wcRefresh}</button>
+              <button onClick={handleDisconnectAll} style={secondaryButton(isLight)}>{t.wcDisconnectAll}</button>
+            </div>
+            {wcMessage ? <div style={{ color: "#3f7cff", fontWeight: 700, fontSize: 13 }}>{wcMessage}</div> : null}
           </div>
-          {wcMessage ? <div style={{ marginBottom: 14, color: "#3f7cff", fontWeight: 700, fontSize: 13 }}>{wcMessage}</div> : null}
-          <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 15, marginBottom: 10 }}>{t.wcActiveSessions}</div>
-          {wcSessions.length === 0 ? <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>{t.wcNoSessions}</div> : <div style={{ display: "grid", gap: 10 }}>{wcSessions.map((session) => <div key={session.topic} style={{ border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, borderRadius: 14, padding: 12, background: isLight ? "#f8faff" : "#0f1420" }}><div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", marginBottom: 4 }}>{session.name}</div><div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3", marginBottom: 8, wordBreak: "break-word" }}>{session.url || t.wcNoUrl}</div><div style={{ fontSize: 11, color: isLight ? "#6a7488" : "#8f99ad", marginBottom: 10, wordBreak: "break-word" }}>{t.wcTopic}: {session.topic}</div><button onClick={() => handleDisconnectSession(session.topic)} disabled={wcLoading} style={secondaryButtonStyle(isLight)}>{t.wcDisconnect}</button></div>)}</div>}
-        </div>
+          <div style={{ marginTop: 16, fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>{t.wcActiveSessions}</div>
+          <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+            {wcSessions.length === 0 ? <div style={emptyBox(isLight)}>{t.wcNoSessions}</div> : wcSessions.map((session) => (
+              <div key={session.topic} style={sessionCard(isLight)}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>{session.name}</div>
+                    <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, wordBreak: "break-all" }}>{session.url || t.wcNoUrl}</div>
+                    <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12, marginTop: 8 }}>{t.wcTopic}: {session.topic}</div>
+                  </div>
+                  <button onClick={() => handleDisconnectSession(session.topic)} style={smallDangerButton()}>{t.wcDisconnect}</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
 
-        <div style={cardStyle(isLight)}>
-          <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18, marginBottom: 14 }}>{t.avatar}</div>
+        <Panel isLight={isLight}>
+          <SectionTitle isLight={isLight}>{t.securityTitle}</SectionTitle>
+          <div style={toggleRow(isLight)}>
+            <div>
+              <div style={{ fontWeight: 800 }}>{t.securityRequirePassword}</div>
+              <div style={hintStyle(isLight)}>{t.securityRequirePasswordHint}</div>
+            </div>
+            <input type="checkbox" checked={!!securityState.requirePasswordForSensitiveActions} onChange={(e) => handleSecurityPatch({ requirePasswordForSensitiveActions: e.target.checked })} />
+          </div>
+          <div style={toggleRow(isLight)}>
+            <div>
+              <div style={{ fontWeight: 800 }}>{t.securityLockHidden}</div>
+              <div style={hintStyle(isLight)}>{t.securityLockHiddenHint}</div>
+            </div>
+            <input type="checkbox" checked={!!securityState.lockOnHidden} onChange={(e) => handleSecurityPatch({ lockOnHidden: e.target.checked })} />
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>{t.securityAutolock}</div>
+            <div style={hintStyle(isLight)}>{t.securityAutolockHint}</div>
+            <input type="number" min={0} value={securityState.autoLockMinutes || 0} onChange={(e) => handleSecurityPatch({ autoLockMinutes: Math.max(0, Number(e.target.value) || 0) })} placeholder={t.securityAutolockMinutes} style={{ ...inputStyle(isLight), marginTop: 10 }} />
+          </div>
+        </Panel>
+
+        <Panel isLight={isLight}>
+          <SectionTitle isLight={isLight}>{t.avatar}</SectionTitle>
           <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-            <div style={{ width: 72, height: 72, borderRadius: "50%", overflow: "hidden", border: `2px solid ${isLight ? "#dbe2f0" : "#2b3650"}`, background: isLight ? "#f8fafc" : "#0b1120", display: "grid", placeItems: "center" }}>{avatar ? <img src={avatar} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: 36, height: 36, borderRadius: "50%", background: isLight ? "#cbd5e1" : "#334155" }} />}</div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button onClick={() => fileRef.current?.click()} style={mainButtonStyle()}>{t.uploadAvatar}</button><button onClick={handleRemoveAvatar} style={secondaryButtonStyle(isLight)}>{t.removeAvatar}</button></div>
+            <img src={avatar || `${BASE}avatar.png`} alt="avatar" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: `2px solid ${isLight ? "#dbe2f0" : "#2b3650"}` }} />
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={() => fileRef.current?.click()} style={primaryButton}>{t.uploadAvatar}</button>
+              <button onClick={handleRemoveAvatar} style={secondaryButton(isLight)}>{t.removeAvatar}</button>
+            </div>
           </div>
+          <div style={{ marginTop: 10, color: isLight ? "#5b6578" : "#97a0b3" }}>{t.avatarHint}</div>
           <input ref={fileRef} type="file" accept="image/*" onChange={handleUploadAvatar} style={{ display: "none" }} />
-          <div style={{ marginTop: 14, color: isLight ? "#5b6578" : "#97a0b3", lineHeight: 1.55 }}>{t.avatarHint}</div>
-        </div>
-
-        <div style={cardStyle(isLight)}>
-          <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18, marginBottom: 8 }}>{t.securityTitle}</div>
-          <div style={{ display: "grid", gap: 14 }}>
-            <label style={{ display: "grid", gap: 6 }}><span style={labelStyle(isLight)}>{t.securityAutolock}</span><span style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>{t.securityAutolockHint}</span><input type="checkbox" checked={securityState.autoLockEnabled} onChange={(e) => handleSecurityPatch({ autoLockEnabled: e.target.checked })} /></label>
-            <label style={{ display: "grid", gap: 6 }}><span style={labelStyle(isLight)}>{t.securityAutolockMinutes}</span><input type="number" min={1} max={120} value={securityState.autoLockMinutes} onChange={(e) => handleSecurityPatch({ autoLockMinutes: Math.max(1, Number(e.target.value || 5)) })} style={inputStyle(isLight)} /></label>
-            <label style={{ display: "grid", gap: 6 }}><span style={labelStyle(isLight)}>{t.securityLockHidden}</span><span style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>{t.securityLockHiddenHint}</span><input type="checkbox" checked={securityState.lockOnHidden} onChange={(e) => handleSecurityPatch({ lockOnHidden: e.target.checked })} /></label>
-            <label style={{ display: "grid", gap: 6 }}><span style={labelStyle(isLight)}>{t.securityRequirePassword}</span><span style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>{t.securityRequirePasswordHint}</span><input type="checkbox" checked={securityState.requirePasswordForSensitiveActions} onChange={(e) => handleSecurityPatch({ requirePasswordForSensitiveActions: e.target.checked })} /></label>
-          </div>
-        </div>
+        </Panel>
       </div>
-      <WalletConnectQrScanner open={scannerOpen} theme={theme} lang={lang} onClose={() => setScannerOpen(false)} onScan={handleScannedUri} />
+
+      {scannerOpen ? <WalletConnectQrScanner open={scannerOpen} theme={theme} onClose={() => setScannerOpen(false)} onScanned={handleScannedUri} /> : null}
     </>
   );
 }
 
-function cardStyle(isLight: boolean): React.CSSProperties { return { border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, borderRadius: 20, background: isLight ? "#ffffff" : "#121621", padding: 16 }; }
-function labelStyle(isLight: boolean): React.CSSProperties { return { color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginBottom: 10 }; }
-function inputStyle(isLight: boolean): React.CSSProperties { return { width: "100%", padding: 12, borderRadius: 12, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: isLight ? "#f6f8fc" : "#0d111b", color: isLight ? "#10131a" : "#ffffff", outline: "none", boxSizing: "border-box" }; }
-function mainButtonStyle(): React.CSSProperties { return { padding: "12px 16px", borderRadius: 14, border: "none", background: "#3f7cff", color: "#fff", cursor: "pointer", fontWeight: 800, fontSize: 15 }; }
-function secondaryButtonStyle(isLight: boolean): React.CSSProperties { return { padding: "12px 16px", borderRadius: 14, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: isLight ? "#ffffff" : "#121621", color: isLight ? "#10131a" : "#ffffff", cursor: "pointer", fontWeight: 800, fontSize: 15 }; }
+function Panel({ children, isLight }: { children: React.ReactNode; isLight: boolean }) {
+  return <div style={cardStyle(isLight)}>{children}</div>;
+}
+function SectionTitle({ children, isLight }: { children: React.ReactNode; isLight: boolean }) {
+  return <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18, marginBottom: 8 }}>{children}</div>;
+}
+
+const networkGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 };
+function cardStyle(isLight: boolean): React.CSSProperties { return { border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, borderRadius: 22, background: isLight ? "rgba(255,255,255,.94)" : "rgba(18,22,33,.92)", padding: 18, boxShadow: isLight ? "0 16px 40px rgba(20,30,60,.06)" : "0 16px 40px rgba(0,0,0,.22)" }; }
+function labelStyle(isLight: boolean): React.CSSProperties { return { fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", marginBottom: 10 }; }
+function hintStyle(isLight: boolean): React.CSSProperties { return { color: isLight ? "#5b6578" : "#97a0b3", lineHeight: 1.5, fontSize: 13 }; }
+function inputStyle(isLight: boolean): React.CSSProperties { return { width: "100%", height: 48, borderRadius: 14, border: `1px solid ${isLight ? "#dbe2f0" : "#2c3950"}`, background: isLight ? "#ffffff" : "#0f1624", color: isLight ? "#10131a" : "#ffffff", padding: "0 14px", boxSizing: "border-box" }; }
+function networkCard(isLight: boolean, active: boolean): React.CSSProperties { return { textAlign: "left", padding: 14, borderRadius: 18, border: active ? "1px solid #4d7ef2" : `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: active ? isLight ? "#eef4ff" : "#16213b" : isLight ? "#ffffff" : "#121621", cursor: "pointer" }; }
+const primaryButton: React.CSSProperties = { height: 46, borderRadius: 14, border: "none", background: "#3f7cff", color: "#fff", fontWeight: 800, padding: "0 16px", cursor: "pointer" };
+function secondaryButton(isLight: boolean): React.CSSProperties { return { height: 46, borderRadius: 14, border: `1px solid ${isLight ? "#d3dceb" : "#2c3950"}`, background: "transparent", color: isLight ? "#10131a" : "#fff", fontWeight: 800, padding: "0 16px", cursor: "pointer" }; }
+function smallButton(isLight: boolean): React.CSSProperties { return { height: 34, borderRadius: 12, border: `1px solid ${isLight ? "#d3dceb" : "#2c3950"}`, background: "transparent", color: isLight ? "#10131a" : "#fff", fontWeight: 700, padding: "0 12px", cursor: "pointer" }; }
+function smallDangerButton(): React.CSSProperties { return { height: 34, borderRadius: 12, border: "1px solid rgba(255,123,123,.32)", background: "rgba(255,123,123,.08)", color: "#ff8d8d", fontWeight: 700, padding: "0 12px", cursor: "pointer" }; }
+function emptyBox(isLight: boolean): React.CSSProperties { return { padding: 14, borderRadius: 16, border: `1px solid ${isLight ? "#dde6f3" : "#223044"}`, background: isLight ? "#f8fbff" : "#0d1420", color: isLight ? "#5b6578" : "#97a0b3" }; }
+function sessionCard(isLight: boolean): React.CSSProperties { return { padding: 14, borderRadius: 16, border: `1px solid ${isLight ? "#dde6f3" : "#223044"}`, background: isLight ? "#f8fbff" : "#0d1420" }; }
+function toggleRow(isLight: boolean): React.CSSProperties { return { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: 14, marginTop: 12, borderRadius: 16, border: `1px solid ${isLight ? "#dde6f3" : "#223044"}`, background: isLight ? "#f8fbff" : "#0d1420" }; }

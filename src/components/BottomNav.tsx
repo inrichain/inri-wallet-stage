@@ -58,11 +58,9 @@ export default function BottomNav({
         style={{
           maxWidth: 980,
           margin: "0 auto",
-          display: "flex",
+          display: "grid",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
           gap: 8,
-          overflowX: "auto",
-          paddingBottom: 2,
-          scrollbarWidth: "thin",
         }}
       >
         {items.map((item) => {
@@ -85,8 +83,7 @@ export default function BottomNav({
                 fontSize: 11,
                 cursor: "pointer",
                 minHeight: 48,
-                minWidth: 112,
-                flex: "0 0 auto",
+                minWidth: 0,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",

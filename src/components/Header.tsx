@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { getAllNetworks, getStoredNetwork, saveStoredNetwork, type NetworkItem } from "../lib/network";
 import { tr } from "../i18n/translations";
 
@@ -32,40 +32,30 @@ export default function Header({
 }) {
   const isLight = theme === "light";
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
-  const [avatar, setAvatar] = useState<string>(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
-  const [open, setOpen] = useState(false);
-  const [allNetworks, setAllNetworks] = useState<NetworkItem[]>(getAllNetworks());
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [networkOpen, setNetworkOpen] = useState(false);
+  const [avatar, setAvatar] = useState<string>(
+    localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR
+  );
 
   useEffect(() => {
-    const syncNetwork = () => {
-      setNetwork(getStoredNetwork());
-      setAllNetworks(getAllNetworks());
-    };
-    const syncAvatar = () => setAvatar(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
-    const onClick = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
-    };
+    const syncNetwork = () => setNetwork(getStoredNetwork());
+    const syncAvatar = () =>
+      setAvatar(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
 
     window.addEventListener("storage", syncNetwork);
     window.addEventListener("wallet-network-updated", syncNetwork as EventListener);
-    window.addEventListener("wallet-networks-updated", syncNetwork as EventListener);
     window.addEventListener("wallet-avatar-updated", syncAvatar as EventListener);
-    document.addEventListener("mousedown", onClick);
+
+    const closeMenu = () => setNetworkOpen(false);
+    window.addEventListener("click", closeMenu);
 
     return () => {
       window.removeEventListener("storage", syncNetwork);
       window.removeEventListener("wallet-network-updated", syncNetwork as EventListener);
-      window.removeEventListener("wallet-networks-updated", syncNetwork as EventListener);
       window.removeEventListener("wallet-avatar-updated", syncAvatar as EventListener);
-      document.removeEventListener("mousedown", onClick);
+      window.removeEventListener("click", closeMenu);
     };
   }, []);
-
-  const sortedNetworks = useMemo(
-    () => [...allNetworks].sort((a, b) => a.name.localeCompare(b.name)),
-    [allNetworks],
-  );
 
   return (
     <header
@@ -101,21 +91,44 @@ export default function Header({
                 img.src = FALLBACK_BRAND;
               }
             }}
-            style={{ width: 48, height: 48, objectFit: "contain", flexShrink: 0 }}
+            style={{
+              width: 48,
+              height: 48,
+              objectFit: "contain",
+              flexShrink: 0,
+            }}
           />
 
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 900, fontSize: 18, color: isLight ? "#10131a" : "#ffffff" }}>{walletName}</div>
-            <div style={{ fontSize: 13, color: isLight ? "#5b6578" : "#97a0b3", lineHeight: 1.35 }}>
+            <div
+              style={{
+                fontWeight: 900,
+                fontSize: 18,
+                color: isLight ? "#10131a" : "#ffffff",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {walletName}
+            </div>
+
+            <div
+              style={{
+                fontSize: 13,
+                color: isLight ? "#5b6578" : "#97a0b3",
+                lineHeight: 1.35,
+              }}
+            >
               {tr(lang, "header_subtitle")}
             </div>
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ position: "relative" }} ref={menuRef}>
+          <div style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
             <button
-              onClick={() => setOpen((v) => !v)}
+              onClick={() => setNetworkOpen((prev) => !prev)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -134,65 +147,68 @@ export default function Header({
                 src={network.logo}
                 alt={network.name}
                 onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src = `${BASE}network-inri.png`;
+                  const img = e.currentTarget;
+                  if (!img.dataset.fallbackApplied) {
+                    img.dataset.fallbackApplied = "true";
+                    img.src = `${BASE}network-inri.png`;
+                  }
                 }}
-                style={{ width: 18, height: 18, borderRadius: 9, objectFit: "contain", flexShrink: 0 }}
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  objectFit: "contain",
+                  flexShrink: 0,
+                }}
               />
-              <span style={{ whiteSpace: "nowrap", maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis" }}>
+
+              <span style={{ whiteSpace: "nowrap" }}>
                 {network.name} • {network.chainId}
               </span>
             </button>
 
-            {open ? (
+            {networkOpen ? (
               <div
                 style={{
                   position: "absolute",
-                  top: "calc(100% + 8px)",
                   right: 0,
-                  width: "min(340px, calc(100vw - 24px))",
-                  maxHeight: 360,
-                  overflowY: "auto",
-                  border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-                  background: isLight ? "#ffffff" : "#121621",
-                  borderRadius: 18,
-                  boxShadow: "0 16px 40px rgba(15,23,42,.22)",
-                  padding: 10,
+                  top: "calc(100% + 8px)",
+                  minWidth: 220,
+                  background: isLight ? "#ffffff" : "#0f1624",
+                  border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`,
+                  borderRadius: 16,
+                  boxShadow: isLight ? "0 18px 50px rgba(20,30,50,.15)" : "0 18px 50px rgba(0,0,0,.45)",
+                  padding: 8,
                   zIndex: 100,
                 }}
               >
-                {sortedNetworks.map((item) => (
+                {getAllNetworks().map((item) => (
                   <button
-                    key={`${item.key}-${item.chainId}`}
+                    key={item.chainId}
                     onClick={() => {
                       saveStoredNetwork(item);
                       setNetwork(item);
-                      setOpen(false);
+                      setNetworkOpen(false);
+                      window.dispatchEvent(new Event("wallet-network-updated"));
                     }}
                     style={{
                       width: "100%",
-                      textAlign: "left",
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
-                      padding: 12,
-                      borderRadius: 14,
+                      padding: "10px 12px",
+                      borderRadius: 12,
                       border: "none",
-                      background: item.chainId === network.chainId ? (isLight ? "#eef4ff" : "#16213b") : "transparent",
-                      cursor: "pointer",
+                      background: Number(item.chainId) === Number(network.chainId) ? (isLight ? "#eef4ff" : "#162138") : "transparent",
                       color: isLight ? "#10131a" : "#ffffff",
+                      cursor: "pointer",
+                      textAlign: "left",
                     }}
                   >
-                    <img
-                      src={item.logo}
-                      alt={item.name}
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = `${BASE}network-inri.png`;
-                      }}
-                      style={{ width: 24, height: 24, borderRadius: 12, objectFit: "contain" }}
-                    />
-                    <div style={{ minWidth: 0, flex: 1 }}>
+                    <img src={item.logo} alt={item.name} style={{ width: 18, height: 18, borderRadius: 9, objectFit: "contain", flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 800 }}>{item.name}</div>
-                      <div style={{ fontSize: 12, color: isLight ? "#64748b" : "#94a3b8" }}>Chain ID {item.chainId}</div>
+                      <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>Chain ID {item.chainId}</div>
                     </div>
                   </button>
                 ))}
@@ -206,7 +222,13 @@ export default function Header({
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR;
             }}
-            style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `2px solid ${isLight ? "#dbe2f0" : "#2b3650"}` }}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: `2px solid ${isLight ? "#dbe2f0" : "#2b3650"}`,
+            }}
           />
         </div>
       </div>

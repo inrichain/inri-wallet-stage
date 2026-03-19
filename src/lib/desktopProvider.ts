@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { DEFAULT_NETWORKS, getStoredNetwork, saveStoredNetwork, type NetworkItem } from "./network";
+import { getAllNetworks, getStoredNetwork, saveStoredNetwork, upsertCustomNetwork, type NetworkItem } from "./network";
 import { handleRequestMethod } from "./wcRequestHandlers";
 
 type ProviderEventName = "accountsChanged" | "chainChanged" | "connect" | "disconnect" | "message";
@@ -76,7 +76,7 @@ function buildNetworkFromChain(input: EthereumChainInput): NetworkItem {
     rpcUrl,
     explorerAddressUrl: explorer ? `${explorer.replace(/\/$/, "")}/address/` : "",
     explorerTxUrl: explorer ? `${explorer.replace(/\/$/, "")}/tx/` : "",
-    logo: DEFAULT_NETWORKS.find((item) => item.chainId === chainId)?.logo || `${import.meta.env.BASE_URL || "/"}token-inri.png`,
+    logo: getAllNetworks().find((item) => item.chainId === chainId)?.logo || `${import.meta.env.BASE_URL || "/"}token-inri.png`,
   };
 }
 
@@ -176,6 +176,7 @@ class InriDesktopProvider {
     }
 
     const network = buildNetworkFromChain(item);
+    upsertCustomNetwork(network);
     saveStoredNetwork(network);
     window.dispatchEvent(new Event("wallet-network-updated"));
     this.options.showMessage?.(`Network added: ${network.name}`);
@@ -193,7 +194,7 @@ class InriDesktopProvider {
     const current = getStoredNetwork();
     if (Number(current.chainId) === chainId) return null;
 
-    const known = DEFAULT_NETWORKS.find((item) => Number(item.chainId) === chainId);
+    const known = getAllNetworks().find((item) => Number(item.chainId) === chainId);
     if (!known) {
       throw providerRpcError(4902, "Requested chain is not configured in INRI Wallet");
     }
@@ -203,6 +204,18 @@ class InriDesktopProvider {
     this.options.showMessage?.(`Network changed to ${known.name}`);
     this.sync();
     return null;
+  }
+
+  private getActiveNetwork() {
+    return getStoredNetwork();
+  }
+
+  private buildRpcProvider() {
+    const net = this.getActiveNetwork();
+    if (!net?.rpcUrl) {
+      throw providerRpcError(4900, "Current network RPC is not configured");
+    }
+    return new ethers.JsonRpcProvider(net.rpcUrl, Number(net.chainId));
   }
 
   private async handleSensitive(method: string, params: any) {
@@ -240,6 +253,60 @@ class InriDesktopProvider {
         return this.handleSwitchEthereumChain(params);
       case "wallet_addEthereumChain":
         return this.handleAddEthereumChain(params);
+      case "eth_getBalance": {
+        const provider = this.buildRpcProvider();
+        const address = params?.[0] || this.currentAddress;
+        return ethers.toQuantity(await provider.getBalance(address));
+      }
+      case "eth_blockNumber": {
+        const provider = this.buildRpcProvider();
+        return ethers.toQuantity(await provider.getBlockNumber());
+      }
+      case "eth_getTransactionCount": {
+        const provider = this.buildRpcProvider();
+        const address = params?.[0] || this.currentAddress;
+        const blockTag = params?.[1] || "latest";
+        return ethers.toQuantity(await provider.getTransactionCount(address, blockTag));
+      }
+      case "eth_gasPrice": {
+        const provider = this.buildRpcProvider();
+        const feeData = await provider.getFeeData();
+        return ethers.toQuantity(feeData.gasPrice || 0n);
+      }
+      case "eth_estimateGas": {
+        const provider = this.buildRpcProvider();
+        const tx = params?.[0] || {};
+        const estimate = await provider.estimateGas(tx);
+        return ethers.toQuantity(estimate);
+      }
+      case "eth_call": {
+        const provider = this.buildRpcProvider();
+        const tx = params?.[0] || {};
+        const blockTag = params?.[1] || "latest";
+        return await provider.call(tx, blockTag);
+      }
+      case "eth_getCode": {
+        const provider = this.buildRpcProvider();
+        return await provider.getCode(params?.[0], params?.[1] || "latest");
+      }
+      case "eth_getTransactionByHash": {
+        const provider = this.buildRpcProvider();
+        return await provider.getTransaction(params?.[0]);
+      }
+      case "eth_getTransactionReceipt": {
+        const provider = this.buildRpcProvider();
+        return await provider.getTransactionReceipt(params?.[0]);
+      }
+      case "eth_getBlockByNumber": {
+        const provider = this.buildRpcProvider();
+        return await provider.send("eth_getBlockByNumber", [params?.[0] || "latest", !!params?.[1]]);
+      }
+      case "eth_getLogs": {
+        const provider = this.buildRpcProvider();
+        return await provider.getLogs(params?.[0] || {});
+      }
+      case "wallet_revokePermissions":
+        return [];
       case "eth_sendTransaction":
       case "personal_sign":
       case "eth_sign":

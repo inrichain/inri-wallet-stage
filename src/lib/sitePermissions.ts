@@ -31,29 +31,6 @@ export function listSitePermissions() {
   return read().sort((a, b) => b.lastUsedAt - a.lastUsedAt);
 }
 
-export function findSitePermission(origin: string, type: SitePermission["type"]) {
-  return read().find((item) => item.origin === origin && item.type === type) || null;
-}
-
-export function hasSitePermission(origin: string, type: SitePermission["type"], method?: string) {
-  const item = findSitePermission(origin, type);
-  if (!item) return false;
-  if (!method) return true;
-  return item.methods.includes(method) || item.methods.includes("*");
-}
-
-export function touchSitePermission(origin: string, type: SitePermission["type"], patch?: Partial<Pick<SitePermission, "chains" | "methods" | "accounts">>) {
-  const items = read();
-  const found = items.find((item) => item.origin === origin && item.type === type);
-  if (!found) return null;
-  found.lastUsedAt = Date.now();
-  if (patch?.accounts?.length) found.accounts = Array.from(new Set([...(found.accounts || []), ...patch.accounts]));
-  if (patch?.chains?.length) found.chains = Array.from(new Set([...(found.chains || []), ...patch.chains]));
-  if (patch?.methods?.length) found.methods = Array.from(new Set([...(found.methods || []), ...patch.methods]));
-  write(items);
-  return found;
-}
-
 export function grantSitePermission(input: Omit<SitePermission, "id" | "createdAt" | "lastUsedAt">) {
   const items = read();
   const origin = String(input.origin || "unknown").trim() || "unknown";

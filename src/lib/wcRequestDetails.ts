@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import { tr, trf } from "../i18n/translations";
-import { getStoredNetwork } from "./network";
+import { getNetworkByChainId, getStoredNetwork } from "./network";
 
 function shorten(value: string, left = 8, right = 6) {
   if (!value) return "-";
@@ -60,6 +60,16 @@ function parseJsonSafe(value: string) {
   }
 }
 
+function resolveNetwork(requestChainId?: string | null) {
+  const raw = String(requestChainId || "");
+  const parsed = raw.startsWith("eip155:") ? Number(raw.split(":")[1]) : Number(raw);
+  if (Number.isFinite(parsed)) {
+    const known = getNetworkByChainId(parsed);
+    if (known) return known;
+  }
+  return getStoredNetwork();
+}
+
 function summarizeTypedData(payload: any, lang = "en") {
   if (!payload) return null;
   const domainName = payload?.domain?.name || tr(lang, "wc_details_unknown_domain");
@@ -75,7 +85,7 @@ function summarizeTypedData(payload: any, lang = "en") {
 }
 
 export function buildWcRequestDetails(request: any, lang = "en") {
-  const network = getStoredNetwork();
+  const network = resolveNetwork(request?.chainId);
   const chainId = Number(network?.chainId || 3777);
   const method = request?.method || tr(lang, "wc_details_unknown");
   const cleanMethod = prettyMethod(method, lang);
@@ -137,6 +147,41 @@ export function buildWcRequestDetails(request: any, lang = "en") {
     };
   }
 
+  if (method === "wallet_switchEthereumChain") {
+    const requested = Array.isArray(request?.params) ? request.params?.[0]?.chainId : request?.params?.chainId;
+    const parsed = typeof requested === "string" && requested.startsWith("0x") ? Number(BigInt(requested)) : Number(requested);
+    const target = Number.isFinite(parsed) ? resolveNetwork(`eip155:${parsed}`) : network;
+    return {
+      ...base,
+      kind: "networkSwitch",
+      title: `Switch to ${target?.name || "requested network"}`,
+      subtitle: `The dApp wants to switch from ${network?.name || "current network"} to ${target?.name || "another network"}.`,
+      requestedNetwork: target?.name || "Unknown network",
+      riskItems: [
+        "Confirm the requested network before continuing.",
+        "Only approve network switches you trust.",
+      ],
+      displayMethod: cleanMethodLabel,
+    };
+  }
+
+  if (method === "wallet_addEthereumChain") {
+    const payload = Array.isArray(request?.params) ? request.params?.[0] : request?.params;
+    return {
+      ...base,
+      kind: "networkAdd",
+      title: `Add network ${payload?.chainName || "custom chain"}`,
+      subtitle: "The dApp wants to add a custom RPC network to the wallet.",
+      requestedNetwork: payload?.chainName || "Custom network",
+      riskItems: [
+        "Check the RPC URL and chain ID carefully.",
+        "Only add custom networks from trusted sources.",
+      ],
+      rawParams: payload,
+      displayMethod: cleanMethodLabel,
+    };
+  }
+
   if (method === "personal_sign") {
     const rawMessage = Array.isArray(request?.params) ? request.params[0] ?? request.params[1] : "";
 
@@ -162,7 +207,7 @@ export function buildWcRequestDetails(request: any, lang = "en") {
     };
   }
 
-  if (method === "eth_signTypedData_v4") {
+  if (method === "eth_signTypedData" || method === "eth_signTypedData_v3" || method === "eth_signTypedData_v4") {
     const payloadRaw = Array.isArray(request?.params) ? request.params[1] : null;
     const payload = typeof payloadRaw === "string" ? parseJsonSafe(payloadRaw) : payloadRaw;
     const summary = summarizeTypedData(payload, lang);
@@ -184,7 +229,7 @@ export function buildWcRequestDetails(request: any, lang = "en") {
   return {
     ...base,
     kind: "raw",
-    title: `${network?.name || "Wallet"} confirm request`,
+    title: `${network?.name || "Wallet"} request`,
     subtitle: tr(lang, "wc_details_confirm_subtitle"),
     riskItems: [tr(lang, "wc_details_unknown_method_risk")],
     displayMethod: cleanMethodLabel,
