@@ -92,3 +92,7 @@ export function grantSitePermission(input: Omit<SitePermission, "id" | "createdA
 export function revokeSitePermission(id: string) {
   write(read().filter((item) => item.id !== id));
 }
+
+export function revokeAllSitePermissions() {
+  write([]);
+}

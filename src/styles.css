@@ -8,6 +8,7 @@
 *{box-sizing:border-box}
 html,body,#root{min-height:100%}
 html,body,#root{width:100%}
+html{scroll-behavior:smooth}
 body{
   font-family: Inter, system-ui, Arial, sans-serif;
   color:var(--text);
@@ -15,9 +16,17 @@ body{
   margin:0;
   overflow-x:hidden;
   -webkit-tap-highlight-color: transparent;
+  text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
 }
 #root{min-height:100dvh}
 button,input,select,textarea{font:inherit}
+button{transition:transform .14s ease, opacity .14s ease, box-shadow .14s ease}
+button:hover{transform:translateY(-1px)}
+button:active{transform:translateY(0)}
+input,select,textarea{transition:border-color .14s ease, box-shadow .14s ease, background .14s ease}
+input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px rgba(63,124,255,.14)}
 img{max-width:100%}
 
 @keyframes inri-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}

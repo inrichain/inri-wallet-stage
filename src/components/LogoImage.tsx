@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { fallbackAsset, type AssetKind } from "../lib/assets";
 
 type Props = {
@@ -26,6 +26,11 @@ export default function LogoImage({
 }: Props) {
   const fallback = useMemo(() => fallbackAsset(kind, { label: label || alt, symbol, color }), [kind, label, alt, symbol, color]);
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
   const resolved = !failed && src ? src : fallback;
 
   return (
