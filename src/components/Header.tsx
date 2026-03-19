@@ -180,6 +180,10 @@ export default function Header({
                   boxShadow: isLight ? "0 18px 50px rgba(20,30,50,.15)" : "0 18px 50px rgba(0,0,0,.45)",
                   padding: 8,
                   zIndex: 100,
+                  maxHeight: "min(420px, calc(100vh - 120px))",
+                  overflowY: "auto",
+                  overscrollBehavior: "contain",
+                  WebkitOverflowScrolling: "touch",
                 }}
               >
                 {getAllNetworks().map((item) => (
