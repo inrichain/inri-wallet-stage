@@ -1,9 +1,10 @@
 import { ethers } from "ethers";
-import { DEFAULT_NETWORKS, getNetworkByChainId, getStoredNetwork } from "./network";
+import { getAllNetworks, getNetworkByChainId, getStoredNetwork } from "./network";
 
 export function getSupportedNamespaces(address: string) {
-  const chains = DEFAULT_NETWORKS.map((network) => `eip155:${Number(network.chainId)}`);
-  const accounts = DEFAULT_NETWORKS.map((network) => `eip155:${Number(network.chainId)}:${address}`);
+  const networks = getAllNetworks();
+  const chains = networks.map((n) => `eip155:${Number(n.chainId)}`);
+  const accounts = networks.map((n) => `eip155:${Number(n.chainId)}:${address}`);
 
   return {
     eip155: {
@@ -15,7 +16,6 @@ export function getSupportedNamespaces(address: string) {
         "personal_sign",
         "eth_sendTransaction",
         "eth_signTypedData_v4",
-        "wallet_switchEthereumChain",
       ],
       events: ["accountsChanged", "chainChanged"],
       accounts,
@@ -25,45 +25,16 @@ export function getSupportedNamespaces(address: string) {
 
 function hexToBigIntSafe(value?: string | null): bigint | undefined {
   if (!value) return undefined;
-  try {
-    return BigInt(value);
-  } catch {
-    return undefined;
-  }
+  try { return BigInt(value); } catch { return undefined; }
 }
 
-function resolveNetworkFromRequest(params: any) {
-  if (Array.isArray(params) && params[0]?.chainId) {
-    const numeric = Number(params[0].chainId);
-    return getNetworkByChainId(numeric) || getStoredNetwork();
-  }
-  return getStoredNetwork();
-}
+export async function handleRequestMethod(args: { method: string; params: any; address: string; privateKey: string; chainId?: string; }) {
+  const { method, params, address, privateKey, chainId } = args;
+  const requestChainId = chainId?.startsWith("eip155:") ? Number(chainId.split(":")[1]) : undefined;
+  const net = requestChainId ? getNetworkByChainId(requestChainId) || getStoredNetwork() : getStoredNetwork();
 
-export async function handleRequestMethod(args: {
-  method: string;
-  params: any;
-  address: string;
-  privateKey: string;
-  chainId?: string;
-}) {
-  const { method, params, address, privateKey } = args;
-
-  if (method === "eth_accounts" || method === "eth_requestAccounts") {
-    return [address];
-  }
-
-  if (method === "eth_chainId") {
-    const net = getStoredNetwork();
-    return ethers.toQuantity(Number(net.chainId));
-  }
-
-  if (method === "wallet_switchEthereumChain") {
-    const target = resolveNetworkFromRequest(params);
-    localStorage.setItem("wallet_active_network", JSON.stringify(target));
-    window.dispatchEvent(new Event("wallet-network-updated"));
-    return null;
-  }
+  if (method === "eth_accounts" || method === "eth_requestAccounts") return [address];
+  if (method === "eth_chainId") return ethers.toQuantity(Number(net.chainId));
 
   if (method === "personal_sign") {
     const wallet = new ethers.Wallet(privateKey);
@@ -82,7 +53,6 @@ export async function handleRequestMethod(args: {
 
   if (method === "eth_sendTransaction") {
     const tx = Array.isArray(params) ? params[0] : params;
-    const net = getStoredNetwork();
     if (!net?.rpcUrl) throw new Error("RPC URL not configured for current network");
     const provider = new ethers.JsonRpcProvider(net.rpcUrl, Number(net.chainId));
     const wallet = new ethers.Wallet(privateKey, provider);

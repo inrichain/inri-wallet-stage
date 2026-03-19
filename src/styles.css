@@ -6,24 +6,10 @@
   --muted:#97a0b3;
 }
 *{box-sizing:border-box}
-html,body,#root{
-  min-height:100%;
-  min-height:100dvh;
-  width:100%;
-}
-html{
-  background:#0b1120;
-  -webkit-text-size-adjust:100%;
-}
+html,body,#root{min-height:100%}
 body{
-  margin:0;
   font-family: Inter, system-ui, Arial, sans-serif;
   color:var(--text);
   background:linear-gradient(180deg,#0b0b0f 0%, #101625 100%);
-  overscroll-behavior-y:none;
 }
-#root{
-  isolation:isolate;
-}
-button,input,select,textarea{font:inherit}
-img{max-width:100%}
+button,input,select{font:inherit}

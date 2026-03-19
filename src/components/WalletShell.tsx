@@ -650,7 +650,7 @@ export default function WalletShell() {
     return (
       <div
         style={{
-          minHeight: "100dvh",
+          minHeight: "100vh",
           background:
             theme === "light"
               ? "linear-gradient(180deg,#eef3fb 0%, #f7f9fd 100%)"
@@ -899,7 +899,7 @@ export default function WalletShell() {
   return (
     <div
       style={{
-        minHeight: "100dvh",
+        minHeight: "100vh",
         paddingBottom: "132px",
         background:
           theme === "light"

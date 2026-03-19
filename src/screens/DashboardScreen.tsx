@@ -149,7 +149,7 @@ export default function DashboardScreen({
             fontSize: 13,
           }}
         >
-          <img src={network.logo} alt={network.name} style={{ width: 18, height: 18, borderRadius: 9 }} />
+          <img src={network.logo} alt={network.name} onError={(e)=>((e.currentTarget as HTMLImageElement).style.display="none")} style={{ width: 18, height: 18, borderRadius: 9 }} />
           {network.name} • Chain {network.chainId}
         </div>
 
@@ -182,21 +182,15 @@ export default function DashboardScreen({
             {tr(lang, "dashboard_receive")}
           </button>
 
+          <button onClick={() => setTab("settings")} style={actionLink(isLight)}>
+            WalletConnect
+          </button>
+
           {canInstall ? (
             <button onClick={installApp} style={actionButton()}>
               {tr(lang, "dashboard_install_app")}
             </button>
           ) : null}
-
-          <button
-            onClick={() => {
-              localStorage.setItem("wallet_open_wc", "1");
-              setTab("settings");
-            }}
-            style={actionButton()}
-          >
-            WalletConnect
-          </button>
         </div>
       </section>
 
