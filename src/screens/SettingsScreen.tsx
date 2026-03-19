@@ -34,6 +34,8 @@ import {
   resolveTokenAsset,
   resolveWalletAsset,
   sanitizeAssetKey,
+  suggestPublicAssetPath,
+  listRegistryEntries,
 } from "../lib/assets";
 
 const AVATAR_KEY = "wallet_avatar";
@@ -206,6 +208,10 @@ export default function SettingsScreen({
   }, [permissions]);
 
   const registry = useMemo(() => getAssetRegistry(), [assetVersion]);
+  const networkEntries = useMemo(() => listRegistryEntries("network").slice(0, 12), [assetVersion]);
+  const tokenEntries = useMemo(() => listRegistryEntries("token").slice(0, 12), [assetVersion]);
+  const dappEntries = useMemo(() => listRegistryEntries("dapp").slice(0, 12), [assetVersion]);
+  const walletEntries = useMemo(() => listRegistryEntries("wallet").slice(0, 12), [assetVersion]);
 
   const integrationCards: IntegrationCard[] = useMemo(() => [
     {
@@ -713,15 +719,21 @@ export default function SettingsScreen({
         </PremiumPanel>
 
         <PremiumPanel isLight={isLight}>
-          <SectionHeader title="Connected sites & permissions" subtitle="Cleaner permission center with better revoke controls and clearer risk review." isLight={isLight} />
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", marginBottom: 16 }}>
-            <MetricCard isLight={isLight} label="Connected" value={String(permissionSummary.total)} />
-            <MetricCard isLight={isLight} label="Browser" value={String(permissionSummary.browser)} />
-            <MetricCard isLight={isLight} label="WalletConnect" value={String(permissionSummary.walletconnect)} />
-            <MetricCard isLight={isLight} label="Methods" value={String(permissionSummary.methods)} />
+          <SectionHeader title="Connected sites & permissions" subtitle="Cleaner permission center with better revoke controls, stronger hierarchy and faster audits on desktop and mobile." isLight={isLight} />
+          <div style={heroStrip(isLight)}>
+            <div>
+              <div style={{ color: text, fontWeight: 900, fontSize: 18 }}>Permission center</div>
+              <div style={{ color: muted, fontSize: 13, lineHeight: 1.6, marginTop: 6, maxWidth: 720 }}>Every approved site keeps its methods, accounts and networks visible here so the user can audit access quickly and revoke permissions without hunting through the app.</div>
+            </div>
+            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", flex: 1 }}>
+              <MetricCard isLight={isLight} label="Connected" value={String(permissionSummary.total)} />
+              <MetricCard isLight={isLight} label="Browser" value={String(permissionSummary.browser)} />
+              <MetricCard isLight={isLight} label="WalletConnect" value={String(permissionSummary.walletconnect)} />
+              <MetricCard isLight={isLight} label="Methods" value={String(permissionSummary.methods)} />
+            </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-            <div style={{ color: muted, fontSize: 13, lineHeight: 1.55 }}>Every approved site keeps its methods, accounts and networks visible here so the user can audit access quickly on desktop and mobile.</div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap", marginTop: 16 }}>
+            <div style={{ color: muted, fontSize: 13, lineHeight: 1.55 }}>Review the site origin, last activity and approved methods before keeping access alive.</div>
             <button onClick={() => { revokeAllSitePermissions(); setPermissions(listSitePermissions()); showWcMessage("All site permissions revoked."); }} style={dangerButton}>Revoke all</button>
           </div>
           <div style={{ display: "grid", gap: 12 }}>
@@ -767,6 +779,9 @@ export default function SettingsScreen({
               onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, networkPath: value }))}
               onUpload={() => registryFileRef.current?.click()}
               onSave={() => handleSaveRegistry("network")}
+              suggestedPath={suggestPublicAssetPath("network", registryDraft.networkKey)}
+              onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, networkPath: suggestPublicAssetPath("network", prev.networkKey) }))}
+              existingEntries={networkEntries}
               isLight={isLight}
             />
             <RegistryEditor
@@ -779,6 +794,9 @@ export default function SettingsScreen({
               onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, tokenPath: value }))}
               onUpload={() => registryFileRef.current?.click()}
               onSave={() => handleSaveRegistry("token")}
+              suggestedPath={suggestPublicAssetPath("token", registryDraft.tokenKey)}
+              onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, tokenPath: suggestPublicAssetPath("token", prev.tokenKey) }))}
+              existingEntries={tokenEntries}
               isLight={isLight}
             />
             <RegistryEditor
@@ -791,6 +809,9 @@ export default function SettingsScreen({
               onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, dappPath: value }))}
               onUpload={() => registryFileRef.current?.click()}
               onSave={() => handleSaveRegistry("dapp")}
+              suggestedPath={suggestPublicAssetPath("dapp", registryDraft.dappKey)}
+              onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, dappPath: suggestPublicAssetPath("dapp", prev.dappKey) }))}
+              existingEntries={dappEntries}
               isLight={isLight}
             />
             <RegistryEditor
@@ -803,6 +824,9 @@ export default function SettingsScreen({
               onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, walletPath: value }))}
               onUpload={() => registryFileRef.current?.click()}
               onSave={() => handleSaveRegistry("wallet")}
+              suggestedPath={suggestPublicAssetPath("wallet", registryDraft.walletKey)}
+              onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, walletPath: suggestPublicAssetPath("wallet", prev.walletKey) }))}
+              existingEntries={walletEntries}
               isLight={isLight}
             />
           </div>
@@ -833,7 +857,17 @@ export default function SettingsScreen({
               <SectionHeader title={t.wcTitle} subtitle={`${t.wcHint} Save the WalletConnect brand as brand-walletconnect.png in public or map the key walletconnect in the asset registry.`} isLight={isLight} />
             </div>
           </div>
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr auto auto auto" }}>
+          <div style={heroStrip(isLight)}>
+            <div>
+              <div style={{ color: text, fontWeight: 900, fontSize: 18 }}>WalletConnect hub</div>
+              <div style={{ color: muted, fontSize: 13, lineHeight: 1.6, marginTop: 6, maxWidth: 620 }}>Pair by URI or QR, then review every active session with clearer brand, domain and revoke controls.</div>
+            </div>
+            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", minWidth: 280, flex: 1 }}>
+              <MetricCard isLight={isLight} label="Sessions" value={String(wcSessions.length)} />
+              <MetricCard isLight={isLight} label="Brand key" value="wc" />
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
             <input value={wcUri} onChange={(e) => setWcUri(e.target.value)} placeholder={t.wcConnectUri || "Paste WalletConnect URI"} style={inputStyle(isLight)} />
             <button onClick={() => setScannerOpen(true)} style={secondaryButton(isLight)}>{t.wcScanQr}</button>
             <button onClick={refreshSessions} style={secondaryButton(isLight)}>{t.wcRefresh}</button>
@@ -858,8 +892,12 @@ export default function SettingsScreen({
                       rounded={false}
                     />
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ color: text, fontWeight: 800 }}>{session.peer?.metadata?.name || "WalletConnect session"}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <div style={{ color: text, fontWeight: 800 }}>{session.peer?.metadata?.name || "WalletConnect session"}</div>
+                        <span style={typePill(isLight, true)}>WalletConnect</span>
+                      </div>
                       <div style={{ color: muted, fontSize: 13, wordBreak: "break-all" }}>{session.peer?.metadata?.url || session.topic}</div>
+                      <div style={{ color: muted, fontSize: 12, marginTop: 6 }}>Topic: {String(session.topic || "").slice(0, 18)}…</div>
                     </div>
                   </div>
                   <button onClick={() => handleDisconnectSession(session.topic)} style={dangerButton}>{t.wcDisconnect}</button>
@@ -868,8 +906,6 @@ export default function SettingsScreen({
             )) : <EmptyState isLight={isLight} title={t.wcNoSessions} subtitle="Pair a WalletConnect session from desktop or mobile and it will appear here." />}
           </div>
         </PremiumPanel>
-      </div>
-
       {scannerOpen ? <WalletConnectQrScanner onClose={() => setScannerOpen(false)} onScanned={handleScannedUri} /> : null}
     </>
   );
@@ -892,6 +928,22 @@ const PremiumPanel = React.forwardRef<HTMLDivElement, React.PropsWithChildren<{ 
     </div>
   );
 });
+
+
+function heroStrip(isLight: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 16,
+    flexWrap: "wrap",
+    alignItems: "stretch",
+    padding: 16,
+    borderRadius: 20,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`,
+    background: isLight ? "linear-gradient(180deg,#ffffff 0%,#f7faff 100%)" : "linear-gradient(180deg,#131b29 0%,#0e1522 100%)",
+    marginBottom: 16,
+  };
+}
 
 function SectionHeader({ title, subtitle, isLight }: { title: string; subtitle: string; isLight: boolean }) {
   return (
@@ -943,7 +995,7 @@ function SwitchRow({ isLight, label, hint, checked, onChange }: { isLight: boole
   );
 }
 
-function RegistryEditor({ title, preview, previewLabel, keyValue, pathValue, onKeyChange, onPathChange, onUpload, onSave, isLight }: {
+function RegistryEditor({ title, preview, previewLabel, keyValue, pathValue, onKeyChange, onPathChange, onUpload, onSave, suggestedPath, onUseSuggested, existingEntries, isLight }: {
   title: string;
   preview: string;
   previewLabel: string;
@@ -953,6 +1005,9 @@ function RegistryEditor({ title, preview, previewLabel, keyValue, pathValue, onK
   onPathChange: (value: string) => void;
   onUpload: () => void;
   onSave: () => void;
+  suggestedPath?: string;
+  onUseSuggested?: () => void;
+  existingEntries?: Array<{ key: string; path: string }>;
   isLight: boolean;
 }) {
   return (
@@ -967,13 +1022,30 @@ function RegistryEditor({ title, preview, previewLabel, keyValue, pathValue, onK
       <div style={{ display: "grid", gap: 10 }}>
         <input value={keyValue} onChange={(e) => onKeyChange(e.target.value)} placeholder={`${title} key`} style={inputStyle(isLight)} />
         <input value={pathValue} onChange={(e) => onPathChange(e.target.value)} placeholder="public file, URL or data:image/..." style={inputStyle(isLight)} />
+        {suggestedPath ? (
+          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12, lineHeight: 1.5 }}>Suggested public filename: <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{suggestedPath}</strong></div>
+        ) : null}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={onUpload} style={secondaryButton(isLight)}>Upload</button>
+          {suggestedPath ? <button onClick={onUseSuggested} style={secondaryButton(isLight)}>Use suggested name</button> : null}
           <button onClick={onSave} style={primaryButton}>Save</button>
         </div>
+        {existingEntries?.length ? (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {existingEntries.slice(0, 6).map((entry) => (
+              <button key={`${title}-${entry.key}`} onClick={() => { onKeyChange(entry.key); onPathChange(entry.path); }} style={chipButton(isLight)}>{entry.key}</button>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
+}
+
+function chipButton(isLight: boolean): React.CSSProperties {
+  return {
+    padding: "7px 10px", borderRadius: 999, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#ffffff" : "#111722", color: isLight ? "#10131a" : "#ffffff", cursor: "pointer", fontWeight: 700, fontSize: 12
+  };
 }
 
 function RegistryList({ title, entries, isLight }: { title: string; entries: string[]; isLight: boolean }) {

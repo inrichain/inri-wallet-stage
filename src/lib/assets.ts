@@ -281,6 +281,19 @@ function resolveRegistryPath(kind: AssetKind, candidates: string[]) {
   return "";
 }
 
+export const PUBLIC_ASSET_PATTERNS: Record<AssetKind, string> = {
+  network: "network-{key}.png",
+  token: "token-{key}.png",
+  dapp: "brand-{key}.png",
+  wallet: "wallet-{key}.png",
+};
+
+export function suggestPublicAssetPath(kind: AssetKind, key?: string) {
+  const cleanKey = sanitizeAssetKey(key || "");
+  if (!cleanKey) return "";
+  return PUBLIC_ASSET_PATTERNS[kind].replace("{key}", cleanKey);
+}
+
 export function listRegistryEntries(kind: AssetKind) {
   const registry = getAssetRegistry();
   const bucket = kind === "network" ? registry.networks : kind === "token" ? registry.tokens : kind === "dapp" ? registry.dapps : registry.wallets;

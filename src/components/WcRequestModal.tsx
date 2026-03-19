@@ -25,7 +25,8 @@ export default function WcRequestModal({ open, theme, lang = "en", request, appr
   return (
     <div style={overlayStyle}>
       <div style={panelStyle(theme)}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+        <div style={{ ...heroBox(theme), marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
           <LogoImage src={resolveDappAsset(details.dappIcon, details.dappName)} alt={details.dappName} kind="dapp" label={details.dappName} size={46} rounded={false} />
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 22, fontWeight: 800 }}>{details.title}</div>
@@ -33,10 +34,11 @@ export default function WcRequestModal({ open, theme, lang = "en", request, appr
             <div style={{ color: text, fontWeight: 700, marginTop: 4 }}>{details.dappName}</div>
             {!!details.dappUrl && <div style={{ color: sub, fontSize: 13, wordBreak: "break-all" }}>{details.dappUrl}</div>}
           </div>
+          </div>
           <RiskPill theme={theme} level={details.riskLevel || details.analysis?.riskLevel || "medium"} />
         </div>
 
-        <div style={heroBox(theme)}>
+        <div style={{...heroBox(theme), background: theme === "light" ? "#f8fbff" : "#0b111b"}}>
           <InfoRow label="Requested by" value={details.dappName} text={text} sub={sub} />
           <InfoRow label={t("wc_request_method")} value={details.displayMethod || details.methodLabel || details.method} text={text} sub={sub} />
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -153,7 +155,7 @@ function InfoRow({ label, value, text, sub }: { label: string; value: string; te
 function Card({ theme, label, value, hint }: { theme: "dark" | "light"; label: string; value: string; hint?: string; }) { const sub = theme === "light" ? "#5f6b7d" : "#9aa4b5"; const text = theme === "light" ? "#10131a" : "#fff"; return <div style={cardStyle(theme)}><div style={{ color: sub, fontSize: 12, marginBottom: 6 }}>{label}</div><div style={{ color: text, fontSize: 15, fontWeight: 800, lineHeight: 1.35, wordBreak: "break-word" }}>{value}</div>{hint ? <div style={{ color: sub, fontSize: 12, marginTop: 6, lineHeight: 1.35 }}>{hint}</div> : null}</div>; }
 const overlayStyle: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000, padding: 12 };
 function panelStyle(theme: "dark" | "light"): React.CSSProperties { return { width: "min(720px, calc(100vw - 24px))", maxHeight: "calc(100vh - 24px)", overflow: "auto", background: theme === "light" ? "#fff" : "#111722", color: theme === "light" ? "#10131a" : "#fff", border: `1px solid ${theme === "light" ? "#dbe2ef" : "#273042"}`, borderRadius: 24, padding: 20, boxSizing: "border-box", boxShadow: theme === "light" ? "0 24px 80px rgba(20,30,50,.14)" : "0 24px 80px rgba(0,0,0,.45)" }; }
-function heroBox(theme: "dark" | "light"): React.CSSProperties { return { display: "grid", gap: 8, padding: 14, borderRadius: 16, background: theme === "light" ? "#f4f7fb" : "#0a1018", border: `1px solid ${theme === "light" ? "#dbe3f0" : "#243045"}` }; }
+function heroBox(theme: "dark" | "light"): React.CSSProperties { return { display: "flex", justifyContent: "space-between", alignItems: "start", flexWrap: "wrap", gap: 10, padding: 16, borderRadius: 20, background: theme === "light" ? "linear-gradient(180deg,#ffffff 0%,#f7faff 100%)" : "linear-gradient(180deg,#131b29 0%,#0e1522 100%)", border: `1px solid ${theme === "light" ? "#dbe3f0" : "#243045"}` }; }
 const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 };
 function cardStyle(theme: "dark" | "light"): React.CSSProperties { return { padding: 14, borderRadius: 16, background: theme === "light" ? "#f8fbff" : "#0d1420", border: `1px solid ${theme === "light" ? "#dde6f3" : "#223044"}` }; }
 function riskBox(theme: "dark" | "light", level: string): React.CSSProperties { const high = String(level) === "high"; return { display: "grid", gap: 8, padding: 14, borderRadius: 16, background: high ? (theme === "light" ? "#fff3f3" : "rgba(255,123,123,.1)") : theme === "light" ? "#fff7eb" : "rgba(255,176,32,.08)", border: `1px solid ${high ? (theme === "light" ? "#ffc6c6" : "rgba(255,123,123,.22)") : theme === "light" ? "#ffe0ae" : "rgba(255,176,32,.22)"}` }; }
