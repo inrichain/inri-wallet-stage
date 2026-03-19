@@ -521,23 +521,10 @@ export default function WalletShell() {
   useEffect(() => {
     if (!activeAddress) return;
 
-    let cancelled = false;
-
-    const syncWalletConnect = () => {
-      if (cancelled) return;
-      const activeChainId = Number(getStoredNetwork().chainId || 3777);
-      initWalletConnect(activeAddress, activeChainId).catch((err) => {
-        console.error("WalletConnect init failed:", err);
-      });
-    };
-
-    syncWalletConnect();
-    window.addEventListener("wallet-network-updated", syncWalletConnect);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener("wallet-network-updated", syncWalletConnect);
-    };
+    const activeChainId = Number(getStoredNetwork().chainId || 3777);
+    initWalletConnect(activeAddress, activeChainId).catch((err) => {
+      console.error("WalletConnect init failed:", err);
+    });
   }, [activeAddress]);
 
   async function onApproveProposal() {

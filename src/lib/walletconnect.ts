@@ -2,7 +2,7 @@ import { Core } from "@walletconnect/core";
 import { Web3Wallet } from "@walletconnect/web3wallet";
 import { buildApprovedNamespaces, getSdkError } from "@walletconnect/utils";
 import { wcStoreSetProposal, wcStoreSetRequest } from "./wcSessionStore";
-import { getSupportedNamespaces } from "./wcRequestHandlers";
+import { getAllSupportedNetworks } from "./network";
 
 export const projectId = "bfc7a39282888507c8c1dca6d8b2dbfe";
 
@@ -21,6 +21,30 @@ function isIgnorableWcError(err: any) {
     msg.includes("no matching key") ||
     msg.includes("record was recently deleted")
   );
+}
+
+function getSupportedNamespaces(address: string) {
+  const networks = getAllSupportedNetworks();
+  const chains = networks.map((network) => `eip155:${Number(network.chainId)}`);
+
+  return {
+    eip155: {
+      chains,
+      methods: [
+        "eth_accounts",
+        "eth_requestAccounts",
+        "eth_chainId",
+        "eth_sendTransaction",
+        "personal_sign",
+        "eth_sign",
+        "eth_signTypedData",
+        "eth_signTypedData_v3",
+        "eth_signTypedData_v4",
+      ],
+      events: ["accountsChanged", "chainChanged"],
+      accounts: chains.map((chain) => `${chain}:${address}`),
+    },
+  };
 }
 
 export async function initWalletConnect(address: string, chainId = 3777) {
