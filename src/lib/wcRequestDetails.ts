@@ -75,24 +75,42 @@ function summarizeTypedData(payload: any, lang = "en") {
 }
 
 export function buildWcRequestDetails(request: any, lang = "en") {
-  const network = getNetworkByNamespaceChain(request?.chainId) || getStoredNetwork();
+  const requestNetwork = getNetworkByNamespaceChain(request?.chainId);
+  const fallbackNetwork = getStoredNetwork();
+  const network = requestNetwork || fallbackNetwork;
   const chainId = Number(network?.chainId || 3777);
   const method = request?.method || tr(lang, "wc_details_unknown");
   const cleanMethod = prettyMethod(method, lang);
   const cleanMethodLabel = titleCase(cleanMethod);
+  const isConnectMethod = method === "eth_requestAccounts" || method === "eth_accounts" || method === "wallet_requestPermissions";
 
   const base = {
     method,
     methodLabel: cleanMethod,
-    chainLabel: request?.chainId || `eip155:${chainId}`,
-    networkName: network?.name || tr(lang, "wc_details_current_network"),
-    networkLogo: network?.logo || "",
+    chainLabel: request?.chainId || (isConnectMethod ? "eip155:*" : `eip155:${chainId}`),
+    networkName: requestNetwork?.name || (isConnectMethod ? "Multi-chain" : (network?.name || tr(lang, "wc_details_current_network"))),
+    networkLogo: requestNetwork?.logo || "",
     dappName: request?.peerMetadata?.name || tr(lang, "wc_details_unknown_dapp"),
     dappUrl: request?.peerMetadata?.url || "",
     dappIcon: request?.peerMetadata?.icons?.[0] || "",
     rawParams: request?.params,
     riskItems: [] as string[],
   };
+
+
+  if (isConnectMethod) {
+    return {
+      ...base,
+      kind: "raw",
+      title: "Connect wallet",
+      subtitle: "The dApp is requesting account access. It may ask to switch networks after connecting.",
+      riskItems: [
+        "Only approve if you trust this dApp.",
+        "After connecting, the dApp may request a network switch such as Ethereum, Polygon or INRI.",
+      ],
+      displayMethod: "Connect Wallet",
+    };
+  }
 
   if (method === "eth_sendTransaction") {
     const tx = Array.isArray(request?.params) ? request.params[0] : request?.params;
