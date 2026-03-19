@@ -8,6 +8,7 @@ import {
   removeCustomNetwork,
   findPresetByChainId,
   makeNetworkFromChainId,
+  getPublicNetworkLogoPath,
   type NetworkItem,
 } from "../lib/network";
 import { tr, trf } from "../i18n/translations";
@@ -30,6 +31,8 @@ type CustomNetworkDraft = {
   rpcUrl: string;
   explorerUrl: string;
   logo: string;
+  publicLogoName: string;
+  editingKey?: string;
 };
 
 export default function SettingsScreen({
@@ -56,7 +59,7 @@ export default function SettingsScreen({
   const [scannerOpen, setScannerOpen] = useState(false);
   const [securityState, setSecurityState] = useState<SecuritySettings>(security);
   const [permissions, setPermissions] = useState<any[]>([]);
-  const [draft, setDraft] = useState<CustomNetworkDraft>({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" });
+  const [draft, setDraft] = useState<CustomNetworkDraft>({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "", publicLogoName: "", editingKey: "" });
   const [networkValidation, setNetworkValidation] = useState<{ status: "idle" | "checking" | "ok" | "error"; message: string }>({ status: "idle", message: "" });
   const fileRef = useRef<HTMLInputElement | null>(null);
   const logoFileRef = useRef<HTMLInputElement | null>(null);
@@ -147,6 +150,7 @@ export default function SettingsScreen({
       rpcUrl: prev.rpcUrl.trim() || preset.rpcUrl,
       explorerUrl: prev.explorerUrl.trim() || preset.explorerBaseUrl,
       logo: prev.logo || presetNetwork?.logo || "",
+      publicLogoName: prev.publicLogoName || `network-${preset.key}.png`,
     }));
     setNetworkValidation({ status: "idle", message: `Known network detected: ${preset.name}. Review and save.` });
   }
@@ -255,17 +259,17 @@ export default function SettingsScreen({
     const chainId = Number(draft.chainId);
     const explorer = draft.explorerUrl.trim().replace(/\/$/, "");
     const created = upsertCustomNetwork({
-      key: `custom-${chainId}`,
+      key: draft.editingKey || `custom-${chainId}`,
       name: draft.name.trim(),
       chainId,
       symbol: draft.symbol.trim() || "ETH",
       rpcUrl: draft.rpcUrl.trim(),
       explorerAddressUrl: explorer ? `${explorer}/address/` : "",
       explorerTxUrl: explorer ? `${explorer}/tx/` : "",
-      logo: draft.logo || networks.find((item) => item.chainId === chainId)?.logo || makeNetworkFromChainId(chainId)?.logo || `${BASE}network-inri.png`,
+      logo: draft.logo || (draft.publicLogoName.trim() ? `${BASE}${draft.publicLogoName.trim().replace(/^\/+/, "")}` : (networks.find((item) => item.chainId === chainId)?.logo || makeNetworkFromChainId(chainId)?.logo || getPublicNetworkLogoPath(draft.name || draft.symbol || `chain-${chainId}`))),
       isCustom: true,
     });
-    setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" });
+    setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "", publicLogoName: "", editingKey: "" });
     handleSelectNetwork(created);
     showWcMessage(`Network saved: ${created.name}`);
   }
@@ -279,6 +283,8 @@ export default function SettingsScreen({
       rpcUrl: item.rpcUrl,
       explorerUrl: (item.explorerAddressUrl || item.explorerTxUrl || "").replace(/\/(address|tx)\/?$/, ""),
       logo: item.logo || "",
+      publicLogoName: String(item.logo || "").includes(`${BASE}`) ? String(item.logo || "").replace(BASE, "") : "",
+      editingKey: item.key,
     });
   }
 
@@ -452,15 +458,20 @@ export default function SettingsScreen({
             <input value={draft.symbol} onChange={(e) => setDraft({ ...draft, symbol: e.target.value })} placeholder="Symbol" style={inputStyle(isLight)} />
             <input value={draft.rpcUrl} onChange={(e) => setDraft({ ...draft, rpcUrl: e.target.value })} placeholder="RPC URL" style={inputStyle(isLight)} />
             <input value={draft.explorerUrl} onChange={(e) => setDraft({ ...draft, explorerUrl: e.target.value })} placeholder="Explorer base URL" style={inputStyle(isLight)} />
+            <input value={draft.publicLogoName} onChange={(e) => setDraft({ ...draft, publicLogoName: e.target.value })} placeholder="Public logo file name (example: network-celo.png)" style={inputStyle(isLight)} />
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <button onClick={() => logoFileRef.current?.click()} style={secondaryButton(isLight)}>Upload network logo</button>
+              <button onClick={() => setDraft((prev) => ({ ...prev, logo: prev.publicLogoName.trim() ? `${BASE}${prev.publicLogoName.trim().replace(/^\/+/, "")}` : prev.logo }))} style={secondaryButton(isLight)}>Use public file</button>
               {draft.logo ? <img src={draft.logo} alt="network logo" style={{ width: 40, height: 40, borderRadius: 12, objectFit: "cover", border: `1px solid ${isLight ? "#dbe2f0" : "#2c3950"}` }} /> : null}
             </div>
             <input ref={logoFileRef} type="file" accept="image/*" onChange={handleUploadNetworkLogo} style={{ display: "none" }} />
           </div>
+          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12, lineHeight: 1.55, marginTop: 12 }}>
+            Tip: keep your logo files in <b>public</b> using names like <b>network-celo.png</b> or <b>network-mychain.png</b>. The site and app will both update when you replace the same file.
+          </div>
           <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-            <button onClick={handleAddOrUpdateCustomNetwork} style={primaryButton}>Save custom network</button>
-            <button onClick={() => setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" })} style={secondaryButton(isLight)}>Clear</button>
+            <button onClick={handleAddOrUpdateCustomNetwork} style={primaryButton}>{draft.editingKey ? "Update custom network" : "Save custom network"}</button>
+            <button onClick={() => setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "", publicLogoName: "", editingKey: "" })} style={secondaryButton(isLight)}>Clear</button>
           </div>
           {networkValidation.status !== "idle" ? (
             <div style={{ marginTop: 10, padding: 12, borderRadius: 14, background: networkValidation.status === "ok" ? (isLight ? "#eefaf1" : "rgba(74,222,128,.08)") : networkValidation.status === "checking" ? (isLight ? "#eef4ff" : "rgba(63,124,255,.08)") : (isLight ? "#fff3f3" : "rgba(255,123,123,.08)"), border: `1px solid ${networkValidation.status === "ok" ? "rgba(74,222,128,.28)" : networkValidation.status === "checking" ? "rgba(63,124,255,.22)" : "rgba(255,123,123,.22)"}`, color: isLight ? "#10131a" : "#fff" }}>{networkValidation.message}</div>

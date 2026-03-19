@@ -4,6 +4,7 @@ import {
   getDefaultTokensForNetwork,
   loadAllBalances,
   resolveTokenMetadata,
+  getPublicTokenLogoPath,
 } from "../lib/inri";
 import { getStoredNetwork } from "../lib/network";
 
@@ -12,6 +13,7 @@ const CUSTOM_TOKENS_KEY = "wallet_custom_tokens";
 
 type ViewToken = TokenItem & {
   balance: string;
+  publicLogoName?: string;
 };
 
 export default function TokensScreen({
@@ -30,10 +32,13 @@ export default function TokensScreen({
   const [tokenAddress, setTokenAddress] = useState("");
   const [decimals, setDecimals] = useState("18");
   const [logo, setLogo] = useState("");
+  const [publicLogoName, setPublicLogoName] = useState("");
+  const [editingTokenKey, setEditingTokenKey] = useState("");
   const [message, setMessage] = useState("");
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [detectingToken, setDetectingToken] = useState(false);
   const t = getText(lang);
+  const fileRef = React.useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const syncNetwork = () => setNetworkKey(getStoredNetwork().key);
@@ -114,6 +119,7 @@ export default function TokensScreen({
         setSymbol(meta.symbol || "");
         setDecimals(String(meta.decimals ?? 18));
         setLogo((prev) => prev.trim() || meta.logo);
+        setPublicLogoName((prev) => prev.trim() || `token-${String(meta.symbol || "").toLowerCase()}.png`);
         showMessage(t.tokenDetected.replace("{symbol}", meta.symbol));
       } catch {
       } finally {
@@ -132,10 +138,37 @@ export default function TokensScreen({
     setTimeout(() => setMessage(""), 2500);
   }
 
+  function handleUploadTokenLogo(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setLogo(String(reader.result || ""));
+    reader.readAsDataURL(file);
+  }
+
+  function startEditToken(token: ViewToken) {
+    setEditingTokenKey((token.address || token.symbol).toLowerCase());
+    setSymbol(token.symbol);
+    setTokenAddress(token.address || "");
+    setDecimals(String(token.decimals ?? 18));
+    setLogo(token.logo || "");
+    setPublicLogoName(token.publicLogoName || `token-${String(token.symbol || "").toLowerCase()}.png`);
+  }
+
+  function clearTokenDraft() {
+    setEditingTokenKey("");
+    setSymbol("");
+    setTokenAddress("");
+    setDecimals("18");
+    setLogo("");
+    setPublicLogoName("");
+  }
+
   function addToken() {
     const cleanSymbol = symbol.trim().toUpperCase();
     const cleanAddress = tokenAddress.trim();
     const cleanLogo = logo.trim();
+    const cleanPublicLogoName = publicLogoName.trim();
     const cleanDecimals = Number(decimals);
 
     if (!cleanSymbol) {
@@ -158,10 +191,14 @@ export default function TokensScreen({
       return;
     }
 
+    const currentEditKey = editingTokenKey;
     const exists = tokens.some(
-      (token) =>
-        token.symbol.toUpperCase() === cleanSymbol ||
-        (token.address && token.address.toLowerCase() === cleanAddress.toLowerCase())
+      (token) => {
+        const tokenKey = (token.address || token.symbol).toLowerCase();
+        if (currentEditKey && tokenKey === currentEditKey) return false;
+        return token.symbol.toUpperCase() === cleanSymbol ||
+          (token.address && token.address.toLowerCase() === cleanAddress.toLowerCase());
+      }
     );
 
     if (exists) {
@@ -173,23 +210,30 @@ export default function TokensScreen({
       symbol: cleanSymbol,
       subtitle: `custom token • ${cleanAddress.slice(0, 6)}...${cleanAddress.slice(-4)}`,
       balance: "0.000000",
-      logo: cleanLogo || BASE + "token-inri.png",
+      logo: cleanLogo || (cleanPublicLogoName ? `${BASE}${cleanPublicLogoName.replace(/^\/+/, "")}` : getPublicTokenLogoPath(cleanSymbol)),
+      publicLogoName: cleanPublicLogoName || `token-${cleanSymbol.toLowerCase()}.png`,
       isDefault: false,
       address: cleanAddress,
       decimals: cleanDecimals,
       networkKey,
     };
 
-    setCustomTokens((prev) => [...prev, newToken]);
-    setSymbol("");
-    setTokenAddress("");
-    setDecimals("18");
-    setLogo("");
-    showMessage(t.tokenAdded);
+    setCustomTokens((prev) => {
+      const key = (newToken.address || newToken.symbol).toLowerCase();
+      const index = prev.findIndex((item) => (item.address || item.symbol).toLowerCase() === key);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = newToken;
+        return next;
+      }
+      return [...prev, newToken];
+    });
+    clearTokenDraft();
+    showMessage(editingTokenKey ? "Token updated." : t.tokenAdded);
   }
 
-  function removeToken(tokenSymbol: string) {
-    setCustomTokens((prev) => prev.filter((t) => t.symbol !== tokenSymbol));
+  function removeToken(tokenKey: string) {
+    setCustomTokens((prev) => prev.filter((t) => (t.address || t.symbol).toLowerCase() !== tokenKey.toLowerCase()));
     showMessage(t.tokenRemoved);
   }
 
@@ -221,26 +265,26 @@ export default function TokensScreen({
           style={inputStyle(isLight)}
         />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 120px",
-            gap: 8,
-          }}
-        >
-          <input
-            placeholder={t.logoOptional}
-            value={logo}
-            onChange={(e) => setLogo(e.target.value)}
-            style={inputStyle(isLight)}
-          />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 8 }}>
+          <input placeholder={t.logoOptional} value={logo} onChange={(e) => setLogo(e.target.value)} style={inputStyle(isLight)} />
+          <input placeholder="18" value={decimals} onChange={(e) => setDecimals(e.target.value)} style={inputStyle(isLight)} />
+        </div>
 
-          <input
-            placeholder="18"
-            value={decimals}
-            onChange={(e) => setDecimals(e.target.value)}
-            style={inputStyle(isLight)}
-          />
+        <input
+          placeholder="Public logo file name (example: token-myproject.png)"
+          value={publicLogoName}
+          onChange={(e) => setPublicLogoName(e.target.value)}
+          style={inputStyle(isLight)}
+        />
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={() => fileRef.current?.click()} style={secondaryButtonStyle(isLight)}>Upload token logo</button>
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleUploadTokenLogo} style={{ display: "none" }} />
+          {logo ? <img src={logo} alt="token logo" style={{ width: 40, height: 40, borderRadius: 12, objectFit: "cover", border: `1px solid ${isLight ? "#dbe2f0" : "#2c3950"}` }} /> : null}
+        </div>
+
+        <div style={{ color: isLight ? "#50617d" : "#96a5bd", fontSize: 12, lineHeight: 1.55 }}>
+          Tip: if you put a file like <b>token-myproject.png</b> in the <b>public</b> folder and save the same name here, the website and installed app will both update from the same file.
         </div>
 
         {detectingToken ? (
@@ -249,9 +293,12 @@ export default function TokensScreen({
           </div>
         ) : null}
 
-        <button onClick={addToken} style={mainButtonStyle()}>
-          {t.addToken}
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={addToken} style={mainButtonStyle()}>
+            {editingTokenKey ? "Update token" : t.addToken}
+          </button>
+          <button onClick={clearTokenDraft} style={secondaryButtonStyle(isLight)}>Clear</button>
+        </div>
 
         {message ? (
           <div

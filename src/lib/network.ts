@@ -26,6 +26,20 @@ export type NetworkPreset = {
 export const NETWORKS_KEY = "wallet_active_network";
 const CUSTOM_NETWORKS_KEY = "wallet_custom_networks_v1";
 
+function normalizeAssetSlug(value: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function getPublicNetworkLogoPath(value: string) {
+  const slug = normalizeAssetSlug(value);
+  return slug ? `${BASE}network-${slug}.png` : `${BASE}network-inri.png`;
+}
+
+
 function initialsFromName(name: string) {
   const parts = String(name || "NET")
     .split(/[^A-Za-z0-9]+/)
@@ -88,7 +102,7 @@ function presetToNetworkItem(preset: NetworkPreset): NetworkItem {
     rpcUrl: preset.rpcUrl,
     explorerAddressUrl: explorer ? `${explorer}/address/` : "",
     explorerTxUrl: explorer ? `${explorer}/tx/` : "",
-    logo: preset.logo || networkBadge(preset.name, preset.symbol, preset.color),
+    logo: preset.logo || getPublicNetworkLogoPath(preset.key) || networkBadge(preset.name, preset.symbol, preset.color),
   };
 }
 
@@ -112,7 +126,7 @@ function normalizeStoredNetwork(value: any): NetworkItem {
   if (!known) {
     return {
       ...(value as NetworkItem),
-      logo: value?.logo || networkBadge(value?.name || `Chain ${Number(value?.chainId) || 0}`, value?.symbol || "ETH"),
+      logo: value?.logo || getPublicNetworkLogoPath(value?.key || value?.name || value?.symbol || "custom") || networkBadge(value?.name || `Chain ${Number(value?.chainId) || 0}`, value?.symbol || "ETH"),
     };
   }
   return {
@@ -135,7 +149,7 @@ export function getCustomNetworks(): NetworkItem[] {
           ...item,
           chainId: Number(item.chainId),
           isCustom: true,
-          logo: item.logo || (preset ? presetToNetworkItem(preset).logo : networkBadge(item.name || `Chain ${Number(item.chainId)}`, item.symbol || "ETH")),
+          logo: item.logo || (preset ? presetToNetworkItem(preset).logo : getPublicNetworkLogoPath(item.key || item.name || item.symbol || `chain-${Number(item.chainId)}`) || networkBadge(item.name || `Chain ${Number(item.chainId)}`, item.symbol || "ETH")),
         } as NetworkItem;
       });
   } catch {
