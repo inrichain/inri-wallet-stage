@@ -35,7 +35,7 @@ function initialsFromName(name: string) {
   return parts.map((part) => part[0]?.toUpperCase() || "").join("");
 }
 
-function networkBadge(name: string, symbol = "ETH", color = "#3f7cff") {
+export function buildNetworkBadge(name: string, symbol = "ETH", color = "#3f7cff") {
   const text = initialsFromName(name);
   const symbolSafe = String(symbol || "ETH").slice(0, 4).toUpperCase();
   const fill = String(color || "#3f7cff");
@@ -53,6 +53,48 @@ function networkBadge(name: string, symbol = "ETH", color = "#3f7cff") {
     <text x="64" y="94" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="800" fill="#ffffff">${symbolSafe}</text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg.replace(/\n\s*/g, ""))}`;
+}
+
+const LOGO_KEY_ALIASES: Record<string, string[]> = {
+  bsc: ["bnb", "bsc"],
+  zksync: ["zksyncera", "zksync"],
+  sei: ["seievm", "sei"],
+};
+
+function sanitizeAssetKey(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
+
+function resolveAssetCandidates(key: string, name: string) {
+  const cleanKey = sanitizeAssetKey(key);
+  const cleanName = sanitizeAssetKey(name);
+  const aliases = LOGO_KEY_ALIASES[cleanKey] || [];
+  return Array.from(new Set([cleanKey, cleanName, ...aliases].filter(Boolean)));
+}
+
+export function resolveNetworkLogo(input: {
+  key?: string;
+  name?: string;
+  symbol?: string;
+  color?: string;
+  logo?: string;
+}) {
+  if (input.logo) return input.logo;
+  const candidates = resolveAssetCandidates(String(input.key || ""), String(input.name || ""));
+  const primary = candidates[0];
+  if (primary) return `${BASE}network-${primary}.png`;
+  return buildNetworkBadge(input.name || "Network", input.symbol || "ETH", input.color || "#3f7cff");
+}
+
+export function getNetworkLogoFallback(input: {
+  name?: string;
+  symbol?: string;
+  color?: string;
+}) {
+  return buildNetworkBadge(input.name || "Network", input.symbol || "ETH", input.color || "#3f7cff");
 }
 
 export const NETWORK_PRESETS: NetworkPreset[] = [
@@ -88,7 +130,7 @@ function presetToNetworkItem(preset: NetworkPreset): NetworkItem {
     rpcUrl: preset.rpcUrl,
     explorerAddressUrl: explorer ? `${explorer}/address/` : "",
     explorerTxUrl: explorer ? `${explorer}/tx/` : "",
-    logo: preset.logo || networkBadge(preset.name, preset.symbol, preset.color),
+    logo: resolveNetworkLogo(preset),
   };
 }
 
@@ -112,7 +154,12 @@ function normalizeStoredNetwork(value: any): NetworkItem {
   if (!known) {
     return {
       ...(value as NetworkItem),
-      logo: value?.logo || networkBadge(value?.name || `Chain ${Number(value?.chainId) || 0}`, value?.symbol || "ETH"),
+      logo: resolveNetworkLogo({
+        key: value?.key,
+        name: value?.name || `Chain ${Number(value?.chainId) || 0}`,
+        symbol: value?.symbol || "ETH",
+        logo: value?.logo,
+      }),
     };
   }
   return {
@@ -135,7 +182,13 @@ export function getCustomNetworks(): NetworkItem[] {
           ...item,
           chainId: Number(item.chainId),
           isCustom: true,
-          logo: item.logo || (preset ? presetToNetworkItem(preset).logo : networkBadge(item.name || `Chain ${Number(item.chainId)}`, item.symbol || "ETH")),
+          logo: resolveNetworkLogo({
+            key: item?.key || preset?.key,
+            name: item?.name || preset?.name || `Chain ${Number(item.chainId)}`,
+            symbol: item?.symbol || preset?.symbol || "ETH",
+            color: preset?.color,
+            logo: item?.logo || (preset ? presetToNetworkItem(preset).logo : ""),
+          }),
         } as NetworkItem;
       });
   } catch {

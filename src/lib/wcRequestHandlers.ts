@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { getAllNetworks, getNetworkByChainId, getStoredNetwork } from "./network";
+import { getAllNetworks, getNetworkByChainId, getStoredNetwork, resolveNetworkLogo } from "./network";
 
 export function getSupportedNamespaces(address: string) {
   const chains = getAllNetworks().map((item) => `eip155:${Number(item.chainId)}`);
@@ -98,7 +98,7 @@ export async function handleRequestMethod(args: {
       rpcUrl: item.rpcUrls[0],
       explorerAddressUrl: item?.blockExplorerUrls?.[0] ? `${String(item.blockExplorerUrls[0]).replace(/\/$/, "")}/address/` : "",
       explorerTxUrl: item?.blockExplorerUrls?.[0] ? `${String(item.blockExplorerUrls[0]).replace(/\/$/, "")}/tx/` : "",
-      logo: getNetworkByChainId(chainId)?.logo || `${import.meta.env.BASE_URL || "/"}network-inri.png`,
+      logo: getNetworkByChainId(chainId)?.logo || resolveNetworkLogo({ key: `custom-${chainId}`, name: item.chainName || `Chain ${chainId}`, symbol: item.nativeCurrency?.symbol || "ETH" }),
       isCustom: true,
     };
     localStorage.setItem("wallet_active_network", JSON.stringify(network));

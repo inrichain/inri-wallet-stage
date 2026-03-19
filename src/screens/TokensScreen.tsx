@@ -31,6 +31,7 @@ export default function TokensScreen({
   const [decimals, setDecimals] = useState("18");
   const [logo, setLogo] = useState("");
   const [message, setMessage] = useState("");
+  const [editingTokenSymbol, setEditingTokenSymbol] = useState("");
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [detectingToken, setDetectingToken] = useState(false);
   const t = getText(lang);
@@ -132,6 +133,14 @@ export default function TokensScreen({
     setTimeout(() => setMessage(""), 2500);
   }
 
+  function handleUploadTokenLogo(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setLogo(String(reader.result || ""));
+    reader.readAsDataURL(file);
+  }
+
   function addToken() {
     const cleanSymbol = symbol.trim().toUpperCase();
     const cleanAddress = tokenAddress.trim();
@@ -158,11 +167,13 @@ export default function TokensScreen({
       return;
     }
 
-    const exists = tokens.some(
-      (token) =>
-        token.symbol.toUpperCase() === cleanSymbol ||
-        (token.address && token.address.toLowerCase() === cleanAddress.toLowerCase())
-    );
+    const exists = tokens.some((token) => {
+      if (!editingTokenSymbol) {
+        return token.symbol.toUpperCase() === cleanSymbol || (token.address && token.address.toLowerCase() === cleanAddress.toLowerCase());
+      }
+      if (token.symbol === editingTokenSymbol) return false;
+      return token.symbol.toUpperCase() === cleanSymbol || (token.address && token.address.toLowerCase() === cleanAddress.toLowerCase());
+    });
 
     if (exists) {
       showMessage(t.tokenExists);
@@ -180,12 +191,21 @@ export default function TokensScreen({
       networkKey,
     };
 
-    setCustomTokens((prev) => [...prev, newToken]);
+    setCustomTokens((prev) => editingTokenSymbol ? prev.map((item) => item.symbol === editingTokenSymbol ? newToken : item) : [...prev, newToken]);
     setSymbol("");
     setTokenAddress("");
     setDecimals("18");
     setLogo("");
-    showMessage(t.tokenAdded);
+    setEditingTokenSymbol("");
+    showMessage(editingTokenSymbol ? t.tokenUpdated : t.tokenAdded);
+  }
+
+  function editToken(token: ViewToken) {
+    setEditingTokenSymbol(token.symbol);
+    setSymbol(token.symbol);
+    setTokenAddress(token.address || "");
+    setDecimals(String(token.decimals ?? 18));
+    setLogo(token.logo || "");
   }
 
   function removeToken(tokenSymbol: string) {
@@ -243,15 +263,26 @@ export default function TokensScreen({
           />
         </div>
 
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <label style={secondaryButtonStyle(isLight)}>
+            {t.uploadLogo}
+            <input type="file" accept="image/*" onChange={handleUploadTokenLogo} style={{ display: "none" }} />
+          </label>
+          {logo ? <img src={logo} alt="token logo" style={{ width: 38, height: 38, borderRadius: 19, objectFit: "cover", border: `1px solid ${isLight ? "#dbe2f0" : "#2c3950"}` }} /> : null}
+        </div>
+
         {detectingToken ? (
           <div style={{ color: isLight ? "#304260" : "#a9b3c8", fontSize: 13, fontWeight: 700 }}>
             {t.searchingToken}
           </div>
         ) : null}
 
-        <button onClick={addToken} style={mainButtonStyle()}>
-          {t.addToken}
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={addToken} style={mainButtonStyle()}>
+            {editingTokenSymbol ? t.saveToken : t.addToken}
+          </button>
+          {editingTokenSymbol ? <button onClick={() => { setEditingTokenSymbol(""); setSymbol(""); setTokenAddress(""); setDecimals("18"); setLogo(""); }} style={ghostButtonStyle(isLight)}>{t.cancel}</button> : null}
+        </div>
 
         {message ? (
           <div
@@ -339,9 +370,14 @@ export default function TokensScreen({
                 {t.fixed}
               </div>
             ) : (
-              <button onClick={() => removeToken(token.symbol)} style={removeButtonStyle()}>
-                {t.remove}
-              </button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={() => editToken(token)} style={miniButtonStyle(isLight)}>
+                  {t.edit}
+                </button>
+                <button onClick={() => removeToken(token.symbol)} style={removeButtonStyle()}>
+                  {t.remove}
+                </button>
+              </div>
             )}
           </div>
         ))}
@@ -353,13 +389,13 @@ export default function TokensScreen({
 function getText(lang: string) {
   const map: Record<string, any> = {
     en: {
-      tokens: "Tokens", tokenSymbol: "Token symbol", tokenAddress: "Token address", logoOptional: "Logo URL (optional)", addToken: "Add Token", symbolRequired: "Token symbol is required.", addressRequired: "Token address is required.", invalidAddress: "Invalid token address.", invalidDecimals: "Invalid decimals.", tokenExists: "Token already added.", tokenAdded: "Token added.", tokenRemoved: "Token removed.", tokenDetected: "Token detected: {symbol}", searchingToken: "Searching token data automatically...", fixed: "Fixed", remove: "Remove",
+      tokens: "Tokens", tokenSymbol: "Token symbol", tokenAddress: "Token address", logoOptional: "Logo URL (optional)", uploadLogo: "Upload logo", addToken: "Add Token", saveToken: "Save token", cancel: "Cancel", edit: "Edit", symbolRequired: "Token symbol is required.", addressRequired: "Token address is required.", invalidAddress: "Invalid token address.", invalidDecimals: "Invalid decimals.", tokenExists: "Token already added.", tokenAdded: "Token added.", tokenUpdated: "Token updated.", tokenRemoved: "Token removed.", tokenDetected: "Token detected: {symbol}", searchingToken: "Searching token data automatically...", fixed: "Fixed", remove: "Remove",
     },
     pt: {
-      tokens: "Tokens", tokenSymbol: "Símbolo do token", tokenAddress: "Endereço do token", logoOptional: "URL da logo (opcional)", addToken: "Adicionar Token", symbolRequired: "O símbolo do token é obrigatório.", addressRequired: "O endereço do token é obrigatório.", invalidAddress: "Endereço de token inválido.", invalidDecimals: "Decimais inválidos.", tokenExists: "Token já adicionado.", tokenAdded: "Token adicionado.", tokenRemoved: "Token removido.", tokenDetected: "Token detectado: {symbol}", searchingToken: "Buscando dados do token automaticamente...", fixed: "Fixo", remove: "Remover",
+      tokens: "Tokens", tokenSymbol: "Símbolo do token", tokenAddress: "Endereço do token", logoOptional: "URL da logo (opcional)", uploadLogo: "Enviar logo", addToken: "Adicionar Token", saveToken: "Salvar token", cancel: "Cancelar", edit: "Editar", symbolRequired: "O símbolo do token é obrigatório.", addressRequired: "O endereço do token é obrigatório.", invalidAddress: "Endereço de token inválido.", invalidDecimals: "Decimais inválidos.", tokenExists: "Token já adicionado.", tokenAdded: "Token adicionado.", tokenUpdated: "Token atualizado.", tokenRemoved: "Token removido.", tokenDetected: "Token detectado: {symbol}", searchingToken: "Buscando dados do token automaticamente...", fixed: "Fixo", remove: "Remover",
     },
     es: {
-      tokens: "Tokens", tokenSymbol: "Símbolo del token", tokenAddress: "Dirección del token", logoOptional: "URL del logo (opcional)", addToken: "Agregar Token", symbolRequired: "El símbolo del token es obligatorio.", addressRequired: "La dirección del token es obligatoria.", invalidAddress: "Dirección del token inválida.", invalidDecimals: "Decimales inválidos.", tokenExists: "El token ya fue agregado.", tokenAdded: "Token agregado.", tokenRemoved: "Token eliminado.", tokenDetected: "Token detectado: {symbol}", searchingToken: "Buscando datos del token automáticamente...", fixed: "Fijo", remove: "Eliminar",
+      tokens: "Tokens", tokenSymbol: "Símbolo del token", tokenAddress: "Dirección del token", logoOptional: "URL del logo (opcional)", uploadLogo: "Subir logo", addToken: "Agregar Token", saveToken: "Guardar token", cancel: "Cancelar", edit: "Editar", symbolRequired: "El símbolo del token es obligatorio.", addressRequired: "La dirección del token es obligatoria.", invalidAddress: "Dirección del token inválida.", invalidDecimals: "Decimales inválidos.", tokenExists: "El token ya fue agregado.", tokenAdded: "Token agregado.", tokenUpdated: "Token actualizado.", tokenRemoved: "Token eliminado.", tokenDetected: "Token detectado: {symbol}", searchingToken: "Buscando datos del token automáticamente...", fixed: "Fijo", remove: "Eliminar",
     },
   };
 
@@ -411,5 +447,47 @@ function removeButtonStyle(): React.CSSProperties {
     color: "#ff7585",
     cursor: "pointer",
     fontWeight: 700,
+  };
+}
+
+
+function miniButtonStyle(isLight: boolean): React.CSSProperties {
+  return {
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#2c3950"}`,
+    background: isLight ? "#f4f7fc" : "#182132",
+    color: isLight ? "#10131a" : "#ffffff",
+    cursor: "pointer",
+    fontWeight: 700,
+  };
+}
+
+function ghostButtonStyle(isLight: boolean): React.CSSProperties {
+  return {
+    height: 46,
+    borderRadius: 14,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#2c3950"}`,
+    background: "transparent",
+    color: isLight ? "#10131a" : "#fff",
+    fontWeight: 800,
+    padding: "0 16px",
+    cursor: "pointer",
+  };
+}
+
+function secondaryButtonStyle(isLight: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 40,
+    borderRadius: 12,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#2c3950"}`,
+    background: "transparent",
+    color: isLight ? "#10131a" : "#fff",
+    fontWeight: 800,
+    padding: "0 14px",
+    cursor: "pointer",
   };
 }

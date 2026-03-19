@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { getAllNetworks, getStoredNetwork, saveStoredNetwork, upsertCustomNetwork, type NetworkItem } from "./network";
+import { getAllNetworks, getStoredNetwork, saveStoredNetwork, upsertCustomNetwork, resolveNetworkLogo, type NetworkItem } from "./network";
 import { handleRequestMethod } from "./wcRequestHandlers";
 import { grantSitePermission, hasSitePermission, touchSitePermission } from "./sitePermissions";
 
@@ -94,7 +94,7 @@ function buildNetworkFromChain(input: EthereumChainInput): NetworkItem {
     rpcUrl,
     explorerAddressUrl: explorer ? `${explorer.replace(/\/$/, "")}/address/` : "",
     explorerTxUrl: explorer ? `${explorer.replace(/\/$/, "")}/tx/` : "",
-    logo: getAllNetworks().find((item) => item.chainId === chainId)?.logo || `${import.meta.env.BASE_URL || "/"}token-inri.png`,
+    logo: getAllNetworks().find((item) => item.chainId === chainId)?.logo || resolveNetworkLogo({ key: sanitizeKey(input.chainName, chainId), name: input.chainName || `Chain ${chainId}`, symbol: input.nativeCurrency?.symbol || "ETH" }),
   };
 }
 
@@ -112,7 +112,7 @@ class InriDesktopProvider {
     this.info = {
       uuid: "4b0d8d26-8bc7-44d0-a38d-inri-wallet-desktop",
       name: "INRI Wallet",
-      icon: `${import.meta.env.BASE_URL || "/"}token-inri.png`,
+      icon: resolveNetworkLogo({ key: getStoredNetwork().key, name: getStoredNetwork().name, symbol: getStoredNetwork().symbol }),
       rdns: "life.inri.wallet",
     };
     this.sync();
