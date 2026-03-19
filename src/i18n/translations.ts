@@ -836,7 +836,7 @@ const extraTranslations: Record<string, Record<string, string>> = {
   en: {
     settings_rpc_placeholder: "https://rpc.inri.life",
     settings_walletconnect_title: "WalletConnect",
-    settings_walletconnect_hint: "Scan a WalletConnect QR code or paste a wc: URI. You can switch networks after pairing if the dApp requests it.",
+    settings_walletconnect_hint: "Select the INRI network first, then scan a WalletConnect QR code or paste a wc: URI.",
     settings_walletconnect_connecting: "Connecting...",
     settings_walletconnect_connect_uri: "Connect URI",
     settings_walletconnect_scan_qr: "Scan QR Code",
@@ -964,7 +964,7 @@ const extraTranslations: Record<string, Record<string, string>> = {
   pt: {
     settings_rpc_placeholder: "https://rpc.inri.life",
     settings_walletconnect_title: "WalletConnect",
-    settings_walletconnect_hint: "Escaneie um QR code do WalletConnect ou cole uma URI wc:. Você pode trocar de rede depois do pareamento se a dApp solicitar.",
+    settings_walletconnect_hint: "Selecione primeiro a rede INRI, depois escaneie um QR code do WalletConnect ou cole uma URI wc:.",
     settings_walletconnect_connecting: "Conectando...",
     settings_walletconnect_connect_uri: "Conectar URI",
     settings_walletconnect_scan_qr: "Escanear QR Code",

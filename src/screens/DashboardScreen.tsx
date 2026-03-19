@@ -187,6 +187,16 @@ export default function DashboardScreen({
               {tr(lang, "dashboard_install_app")}
             </button>
           ) : null}
+
+          <button
+            onClick={() => {
+              localStorage.setItem("wallet_open_wc", "1");
+              setTab("settings");
+            }}
+            style={actionButton()}
+          >
+            WalletConnect
+          </button>
         </div>
       </section>
 

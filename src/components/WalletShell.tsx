@@ -26,8 +26,6 @@ import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
 import { isValidSeedPhrase, normalizeSeed, shortAddress } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
-import { installDesktopEthereumProvider } from "../lib/desktopProvider";
-import { getStoredNetwork } from "../lib/network";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const VAULTS_KEY = "inri_wallet_vaults_v2";
@@ -523,38 +521,10 @@ export default function WalletShell() {
   useEffect(() => {
     if (!activeAddress) return;
 
-    initWalletConnect(activeAddress, Number(getStoredNetwork().chainId || 3777)).catch((err) => {
+    initWalletConnect(activeAddress).catch((err) => {
       console.error("WalletConnect init failed:", err);
     });
   }, [activeAddress]);
-
-  useEffect(() => {
-    if (!unlockedWallet) return;
-
-    const cleanup = installDesktopEthereumProvider({
-      getAddress: () => unlockedWallet.address,
-      getPrivateKey: () => unlockedWallet.privateKey,
-      requireSensitiveApproval: async (args) => {
-        return await new Promise((resolve, reject) => {
-          runSensitiveAction(async (overridePrivateKey?: string) => {
-            try {
-              const result = await handleRequestMethod({
-                ...args,
-                privateKey: overridePrivateKey || unlockedWallet.privateKey,
-                chainId: `eip155:${Number(getStoredNetwork().chainId || 3777)}`,
-              });
-              resolve(result);
-            } catch (error) {
-              reject(error);
-            }
-          }).catch(reject);
-        });
-      },
-      showMessage,
-    });
-
-    return cleanup;
-  }, [unlockedWallet, security, lang]);
 
   async function onApproveProposal() {
     if (!unlockedWallet || !wcProposal) {
@@ -600,7 +570,6 @@ export default function WalletShell() {
             params: wcRequest.params,
             address: unlockedWallet.address,
             privateKey: overridePrivateKey || unlockedWallet.privateKey,
-            chainId: wcRequest.chainId,
           });
 
           await approveSessionRequest(wcRequest, result);
@@ -681,7 +650,7 @@ export default function WalletShell() {
     return (
       <div
         style={{
-          minHeight: "100vh",
+          minHeight: "100dvh",
           background:
             theme === "light"
               ? "linear-gradient(180deg,#eef3fb 0%, #f7f9fd 100%)"
@@ -930,7 +899,7 @@ export default function WalletShell() {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         paddingBottom: "132px",
         background:
           theme === "light"
