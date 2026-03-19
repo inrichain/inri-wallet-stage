@@ -38,7 +38,7 @@ import {
 
 const AVATAR_KEY = "wallet_avatar";
 
-type MorePage = "hub" | "settings" | "walletconnect" | "chains" | "wallets" | "connected" | "assets";
+type MorePage = "settings" | "walletconnect" | "chains" | "wallets" | "connected" | "assets";
 
 type CustomNetworkDraft = {
   name: string;
@@ -79,7 +79,7 @@ export default function SettingsScreen({
   const text = isLight ? "#10131a" : "#ffffff";
   const muted = isLight ? "#5b6578" : "#97a0b3";
 
-  const [page, setPage] = useState<MorePage>("hub");
+  const [page, setPage] = useState<MorePage>("settings");
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
   const [avatar, setAvatar] = useState<string>(localStorage.getItem(AVATAR_KEY) || "");
   const [securityState, setSecurityState] = useState<SecuritySettings>(security);
@@ -155,6 +155,14 @@ export default function SettingsScreen({
     dapp: listRegistryEntries("dapp").slice(0, 8),
     wallet: listRegistryEntries("wallet").slice(0, 8),
   }), [assetVersion]);
+
+  const moduleCards = useMemo(() => [
+    { key: "walletconnect" as const, title: "WalletConnect", subtitle: "URI pairing, QR scanner and active sessions." },
+    { key: "chains" as const, title: "Networks", subtitle: "Active network, custom RPC setup and chain management." },
+    { key: "connected" as const, title: "Connected sites", subtitle: "Permissions center with accounts, chains and methods." },
+    { key: "wallets" as const, title: "Wallet additions", subtitle: "Hardware and import options kept off the main settings page." },
+    { key: "assets" as const, title: "Asset registry", subtitle: "Central logo mapping from the public folder or URLs." },
+  ], []);
 
   const walletCards = useMemo(() => [
     { key: "ledger", title: "Ledger", subtitle: "Premium hardware wallet card ready for future native integration.", badge: "Soon", live: false },
@@ -327,43 +335,17 @@ export default function SettingsScreen({
     setAssetVersion((v) => v + 1);
   }
 
-  const hubCards = [
-    { key: "settings", title: "Settings", subtitle: "Appearance, language, security and wallet profile.", icon: "⚙" as const },
-    { key: "walletconnect", title: "WalletConnect", subtitle: "URI pairing, QR scanner and active sessions.", icon: "⌁" as const },
-    { key: "chains", title: "Chains", subtitle: "Active network, chain manager and custom RPC setup.", icon: "⛓" as const },
-    { key: "wallets", title: "Wallet additions", subtitle: "Hardware and connection entry points in one page.", icon: "▣" as const },
-    { key: "connected", title: "Connected sites", subtitle: "Permissions center with accounts, chains and methods.", icon: "◎" as const },
-    { key: "assets", title: "Asset registry", subtitle: "Central logo mapping from the public folder or URLs.", icon: "◉" as const },
-  ] as const;
-
   return (
     <>
       <div style={{ display: "grid", gap: 16, paddingBottom: 10 }}>
-        <Hero isLight={isLight} title={page === "hub" ? "More" : pageTitle(page)} subtitle={page === "hub" ? "A cleaner hub for advanced wallet tools, chain management and permissions." : pageSubtitle(page)}>
-          {page !== "hub" ? <button onClick={() => setPage("hub")} style={secondaryButton(isLight)}>Back to More</button> : null}
+        <Hero isLight={isLight} title={pageTitle(page)} subtitle={pageSubtitle(page)}>
+          {page !== "settings" ? <button onClick={() => setPage("settings")} style={secondaryButton(isLight)}>Back to Settings</button> : null}
         </Hero>
-
-        {page === "hub" ? (
-          <Panel isLight={isLight}>
-            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
-              {hubCards.map((item) => (
-                <button key={item.key} onClick={() => setPage(item.key)} style={hubCardStyle(isLight)}>
-                  <div style={{ fontSize: 28 }}>{item.icon}</div>
-                  <div>
-                    <div style={{ color: text, fontWeight: 900, fontSize: 18 }}>{item.title}</div>
-                    <div style={{ color: muted, fontSize: 13, lineHeight: 1.6, marginTop: 6 }}>{item.subtitle}</div>
-                  </div>
-                  <div style={{ color: "#3f7cff", fontWeight: 800 }}>Open</div>
-                </button>
-              ))}
-            </div>
-          </Panel>
-        ) : null}
 
         {page === "settings" ? (
           <div style={{ display: "grid", gap: 16 }}>
             <Panel isLight={isLight}>
-              <SectionHeader title="Wallet profile" subtitle="Keep the main settings page clean and focused on the essentials." isLight={isLight} />
+              <SectionHeader title="Wallet profile" subtitle="Keep this page focused on the essentials. Advanced modules open on their own pages." isLight={isLight} />
               <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
                 <LogoImage src={avatar || resolveDappAsset(undefined, "INRI")} alt="Wallet avatar" kind="dapp" label="Wallet" size={72} rounded={false} />
                 <div style={{ display: "grid", gap: 8 }}>
@@ -378,7 +360,7 @@ export default function SettingsScreen({
             </Panel>
 
             <Panel isLight={isLight}>
-              <SectionHeader title="Preferences" subtitle="Quick controls stay here. Bigger modules now live inside More as their own pages." isLight={isLight} />
+              <SectionHeader title="Preferences" subtitle="Quick controls stay here. WalletConnect, Networks, Connected sites, Wallet additions and Asset registry open separately." isLight={isLight} />
               <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
                 <Field label="Theme">
                   <select value={theme} onChange={(e) => setTheme(e.target.value as "dark" | "light")} style={inputStyle(isLight)}>
@@ -397,7 +379,7 @@ export default function SettingsScreen({
             </Panel>
 
             <Panel isLight={isLight}>
-              <SectionHeader title="Security" subtitle="The important protections stay visible without crowding the page." isLight={isLight} />
+              <SectionHeader title="Security" subtitle="Security stays visible here without mixing in connection and network management." isLight={isLight} />
               <div style={{ display: "grid", gap: 10 }}>
                 <ToggleCard isLight={isLight} label="Auto-lock" hint="Automatically lock the wallet after inactivity." checked={securityState.autoLockEnabled} onChange={(checked) => updateSecurity({ autoLockEnabled: checked })} />
                 <Field label="Auto-lock minutes">
@@ -411,7 +393,7 @@ export default function SettingsScreen({
             <Panel isLight={isLight}>
               <SectionHeader title="Advanced modules" subtitle="These moved out of Settings to keep the experience cleaner." isLight={isLight} />
               <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
-                {hubCards.filter((item) => item.key !== "settings").map((item) => (
+                {moduleCards.map((item) => (
                   <button key={item.key} onClick={() => setPage(item.key)} style={miniNavCard(isLight)}>
                     <div style={{ color: text, fontWeight: 800 }}>{item.title}</div>
                     <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>{item.subtitle}</div>
@@ -687,7 +669,7 @@ function pageTitle(page: MorePage) {
     case "wallets": return "Wallet additions";
     case "connected": return "Connected sites";
     case "assets": return "Asset registry";
-    default: return "More";
+    default: return "Settings";
   }
 }
 
@@ -699,7 +681,7 @@ function pageSubtitle(page: MorePage) {
     case "wallets": return "Keep wallet additions and hardware cards out of the main settings page.";
     case "connected": return "Review and revoke site permissions in a dedicated permissions center.";
     case "assets": return "Centralize logos so changing files in public reflects across the app with less work.";
-    default: return "";
+    default: return "Core preferences stay clean here, while networks, permissions and WalletConnect live on their own pages.";
   }
 }
 
