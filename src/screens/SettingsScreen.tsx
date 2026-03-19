@@ -165,12 +165,6 @@ export default function SettingsScreen({
       return;
     }
 
-    const current = getStoredNetwork();
-    if (Number(current?.chainId) !== 3777) {
-      showWcMessage(tr(lang, "settings_wc_select_inri"));
-      return;
-    }
-
     setWcLoading(true);
 
     try {

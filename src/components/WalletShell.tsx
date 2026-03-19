@@ -26,7 +26,6 @@ import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
 import { isValidSeedPhrase, normalizeSeed, shortAddress } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
-import { getStoredNetwork } from "../lib/network";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const VAULTS_KEY = "inri_wallet_vaults_v2";
@@ -522,8 +521,7 @@ export default function WalletShell() {
   useEffect(() => {
     if (!activeAddress) return;
 
-    const activeChainId = Number(getStoredNetwork().chainId || 3777);
-    initWalletConnect(activeAddress, activeChainId).catch((err) => {
+    initWalletConnect(activeAddress).catch((err) => {
       console.error("WalletConnect init failed:", err);
     });
   }, [activeAddress]);

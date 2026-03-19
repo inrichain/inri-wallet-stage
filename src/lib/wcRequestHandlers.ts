@@ -1,9 +1,8 @@
 import { ethers } from "ethers";
-import { getAllSupportedNetworks, getNetworkByChainId, getNetworkByNamespaceChain, getStoredNetwork, type NetworkItem } from "./network";
+import { DEFAULT_NETWORKS, getStoredNetwork } from "./network";
 
 export function getSupportedNamespaces(address: string) {
-  const networks = getAllSupportedNetworks();
-  const chains = networks.map((network) => `eip155:${Number(network.chainId)}`);
+  const chains = DEFAULT_NETWORKS.map((item) => `eip155:${Number(item.chainId)}`);
 
   return {
     eip155: {
@@ -12,9 +11,9 @@ export function getSupportedNamespaces(address: string) {
         "eth_accounts",
         "eth_requestAccounts",
         "eth_chainId",
-        "eth_sendTransaction",
         "personal_sign",
         "eth_sign",
+        "eth_sendTransaction",
         "eth_signTypedData",
         "eth_signTypedData_v3",
         "eth_signTypedData_v4",
@@ -23,6 +22,25 @@ export function getSupportedNamespaces(address: string) {
       accounts: chains.map((chain) => `${chain}:${address}`),
     },
   };
+}
+
+function normalizeWcChainId(value?: string | null) {
+  if (!value) return null;
+  if (String(value).startsWith("eip155:")) {
+    const parsed = Number(String(value).split(":")[1]);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getNetworkForChainId(chainId?: string | null) {
+  const requested = normalizeWcChainId(chainId);
+  if (requested !== null) {
+    const known = DEFAULT_NETWORKS.find((item) => Number(item.chainId) === requested);
+    if (known?.rpcUrl) return known;
+  }
+  return getStoredNetwork();
 }
 
 function hexToBigIntSafe(value?: string | null): bigint | undefined {
@@ -34,41 +52,12 @@ function hexToBigIntSafe(value?: string | null): bigint | undefined {
   }
 }
 
-function resolveNetwork(args: { chainId?: string | number | null; params?: any }): NetworkItem {
-  const chainFromNamespace = getNetworkByNamespaceChain(typeof args.chainId === "string" ? args.chainId : null);
-  if (chainFromNamespace) return chainFromNamespace;
-
-  const tx = Array.isArray(args.params) ? args.params[0] : args.params;
-  const txChainId = tx?.chainId;
-  if (txChainId !== undefined && txChainId !== null) {
-    const numeric = typeof txChainId === "string" ? Number(txChainId) : Number(txChainId);
-    const fromTx = getNetworkByChainId(numeric);
-    if (fromTx) return fromTx;
-  }
-
-  return getStoredNetwork();
-}
-
-function parseTypedDataPayload(method: string, params: any) {
-  if (!Array.isArray(params)) return null;
-
-  let payloadRaw: any = null;
-  if (method === "eth_signTypedData") {
-    payloadRaw = params[1] ?? params[0] ?? null;
-  } else {
-    payloadRaw = params[1] ?? null;
-  }
-
-  if (!payloadRaw) return null;
-  return typeof payloadRaw === "string" ? JSON.parse(payloadRaw) : payloadRaw;
-}
-
 export async function handleRequestMethod(args: {
   method: string;
   params: any;
   address: string;
   privateKey: string;
-  chainId?: string | number | null;
+  chainId?: string | null;
 }) {
   const { method, params, address, privateKey, chainId } = args;
 
@@ -77,11 +66,11 @@ export async function handleRequestMethod(args: {
   }
 
   if (method === "eth_chainId") {
-    const net = resolveNetwork({ chainId, params });
+    const net = getNetworkForChainId(chainId);
     return ethers.toQuantity(Number(net.chainId));
   }
 
-  if (method === "personal_sign" || method === "eth_sign") {
+  if (method === "personal_sign") {
     const wallet = new ethers.Wallet(privateKey);
 
     const rawMessage = Array.isArray(params)
@@ -96,34 +85,37 @@ export async function handleRequestMethod(args: {
     return await wallet.signMessage(message);
   }
 
-  if (
-    method === "eth_signTypedData" ||
-    method === "eth_signTypedData_v3" ||
-    method === "eth_signTypedData_v4"
-  ) {
+  if (method === "eth_sign") {
     const wallet = new ethers.Wallet(privateKey);
-    const payload = parseTypedDataPayload(method, params);
+    const rawMessage = Array.isArray(params) ? (params[1] ?? params[0]) : "";
+    const messageBytes = typeof rawMessage === "string" && rawMessage.startsWith("0x")
+      ? ethers.getBytes(rawMessage)
+      : ethers.toUtf8Bytes(String(rawMessage ?? ""));
+    return await wallet.signMessage(messageBytes);
+  }
+
+  if (method === "eth_signTypedData" || method === "eth_signTypedData_v3" || method === "eth_signTypedData_v4") {
+    const wallet = new ethers.Wallet(privateKey);
+    const payloadRaw = Array.isArray(params) ? params[1] : null;
+    const payload = typeof payloadRaw === "string" ? JSON.parse(payloadRaw) : payloadRaw;
 
     if (!payload) {
       throw new Error("Invalid typed data payload");
     }
 
-    const types = { ...(payload.types || {}) };
-    delete types.EIP712Domain;
-
     return await wallet.signTypedData(
       payload.domain || {},
-      types,
+      payload.types || {},
       payload.message || {}
     );
   }
 
   if (method === "eth_sendTransaction") {
     const tx = Array.isArray(params) ? params[0] : params;
-    const net = resolveNetwork({ chainId, params });
+    const net = getNetworkForChainId(chainId);
 
     if (!net?.rpcUrl) {
-      throw new Error("RPC URL not configured for requested network");
+      throw new Error("RPC URL not configured for current network");
     }
 
     const provider = new ethers.JsonRpcProvider(net.rpcUrl, Number(net.chainId));

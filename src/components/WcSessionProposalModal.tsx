@@ -1,5 +1,6 @@
 import React from "react";
 import { tr } from "../i18n/translations";
+import { DEFAULT_NETWORKS } from "../lib/network";
 
 type Props = {
   open: boolean;
@@ -33,6 +34,19 @@ export default function WcSessionProposalModal({
       ? proposal.requiredNamespaces
       : proposal.optionalNamespaces || {};
 
+  const requestedChains = [
+    ...(requested?.eip155?.chains || []),
+    ...(requested?.eip155?.optionalChains || []),
+  ].filter(Boolean);
+
+  const readableChains = requestedChains.length
+    ? requestedChains.map((chain: string) => {
+        const parsed = Number(String(chain).replace("eip155:", ""));
+        const found = DEFAULT_NETWORKS.find((item) => Number(item.chainId) === parsed);
+        return found ? `${found.name} (${chain})` : chain;
+      })
+    : ["Multi-chain access"];
+
   return (
     <div style={overlayStyle}>
       <div
@@ -57,9 +71,18 @@ export default function WcSessionProposalModal({
 
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>{t("wc_proposal_requested_access")}</div>
-          <pre style={preStyle(theme)}>
-            {JSON.stringify(requested, null, 2)}
-          </pre>
+          <div style={preStyle(theme)}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Networks</div>
+            <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+              {readableChains.map((item: string) => (
+                <div key={item}>{item}</div>
+              ))}
+            </div>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Methods</div>
+            <div style={{ wordBreak: "break-word" }}>
+              {(requested?.eip155?.methods || []).join(", ") || "eth_requestAccounts"}
+            </div>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>

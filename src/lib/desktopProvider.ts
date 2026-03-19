@@ -205,6 +205,18 @@ class InriDesktopProvider {
     return null;
   }
 
+  private getActiveNetwork() {
+    return getStoredNetwork();
+  }
+
+  private buildRpcProvider() {
+    const net = this.getActiveNetwork();
+    if (!net?.rpcUrl) {
+      throw providerRpcError(4900, "Current network RPC is not configured");
+    }
+    return new ethers.JsonRpcProvider(net.rpcUrl, Number(net.chainId));
+  }
+
   private async handleSensitive(method: string, params: any) {
     this.ensureUnlocked();
     return this.options.requireSensitiveApproval({
@@ -240,6 +252,38 @@ class InriDesktopProvider {
         return this.handleSwitchEthereumChain(params);
       case "wallet_addEthereumChain":
         return this.handleAddEthereumChain(params);
+      case "eth_getBalance": {
+        const provider = this.buildRpcProvider();
+        const address = params?.[0] || this.currentAddress;
+        return ethers.toQuantity(await provider.getBalance(address));
+      }
+      case "eth_blockNumber": {
+        const provider = this.buildRpcProvider();
+        return ethers.toQuantity(await provider.getBlockNumber());
+      }
+      case "eth_getTransactionCount": {
+        const provider = this.buildRpcProvider();
+        const address = params?.[0] || this.currentAddress;
+        const blockTag = params?.[1] || "latest";
+        return ethers.toQuantity(await provider.getTransactionCount(address, blockTag));
+      }
+      case "eth_gasPrice": {
+        const provider = this.buildRpcProvider();
+        const feeData = await provider.getFeeData();
+        return ethers.toQuantity(feeData.gasPrice || 0n);
+      }
+      case "eth_estimateGas": {
+        const provider = this.buildRpcProvider();
+        const tx = params?.[0] || {};
+        const estimate = await provider.estimateGas(tx);
+        return ethers.toQuantity(estimate);
+      }
+      case "eth_call": {
+        const provider = this.buildRpcProvider();
+        const tx = params?.[0] || {};
+        const blockTag = params?.[1] || "latest";
+        return await provider.call(tx, blockTag);
+      }
       case "eth_sendTransaction":
       case "personal_sign":
       case "eth_sign":
