@@ -26,6 +26,7 @@ import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
 import { isValidSeedPhrase, normalizeSeed, shortAddress } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
+import { DEFAULT_NETWORKS, saveStoredNetwork } from "../lib/network";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const VAULTS_KEY = "inri_wallet_vaults_v2";
@@ -152,6 +153,10 @@ export default function WalletShell() {
         setWallets([]);
       }
     }
+  }, []);
+
+  useEffect(() => {
+    saveStoredNetwork(DEFAULT_NETWORKS[0]);
   }, []);
 
   useEffect(() => {

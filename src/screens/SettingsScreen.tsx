@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getSecuritySettings, saveSecuritySettings, type SecuritySettings } from "../lib/security";
 import {
   addOrUpdateCustomNetwork,
+  createEmptyCustomNetwork,
   createNetworkDraft,
+  DEFAULT_NETWORKS,
   getAllNetworks,
   getCustomNetworks,
   getStoredNetwork,
@@ -16,6 +18,7 @@ import { pairWalletConnect, getActiveSessions, disconnectSession, disconnectAllS
 import WalletConnectQrScanner from "../components/WalletConnectQrScanner";
 
 const AVATAR_KEY = "wallet_avatar";
+const BASE = import.meta.env.BASE_URL || "/";
 
 export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", setLang, security = getSecuritySettings() }: {
   theme?: "dark" | "light";
@@ -35,10 +38,11 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
   const [wcMessage, setWcMessage] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [securityState, setSecurityState] = useState<SecuritySettings>(security);
-  const [draft, setDraft] = useState<NetworkItem>(createNetworkDraft(8453));
-  const [draftChainId, setDraftChainId] = useState("8453");
+  const [draft, setDraft] = useState<NetworkItem>(createEmptyCustomNetwork());
+  const [draftChainId, setDraftChainId] = useState("");
   const [draftBusy, setDraftBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const logoFileRef = useRef<HTMLInputElement | null>(null);
 
   const t = {
     settings: tr(lang, "settings"), subtitle: tr(lang, "settings_subtitle"), language: tr(lang, "settings_language"), theme: tr(lang, "settings_theme"), dark: tr(lang, "settings_dark"), light: tr(lang, "settings_light"), network: tr(lang, "settings_network"), networkHint: tr(lang, "settings_network_hint"), saveRpc: tr(lang, "settings_save_rpc"), active: tr(lang, "settings_active"), select: tr(lang, "settings_select"), avatar: tr(lang, "settings_avatar"), uploadAvatar: tr(lang, "settings_upload_avatar"), removeAvatar: tr(lang, "settings_remove_avatar"), avatarHint: tr(lang, "settings_avatar_hint"),
@@ -46,20 +50,16 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
     securityTitle: tr(lang, "settings_security_title"), securityAutolock: tr(lang, "settings_security_autolock"), securityAutolockHint: tr(lang, "settings_security_autolock_hint"), securityAutolockMinutes: tr(lang, "settings_security_autolock_minutes"), securityLockHidden: tr(lang, "settings_security_lock_hidden"), securityLockHiddenHint: tr(lang, "settings_security_lock_hidden_hint"), securityRequirePassword: tr(lang, "settings_security_require_password"), securityRequirePasswordHint: tr(lang, "settings_security_require_password_hint"),
   };
 
+  const customNetworks = useMemo(() => getCustomNetworks(), [allNetworks]);
+
   useEffect(() => {
-    setNetwork(getStoredNetwork());
-    setAllNetworks(getAllNetworks());
-    setCustomRpc(getStoredNetwork().rpcUrl || "");
+    refreshAll();
     setSecurityState(security);
-    refreshSessions();
   }, [security]);
 
   useEffect(() => {
-    const id = window.setInterval(refreshSessions, 2000);
-    const sync = () => {
-      setNetwork(getStoredNetwork());
-      setAllNetworks(getAllNetworks());
-    };
+    const id = window.setInterval(refreshSessions, 2500);
+    const sync = () => refreshAll();
     window.addEventListener("wallet-network-updated", sync as EventListener);
     window.addEventListener("wallet-networks-updated", sync as EventListener);
     return () => {
@@ -69,9 +69,16 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
     };
   }, []);
 
+  function refreshAll() {
+    setNetwork(getStoredNetwork());
+    setAllNetworks(getAllNetworks());
+    setCustomRpc(getStoredNetwork().rpcUrl || "");
+    refreshSessions();
+  }
+
   function showWcMessage(text: string) {
     setWcMessage(text);
-    window.setTimeout(() => setWcMessage(""), 2800);
+    window.setTimeout(() => setWcMessage(""), 3200);
   }
 
   function refreshSessions() {
@@ -83,6 +90,10 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
     setNetwork(item);
     setCustomRpc(item.rpcUrl || "");
     showWcMessage(trf(lang, "settings_network_changed", { name: item.name, chainId: item.chainId }));
+  }
+
+  function handleResetToInri() {
+    handleSelectNetwork(DEFAULT_NETWORKS[0]);
   }
 
   function handleSaveRpc() {
@@ -160,26 +171,65 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
   }
 
   function applyChainIdPreset(value: string) {
-    setDraftChainId(value);
-    const num = Number(value || 0);
-    if (!num) return;
+    const clean = value.replace(/[^0-9]/g, "");
+    setDraftChainId(clean);
+    const num = Number(clean || 0);
+    if (!clean) {
+      setDraft(createEmptyCustomNetwork());
+      return;
+    }
     setDraft(createNetworkDraft(num));
   }
 
+  function pickDraftFromCustom(item: NetworkItem) {
+    setDraft({ ...item });
+    setDraftChainId(item.chainId ? String(item.chainId) : "");
+  }
+
+  function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDraft((current) => ({ ...current, logo: String(reader.result || "") }));
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  }
+
+  function resetDraft() {
+    setDraft(createEmptyCustomNetwork());
+    setDraftChainId("");
+  }
+
   async function saveCustomNetworkAction() {
-    if (!draft.name || !draft.chainId || !draft.rpcUrl) {
-      showWcMessage("Fill name, chain ID and RPC URL.");
+    const chainId = Number(draftChainId || draft.chainId || 0);
+    const normalized: NetworkItem = {
+      ...draft,
+      chainId,
+      key: chainId ? `chain-${chainId}` : `custom-${Date.now()}`,
+      name: draft.name.trim(),
+      symbol: draft.symbol.trim() || "ETH",
+      rpcUrl: draft.rpcUrl.trim(),
+      explorerAddressUrl: draft.explorerAddressUrl.trim(),
+      explorerTxUrl: draft.explorerTxUrl.trim(),
+      logo: draft.logo || `${BASE}network-inri.png`,
+      isCustom: true,
+    };
+    if (!normalized.name || !chainId || !normalized.rpcUrl) {
+      showWcMessage("Fill network name, chain ID and RPC URL.");
       return;
     }
     setDraftBusy(true);
     try {
-      const ok = await validateRpcAgainstChainId(draft.rpcUrl, draft.chainId);
+      const ok = await validateRpcAgainstChainId(normalized.rpcUrl, normalized.chainId);
       if (!ok) {
         showWcMessage("RPC chainId is different from the informed chain ID.");
         return;
       }
-      addOrUpdateCustomNetwork({ ...draft, isCustom: true });
+      addOrUpdateCustomNetwork(normalized);
       setAllNetworks(getAllNetworks());
+      setDraft({ ...normalized });
       showWcMessage("Custom network saved.");
     } catch (err: any) {
       showWcMessage(err?.message || "Could not validate RPC.");
@@ -188,12 +238,30 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
     }
   }
 
-  const customNetworks = getCustomNetworks();
-
   return (
     <>
       <div style={{ display: "grid", gap: 18 }}>
-        <div style={cardStyle(isLight)}><h2 style={{ margin: 0, color: isLight ? "#10131a" : "#ffffff" }}>{t.settings}</h2><div style={{ marginTop: 8, color: isLight ? "#5b6578" : "#97a0b3" }}>{t.subtitle}</div></div>
+        <div style={cardStyle(isLight)}>
+          <h2 style={{ margin: 0, color: isLight ? "#10131a" : "#ffffff" }}>{t.settings}</h2>
+          <div style={{ marginTop: 8, color: isLight ? "#5b6578" : "#97a0b3" }}>{t.subtitle}</div>
+        </div>
+
+        <div style={cardStyle(isLight)}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <div>
+              <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18 }}>Active network</div>
+              <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginTop: 6 }}>The wallet will open on INRI every time you reload the app.</div>
+            </div>
+            <button onClick={handleResetToInri} style={mainButtonStyle()}>Use INRI now</button>
+          </div>
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 16, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: isLight ? "#f8fbff" : "#0f1522", display: "flex", alignItems: "center", gap: 10 }}>
+            <img src={network.logo} alt={network.name} style={{ width: 30, height: 30, borderRadius: 15, objectFit: "contain" }} onError={(e) => ((e.currentTarget as HTMLImageElement).src = `${BASE}network-inri.png`)} />
+            <div>
+              <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff" }}>{network.name}</div>
+              <div style={{ color: isLight ? "#64748b" : "#94a3b8", fontSize: 13 }}>Chain ID {network.chainId} • {network.symbol}</div>
+            </div>
+          </div>
+        </div>
 
         <div style={cardStyle(isLight)}>
           <div style={labelStyle(isLight)}>{t.language}</div>
@@ -218,7 +286,7 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
               return (
                 <button key={`${item.key}-${item.chainId}`} onClick={() => handleSelectNetwork(item)} style={{ textAlign: "left", padding: 14, borderRadius: 18, border: active ? "1px solid #4d7ef2" : `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: active ? (isLight ? "#eef4ff" : "#16213b") : isLight ? "#ffffff" : "#121621", cursor: "pointer" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <img src={item.logo} alt={item.name} onError={(e)=>((e.currentTarget as HTMLImageElement).style.display='none')} style={{ width: 28, height: 28, borderRadius: 14, objectFit: "contain" }} />
+                    <img src={item.logo} alt={item.name} onError={(e)=>((e.currentTarget as HTMLImageElement).src=`${BASE}network-inri.png`)} style={{ width: 28, height: 28, borderRadius: 14, objectFit: "contain" }} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 17 }}>{item.name}</div>
                       <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginTop: 3 }}>Chain ID {item.chainId} • {item.symbol}</div>
@@ -229,12 +297,18 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
               );
             })}
           </div>
-          <input value={customRpc} onChange={(e) => setCustomRpc(e.target.value)} placeholder="Custom RPC URL" style={{ ...inputStyle(isLight), marginTop: 14 }} />
+          <input value={customRpc} onChange={(e) => setCustomRpc(e.target.value)} placeholder="Custom RPC URL for the selected network" style={{ ...inputStyle(isLight), marginTop: 14 }} />
           <div style={{ marginTop: 14 }}><button onClick={handleSaveRpc} style={mainButtonStyle()}>{t.saveRpc}</button></div>
         </div>
 
         <div style={cardStyle(isLight)}>
-          <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18, marginBottom: 10 }}>Add or edit network</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff", fontSize: 18 }}>Add custom network</div>
+              <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginTop: 6, lineHeight: 1.5 }}>Type a known chain ID to auto-fill popular networks. For any non-famous network, fill the data manually and upload your own logo.</div>
+            </div>
+            <button onClick={resetDraft} style={secondaryButtonStyle(isLight)}>New network</button>
+          </div>
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
             <input value={draftChainId} onChange={(e) => applyChainIdPreset(e.target.value)} placeholder="Chain ID" style={inputStyle(isLight)} />
             <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Network name" style={inputStyle(isLight)} />
@@ -244,11 +318,16 @@ export default function SettingsScreen({ theme = "dark", setTheme, lang = "en", 
             <input value={draft.explorerTxUrl} onChange={(e) => setDraft({ ...draft, explorerTxUrl: e.target.value })} placeholder="Explorer tx URL" style={inputStyle(isLight)} />
             <input value={draft.logo} onChange={(e) => setDraft({ ...draft, logo: e.target.value })} placeholder="Logo URL or data:image" style={{ ...inputStyle(isLight), gridColumn: "1 / -1" }} />
           </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 22, overflow: "hidden", border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: isLight ? "#f8fafc" : "#0b1120" }}>
+              <img src={draft.logo || `${BASE}network-inri.png`} alt="logo preview" onError={(e) => ((e.currentTarget as HTMLImageElement).src = `${BASE}network-inri.png`)} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            </div>
+            <button onClick={() => logoFileRef.current?.click()} style={secondaryButtonStyle(isLight)}>Upload logo</button>
             <button onClick={saveCustomNetworkAction} disabled={draftBusy} style={mainButtonStyle()}>{draftBusy ? "Saving..." : "Save custom network"}</button>
-            {draft.chainId ? <button onClick={() => removeCustomNetwork(draft.chainId)} style={secondaryButtonStyle(isLight)}>Remove by chain ID</button> : null}
+            {Number(draftChainId || draft.chainId || 0) > 0 ? <button onClick={() => removeCustomNetwork(Number(draftChainId || draft.chainId))} style={secondaryButtonStyle(isLight)}>Delete by chain ID</button> : null}
           </div>
-          {customNetworks.length ? <div style={{ marginTop: 14, display: "grid", gap: 10 }}>{customNetworks.map((item) => <div key={item.chainId} style={{ padding: 12, borderRadius: 14, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><div><div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff" }}>{item.name}</div><div style={{ color: isLight ? "#64748b" : "#94a3b8", fontSize: 13 }}>Chain ID {item.chainId} • {item.symbol}</div></div><div style={{ display: "flex", gap: 8 }}><button onClick={() => setDraft(item)} style={secondaryButtonStyle(isLight)}>Edit</button><button onClick={() => removeCustomNetwork(item.chainId)} style={secondaryButtonStyle(isLight)}>Delete</button></div></div>)}</div> : null}
+          <input ref={logoFileRef} type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: "none" }} />
+          {customNetworks.length ? <div style={{ marginTop: 14, display: "grid", gap: 10 }}>{customNetworks.map((item) => <div key={item.chainId} style={{ padding: 12, borderRadius: 14, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}><div style={{ display: "flex", gap: 10, alignItems: "center" }}><img src={item.logo} alt={item.name} onError={(e) => ((e.currentTarget as HTMLImageElement).src = `${BASE}network-inri.png`)} style={{ width: 28, height: 28, borderRadius: 14, objectFit: "contain" }} /><div><div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#ffffff" }}>{item.name}</div><div style={{ color: isLight ? "#64748b" : "#94a3b8", fontSize: 13 }}>Chain ID {item.chainId} • {item.symbol}</div></div></div><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button onClick={() => pickDraftFromCustom(item)} style={secondaryButtonStyle(isLight)}>Edit</button><button onClick={() => handleSelectNetwork(item)} style={secondaryButtonStyle(isLight)}>Use</button><button onClick={() => removeCustomNetwork(item.chainId)} style={secondaryButtonStyle(isLight)}>Delete</button></div></div>)}</div> : <div style={{ marginTop: 14, color: isLight ? "#5b6578" : "#97a0b3" }}>No custom networks saved yet.</div>}
         </div>
 
         <div style={cardStyle(isLight)}>

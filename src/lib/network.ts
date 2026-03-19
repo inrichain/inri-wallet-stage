@@ -254,14 +254,18 @@ export function createNetworkDraft(chainId: number) {
   const known = getNetworkByChainId(chainId);
   if (known) return { ...known };
   return {
-    key: `chain-${chainId}`,
-    name: `Chain ${chainId}`,
+    key: chainId ? `chain-${chainId}` : `custom-${Date.now()}`,
+    name: chainId ? `Chain ${chainId}` : "Custom Network",
     chainId,
     symbol: "ETH",
     rpcUrl: "",
     explorerAddressUrl: "",
     explorerTxUrl: "",
-    logo: badgeSvg(String(chainId), "#111827", "#e5e7eb"),
+    logo: chainId ? badgeSvg(String(chainId), "#111827", "#e5e7eb") : badgeSvg("NET", "#111827", "#e5e7eb"),
     isCustom: true,
   } as NetworkItem;
+}
+
+export function createEmptyCustomNetwork() {
+  return createNetworkDraft(0);
 }
