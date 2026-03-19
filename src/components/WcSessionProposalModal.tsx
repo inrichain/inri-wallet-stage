@@ -1,6 +1,6 @@
 import React from "react";
 import { tr } from "../i18n/translations";
-import { getAllNetworks } from "../lib/network";
+import { getAllNetworks, makeNetworkFromChainId } from "../lib/network";
 
 type Props = {
   open: boolean;
@@ -42,9 +42,9 @@ export default function WcSessionProposalModal({
   const readableChains = chains.length
     ? chains.map((chain: string) => {
         const parsed = Number(String(chain).replace("eip155:", ""));
-        const found = getAllNetworks().find((item) => Number(item.chainId) === parsed);
+        const found = getAllNetworks().find((item) => Number(item.chainId) === parsed) || makeNetworkFromChainId(parsed);
         return {
-          label: found ? found.name : chain,
+          label: found ? found.name : `Chain ${parsed}`,
           chain,
           logo: found?.logo || "",
         };

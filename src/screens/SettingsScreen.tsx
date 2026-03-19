@@ -6,6 +6,8 @@ import {
   saveStoredNetwork,
   upsertCustomNetwork,
   removeCustomNetwork,
+  findPresetByChainId,
+  makeNetworkFromChainId,
   type NetworkItem,
 } from "../lib/network";
 import { tr, trf } from "../i18n/translations";
@@ -27,6 +29,7 @@ type CustomNetworkDraft = {
   symbol: string;
   rpcUrl: string;
   explorerUrl: string;
+  logo: string;
 };
 
 export default function SettingsScreen({
@@ -53,9 +56,10 @@ export default function SettingsScreen({
   const [scannerOpen, setScannerOpen] = useState(false);
   const [securityState, setSecurityState] = useState<SecuritySettings>(security);
   const [permissions, setPermissions] = useState<any[]>([]);
-  const [draft, setDraft] = useState<CustomNetworkDraft>({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "" });
+  const [draft, setDraft] = useState<CustomNetworkDraft>({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" });
   const [networkValidation, setNetworkValidation] = useState<{ status: "idle" | "checking" | "ok" | "error"; message: string }>({ status: "idle", message: "" });
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const logoFileRef = useRef<HTMLInputElement | null>(null);
 
   const t = {
     rpcPlaceholder: tr(lang, "settings_rpc_placeholder"),
@@ -120,6 +124,39 @@ export default function SettingsScreen({
       window.removeEventListener("wallet-network-updated", sync as EventListener);
     };
   }, []);
+
+  function applyPresetToDraft(chainIdValue: string) {
+    const chainId = Number(chainIdValue);
+    if (!Number.isFinite(chainId) || chainId <= 0) return;
+    const preset = findPresetByChainId(chainId);
+    if (!preset) return;
+    const presetNetwork = makeNetworkFromChainId(chainId);
+    setDraft((prev) => ({
+      ...prev,
+      chainId: String(chainId),
+      name: prev.name.trim() || preset.name,
+      symbol: prev.symbol.trim() || preset.symbol,
+      rpcUrl: prev.rpcUrl.trim() || preset.rpcUrl,
+      explorerUrl: prev.explorerUrl.trim() || preset.explorerBaseUrl,
+      logo: prev.logo || presetNetwork?.logo || "",
+    }));
+    setNetworkValidation({ status: "idle", message: `Known network detected: ${preset.name}. Review and save.` });
+  }
+
+  function handleDraftChainIdChange(value: string) {
+    setDraft((prev) => ({ ...prev, chainId: value }));
+    if (/^\d+$/.test(value.trim())) applyPresetToDraft(value.trim());
+  }
+
+  function handleUploadNetworkLogo(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDraft((prev) => ({ ...prev, logo: String(reader.result || "") }));
+    };
+    reader.readAsDataURL(file);
+  }
 
   function showWcMessage(text: string) {
     setWcMessage(text);
@@ -217,10 +254,10 @@ export default function SettingsScreen({
       rpcUrl: draft.rpcUrl.trim(),
       explorerAddressUrl: explorer ? `${explorer}/address/` : "",
       explorerTxUrl: explorer ? `${explorer}/tx/` : "",
-      logo: networks.find((item) => item.chainId === chainId)?.logo || `${BASE}network-inri.png`,
+      logo: draft.logo || networks.find((item) => item.chainId === chainId)?.logo || makeNetworkFromChainId(chainId)?.logo || `${BASE}network-inri.png`,
       isCustom: true,
     });
-    setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "" });
+    setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" });
     handleSelectNetwork(created);
     showWcMessage(`Network saved: ${created.name}`);
   }
@@ -233,6 +270,7 @@ export default function SettingsScreen({
       symbol: item.symbol,
       rpcUrl: item.rpcUrl,
       explorerUrl: (item.explorerAddressUrl || item.explorerTxUrl || "").replace(/\/(address|tx)\/?$/, ""),
+      logo: item.logo || "",
     });
   }
 
@@ -386,17 +424,22 @@ export default function SettingsScreen({
 
         <Panel isLight={isLight}>
           <SectionTitle isLight={isLight}>Custom networks</SectionTitle>
-          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginBottom: 14, lineHeight: 1.55 }}>Add, edit or remove RPC networks so the wallet behaves more like MetaMask and OKX.</div>
+          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginBottom: 14, lineHeight: 1.55 }}>Enter a known Chain ID and the wallet will auto-fill name, symbol, explorer and default RPC for major EVM networks. For lesser-known chains you can still add everything manually, including a custom logo.</div>
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
             <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Network name" style={inputStyle(isLight)} />
-            <input value={draft.chainId} onChange={(e) => setDraft({ ...draft, chainId: e.target.value })} placeholder="Chain ID" style={inputStyle(isLight)} />
+            <input value={draft.chainId} onChange={(e) => handleDraftChainIdChange(e.target.value)} onBlur={(e) => applyPresetToDraft(e.target.value)} placeholder="Chain ID" style={inputStyle(isLight)} />
             <input value={draft.symbol} onChange={(e) => setDraft({ ...draft, symbol: e.target.value })} placeholder="Symbol" style={inputStyle(isLight)} />
             <input value={draft.rpcUrl} onChange={(e) => setDraft({ ...draft, rpcUrl: e.target.value })} placeholder="RPC URL" style={inputStyle(isLight)} />
             <input value={draft.explorerUrl} onChange={(e) => setDraft({ ...draft, explorerUrl: e.target.value })} placeholder="Explorer base URL" style={inputStyle(isLight)} />
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <button onClick={() => logoFileRef.current?.click()} style={secondaryButton(isLight)}>Upload network logo</button>
+              {draft.logo ? <img src={draft.logo} alt="network logo" style={{ width: 40, height: 40, borderRadius: 12, objectFit: "cover", border: `1px solid ${isLight ? "#dbe2f0" : "#2c3950"}` }} /> : null}
+            </div>
+            <input ref={logoFileRef} type="file" accept="image/*" onChange={handleUploadNetworkLogo} style={{ display: "none" }} />
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
             <button onClick={handleAddOrUpdateCustomNetwork} style={primaryButton}>Save custom network</button>
-            <button onClick={() => setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "" })} style={secondaryButton(isLight)}>Clear</button>
+            <button onClick={() => setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" })} style={secondaryButton(isLight)}>Clear</button>
           </div>
           {networkValidation.status !== "idle" ? (
             <div style={{ marginTop: 10, padding: 12, borderRadius: 14, background: networkValidation.status === "ok" ? (isLight ? "#eefaf1" : "rgba(74,222,128,.08)") : networkValidation.status === "checking" ? (isLight ? "#eef4ff" : "rgba(63,124,255,.08)") : (isLight ? "#fff3f3" : "rgba(255,123,123,.08)"), border: `1px solid ${networkValidation.status === "ok" ? "rgba(74,222,128,.28)" : networkValidation.status === "checking" ? "rgba(63,124,255,.22)" : "rgba(255,123,123,.22)"}`, color: isLight ? "#10131a" : "#fff" }}>{networkValidation.message}</div>
@@ -502,7 +545,7 @@ export default function SettingsScreen({
         </Panel>
       </div>
 
-      {scannerOpen ? <WalletConnectQrScanner open={scannerOpen} theme={theme} onClose={() => setScannerOpen(false)} onScanned={handleScannedUri} /> : null}
+      {scannerOpen ? <WalletConnectQrScanner open={scannerOpen} theme={theme} onClose={() => setScannerOpen(false)} lang={lang} onScan={handleScannedUri} /> : null}
     </>
   );
 }
