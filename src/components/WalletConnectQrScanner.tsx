@@ -7,7 +7,8 @@ type Props = {
   theme: "dark" | "light";
   lang?: string;
   onClose: () => void;
-  onScan: (value: string) => void;
+  onScan: (value: string) => void | Promise<void>;
+  connecting?: boolean;
 };
 
 export default function WalletConnectQrScanner({
@@ -16,6 +17,7 @@ export default function WalletConnectQrScanner({
   lang = "en",
   onClose,
   onScan,
+  connecting = false,
 }: Props) {
   const isLight = theme === "light";
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -92,7 +94,7 @@ export default function WalletConnectQrScanner({
       setScannedText(text);
       if (text.startsWith("wc:")) {
         handleClose();
-        onScan(text);
+        void onScan(text);
       }
     });
   }
@@ -144,7 +146,7 @@ export default function WalletConnectQrScanner({
       if (text.startsWith("wc:")) {
         URL.revokeObjectURL(url);
         handleClose();
-        onScan(text);
+        await onScan(text);
         return;
       }
       URL.revokeObjectURL(url);
@@ -199,13 +201,14 @@ export default function WalletConnectQrScanner({
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-          <button onClick={() => fileRef.current?.click()} style={secondaryBtn(isLight)}>{t("scanner_from_image")}</button>
-          <button onClick={() => openCamera(selectedDeviceId)} style={secondaryBtn(isLight)}>{t("scanner_retry")}</button>
-          <button onClick={handleClose} style={secondaryBtn(isLight)}>{t("scanner_close")}</button>
+          <button onClick={() => fileRef.current?.click()} style={secondaryBtn(isLight)} disabled={connecting}>{t("scanner_from_image")}</button>
+          <button onClick={() => openCamera(selectedDeviceId)} style={secondaryBtn(isLight)} disabled={connecting}>{t("scanner_retry")}</button>
+          <button onClick={handleClose} style={secondaryBtn(isLight)} disabled={connecting}>{t("scanner_close")}</button>
         </div>
 
         <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} style={{ display: "none" }} />
 
+        {connecting ? <div style={{ marginTop: 12, color: "#3f7cff", fontSize: 13, fontWeight: 700 }}>Connecting WalletConnect...</div> : null}
         {cameraError ? <div style={{ marginTop: 12, color: "#ef4444", fontSize: 13, fontWeight: 700 }}>{cameraError}</div> : null}
         {scannedText ? (
           <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: isLight ? "#f8fafc" : "#0f1522", color: isLight ? "#334155" : "#cdd6ea", wordBreak: "break-all", fontSize: 12, lineHeight: 1.5 }}>

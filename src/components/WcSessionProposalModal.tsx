@@ -63,6 +63,10 @@ export default function WcSessionProposalModal({
           padding: 20,
           boxSizing: "border-box",
           boxShadow: theme === "light" ? "0 24px 80px rgba(20,30,50,.14)" : "0 24px 80px rgba(0,0,0,.45)",
+          maxHeight: "min(760px, calc(100vh - 24px))",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
+          WebkitOverflowScrolling: "touch",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
@@ -122,7 +126,7 @@ export default function WcSessionProposalModal({
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+        <div style={{ display: "flex", gap: 10, marginTop: 18, position: "sticky", bottom: 0, paddingTop: 12, background: bg }}>
           <button style={secondaryBtn(theme)} onClick={onReject}>{t("wc_proposal_reject")}</button>
           <button style={primaryBtn()} onClick={onApprove}>{t("wc_proposal_approve")}</button>
         </div>

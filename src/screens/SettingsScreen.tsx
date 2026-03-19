@@ -355,10 +355,23 @@ export default function SettingsScreen({
     }
   }
 
-  function handleScannedUri(value: string) {
+  async function handleScannedUri(value: string) {
     setScannerOpen(false);
     setWcUri(value);
     showWcMessage(tr(lang, "settings_wc_qr_detected"));
+    setWcLoading(true);
+    try {
+      await pairWalletConnect(value.trim());
+      setWcUri("");
+      refreshSessions();
+      showWcMessage(tr(lang, "settings_wc_pairing_started"));
+    } catch (err: any) {
+      console.error(err);
+      setWcUri(value);
+      showWcMessage(err?.message || tr(lang, "settings_wc_failed_connect"));
+    } finally {
+      setWcLoading(false);
+    }
   }
 
   function refreshPermissions() {
@@ -545,7 +558,7 @@ export default function SettingsScreen({
         </Panel>
       </div>
 
-      {scannerOpen ? <WalletConnectQrScanner open={scannerOpen} theme={theme} onClose={() => setScannerOpen(false)} lang={lang} onScan={handleScannedUri} /> : null}
+      {scannerOpen ? <WalletConnectQrScanner open={scannerOpen} theme={theme} onClose={() => setScannerOpen(false)} lang={lang} onScan={handleScannedUri} connecting={wcLoading} /> : null}
     </>
   );
 }
