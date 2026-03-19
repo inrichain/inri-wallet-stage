@@ -673,6 +673,7 @@ export default function WalletShell() {
             lang={lang}
             setLang={setLang}
             security={security}
+            setTab={setTab}
           />
         );
 

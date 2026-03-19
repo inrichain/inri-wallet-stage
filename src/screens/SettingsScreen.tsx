@@ -38,7 +38,7 @@ import {
 
 const AVATAR_KEY = "wallet_avatar";
 
-type MorePage = "settings" | "walletconnect" | "chains" | "wallets" | "connected" | "assets";
+type MorePage = "hub" | "settings" | "walletconnect" | "chains" | "wallets" | "connected" | "assets";
 
 type CustomNetworkDraft = {
   name: string;
@@ -68,18 +68,20 @@ export default function SettingsScreen({
   lang = "en",
   setLang,
   security = getSecuritySettings(),
+  setTab,
 }: {
   theme?: "dark" | "light";
   setTheme: (value: "dark" | "light") => void;
   lang?: string;
   setLang: (value: string) => void;
   security?: SecuritySettings;
+  setTab?: (tab: any) => void;
 }) {
   const isLight = theme === "light";
   const text = isLight ? "#10131a" : "#ffffff";
   const muted = isLight ? "#5b6578" : "#97a0b3";
 
-  const [page, setPage] = useState<MorePage>("settings");
+  const [page, setPage] = useState<MorePage>("hub");
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
   const [avatar, setAvatar] = useState<string>(localStorage.getItem(AVATAR_KEY) || "");
   const [securityState, setSecurityState] = useState<SecuritySettings>(security);
@@ -339,8 +341,39 @@ export default function SettingsScreen({
     <>
       <div style={{ display: "grid", gap: 16, paddingBottom: 10 }}>
         <Hero isLight={isLight} title={pageTitle(page)} subtitle={pageSubtitle(page)}>
-          {page !== "settings" ? <button onClick={() => setPage("settings")} style={secondaryButton(isLight)}>Back to Settings</button> : null}
+          {page !== "hub" ? <button onClick={() => setPage("hub")} style={secondaryButton(isLight)}>Back to More</button> : null}
         </Hero>
+
+
+        {page === "hub" ? (
+          <div style={{ display: "grid", gap: 16 }}>
+            <Panel isLight={isLight}>
+              <SectionHeader title="More" subtitle="Keep the home clean and open extra modules from here, like major wallets do." isLight={isLight} />
+              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
+                <button onClick={() => setTab?.("swap")} style={miniNavCard(isLight)}><div style={{ color: text, fontWeight: 800 }}>Swap</div><div style={{ color: muted, fontSize: 12, marginTop: 4 }}>Token swaps and routing.</div></button>
+                <button onClick={() => setTab?.("bridge")} style={miniNavCard(isLight)}><div style={{ color: text, fontWeight: 800 }}>Bridge</div><div style={{ color: muted, fontSize: 12, marginTop: 4 }}>Move assets across chains.</div></button>
+                <button onClick={() => setTab?.("nfts")} style={miniNavCard(isLight)}><div style={{ color: text, fontWeight: 800 }}>NFTs</div><div style={{ color: muted, fontSize: 12, marginTop: 4 }}>Collections and media.</div></button>
+                <button onClick={() => setTab?.("staking")} style={miniNavCard(isLight)}><div style={{ color: text, fontWeight: 800 }}>Staking</div><div style={{ color: muted, fontSize: 12, marginTop: 4 }}>Earn and manage positions.</div></button>
+              </div>
+            </Panel>
+
+            <Panel isLight={isLight}>
+              <SectionHeader title="Connections and management" subtitle="Open advanced wallet pages without polluting the main screens." isLight={isLight} />
+              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+                {moduleCards.map((item) => (
+                  <button key={item.key} onClick={() => setPage(item.key)} style={miniNavCard(isLight)}>
+                    <div style={{ color: text, fontWeight: 800 }}>{item.title}</div>
+                    <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>{item.subtitle}</div>
+                  </button>
+                ))}
+                <button onClick={() => setPage("settings")} style={miniNavCard(isLight)}>
+                  <div style={{ color: text, fontWeight: 800 }}>Preferences</div>
+                  <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>Theme, language, security and wallet profile.</div>
+                </button>
+              </div>
+            </Panel>
+          </div>
+        ) : null}
 
         {page === "settings" ? (
           <div style={{ display: "grid", gap: 16 }}>
@@ -391,7 +424,7 @@ export default function SettingsScreen({
             </Panel>
 
             <Panel isLight={isLight}>
-              <SectionHeader title="Advanced modules" subtitle="These moved out of Settings to keep the experience cleaner." isLight={isLight} />
+              <SectionHeader title="Advanced modules" subtitle="Open advanced pages from here when you need them." isLight={isLight} />
               <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
                 {moduleCards.map((item) => (
                   <button key={item.key} onClick={() => setPage(item.key)} style={miniNavCard(isLight)}>
@@ -663,6 +696,7 @@ export default function SettingsScreen({
 
 function pageTitle(page: MorePage) {
   switch (page) {
+    case "hub": return "More";
     case "settings": return "Settings";
     case "walletconnect": return "WalletConnect";
     case "chains": return "Chains";
@@ -675,6 +709,7 @@ function pageTitle(page: MorePage) {
 
 function pageSubtitle(page: MorePage) {
   switch (page) {
+    case "hub": return "A clean hub for extra modules like WalletConnect, Networks, Bridge, Swap, NFTs and Staking.";
     case "settings": return "Core preferences and security only, with advanced sections moved into their own pages.";
     case "walletconnect": return "A dedicated WalletConnect page keeps the main settings screen clean.";
     case "chains": return "Manage active networks and custom RPC chains in one clean page.";

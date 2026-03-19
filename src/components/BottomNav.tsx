@@ -30,7 +30,7 @@ export default function BottomNav({
     { id: "dashboard", label: tr(lang, "nav_home"), icon: "⌂" },
     { id: "tokens", label: tr(lang, "nav_tokens"), icon: "◈" },
     { id: "activity", label: tr(lang, "nav_activity"), icon: "↻" },
-    { id: "more", label: "Settings", icon: "⚙" },
+    { id: "more", label: "More", icon: "⋯" },
   ];
 
   return (
