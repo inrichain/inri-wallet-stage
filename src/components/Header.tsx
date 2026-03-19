@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { DEFAULT_NETWORKS, getStoredNetwork, saveStoredNetwork, type NetworkItem } from "../lib/network";
+import { getAllNetworks, getStoredNetwork, saveStoredNetwork, type NetworkItem } from "../lib/network";
 import { tr } from "../i18n/translations";
 
 const DEFAULT_AVATAR = `data:image/svg+xml;utf8,${encodeURIComponent(`
@@ -182,7 +182,7 @@ export default function Header({
                   zIndex: 100,
                 }}
               >
-                {DEFAULT_NETWORKS.map((item) => (
+                {getAllNetworks().map((item) => (
                   <button
                     key={item.chainId}
                     onClick={() => {

@@ -1,8 +1,8 @@
 import { ethers } from "ethers";
-import { DEFAULT_NETWORKS, getStoredNetwork } from "./network";
+import { getAllNetworks, getNetworkByChainId, getStoredNetwork } from "./network";
 
 export function getSupportedNamespaces(address: string) {
-  const chains = DEFAULT_NETWORKS.map((item) => `eip155:${Number(item.chainId)}`);
+  const chains = getAllNetworks().map((item) => `eip155:${Number(item.chainId)}`);
 
   return {
     eip155: {
@@ -17,6 +17,8 @@ export function getSupportedNamespaces(address: string) {
         "eth_signTypedData",
         "eth_signTypedData_v3",
         "eth_signTypedData_v4",
+        "wallet_switchEthereumChain",
+        "wallet_addEthereumChain",
       ],
       events: ["accountsChanged", "chainChanged"],
       accounts: chains.map((chain) => `${chain}:${address}`),
@@ -37,7 +39,7 @@ function normalizeWcChainId(value?: string | null) {
 function getNetworkForChainId(chainId?: string | null) {
   const requested = normalizeWcChainId(chainId);
   if (requested !== null) {
-    const known = DEFAULT_NETWORKS.find((item) => Number(item.chainId) === requested);
+    const known = getNetworkByChainId(requested);
     if (known?.rpcUrl) return known;
   }
   return getStoredNetwork();
@@ -68,6 +70,46 @@ export async function handleRequestMethod(args: {
   if (method === "eth_chainId") {
     const net = getNetworkForChainId(chainId);
     return ethers.toQuantity(Number(net.chainId));
+  }
+
+  if (method === "wallet_switchEthereumChain") {
+    const nextChainRaw = Array.isArray(params) ? params?.[0]?.chainId : params?.chainId;
+    const nextChainId = typeof nextChainRaw === "string" && nextChainRaw.startsWith("0x") ? Number(BigInt(nextChainRaw)) : Number(nextChainRaw);
+    const next = Number.isFinite(nextChainId) ? getNetworkByChainId(nextChainId) : null;
+    if (!next) {
+      throw new Error("Requested chain is not configured in INRI Wallet");
+    }
+    localStorage.setItem("wallet_active_network", JSON.stringify(next));
+    window.dispatchEvent(new Event("wallet-network-updated"));
+    return null;
+  }
+
+  if (method === "wallet_addEthereumChain") {
+    const item = Array.isArray(params) ? params?.[0] : params;
+    if (!item?.chainId || !item?.rpcUrls?.[0]) {
+      throw new Error("Invalid add network request");
+    }
+    const chainId = String(item.chainId).startsWith("0x") ? Number(BigInt(item.chainId)) : Number(item.chainId);
+    const network = {
+      key: `custom-${chainId}`,
+      name: item.chainName || `Chain ${chainId}`,
+      chainId,
+      symbol: item?.nativeCurrency?.symbol || "ETH",
+      rpcUrl: item.rpcUrls[0],
+      explorerAddressUrl: item?.blockExplorerUrls?.[0] ? `${String(item.blockExplorerUrls[0]).replace(/\/$/, "")}/address/` : "",
+      explorerTxUrl: item?.blockExplorerUrls?.[0] ? `${String(item.blockExplorerUrls[0]).replace(/\/$/, "")}/tx/` : "",
+      logo: getNetworkByChainId(chainId)?.logo || `${import.meta.env.BASE_URL || "/"}network-inri.png`,
+      isCustom: true,
+    };
+    localStorage.setItem("wallet_active_network", JSON.stringify(network));
+    const existing = (() => {
+      try { return JSON.parse(localStorage.getItem("wallet_custom_networks_v1") || "[]"); } catch { return []; }
+    })();
+    const next = Array.isArray(existing) ? existing.filter((entry: any) => Number(entry.chainId) !== chainId) : [];
+    next.push(network);
+    localStorage.setItem("wallet_custom_networks_v1", JSON.stringify(next));
+    window.dispatchEvent(new Event("wallet-network-updated"));
+    return null;
   }
 
   if (method === "personal_sign") {

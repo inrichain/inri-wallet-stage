@@ -9,9 +9,11 @@ export type NetworkItem = {
   explorerAddressUrl: string;
   explorerTxUrl: string;
   logo: string;
+  isCustom?: boolean;
 };
 
 export const NETWORKS_KEY = "wallet_active_network";
+const CUSTOM_NETWORKS_KEY = "wallet_custom_networks_v1";
 
 export const DEFAULT_NETWORKS: NetworkItem[] = [
   {
@@ -76,6 +78,67 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
   },
 ];
 
+function normalizeStoredNetwork(value: any): NetworkItem {
+  const known = getAllNetworks().find((item) => item.key === value?.key || item.chainId === Number(value?.chainId));
+  if (!known) return value as NetworkItem;
+  return {
+    ...known,
+    ...value,
+    logo: known.logo || value.logo,
+  };
+}
+
+export function getCustomNetworks(): NetworkItem[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CUSTOM_NETWORKS_KEY) || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item) => item?.chainId && item?.rpcUrl)
+      .map((item) => ({
+        ...item,
+        chainId: Number(item.chainId),
+        isCustom: true,
+        logo: item.logo || DEFAULT_NETWORKS.find((n) => n.chainId === Number(item.chainId))?.logo || `${BASE}network-inri.png`,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomNetworks(items: NetworkItem[]) {
+  localStorage.setItem(CUSTOM_NETWORKS_KEY, JSON.stringify(items.map((item) => ({ ...item, isCustom: true }))));
+  window.dispatchEvent(new Event("wallet-network-updated"));
+}
+
+export function getAllNetworks(): NetworkItem[] {
+  const merged = [...DEFAULT_NETWORKS];
+  for (const custom of getCustomNetworks()) {
+    const index = merged.findIndex((item) => Number(item.chainId) === Number(custom.chainId));
+    if (index >= 0) merged[index] = { ...merged[index], ...custom, isCustom: true };
+    else merged.push(custom);
+  }
+  return merged;
+}
+
+export function upsertCustomNetwork(item: NetworkItem) {
+  const all = getCustomNetworks();
+  const next = { ...item, isCustom: true };
+  const index = all.findIndex((network) => network.key === item.key || Number(network.chainId) === Number(item.chainId));
+  if (index >= 0) all[index] = next;
+  else all.push(next);
+  saveCustomNetworks(all);
+  return next;
+}
+
+export function removeCustomNetwork(keyOrChainId: string | number) {
+  const all = getCustomNetworks().filter((network) => network.key !== keyOrChainId && Number(network.chainId) !== Number(keyOrChainId));
+  saveCustomNetworks(all);
+}
+
+export function getNetworkByChainId(chainId: number) {
+  return getAllNetworks().find((item) => Number(item.chainId) === Number(chainId)) || null;
+}
+
 export function getStoredNetwork(): NetworkItem {
   try {
     const raw = localStorage.getItem(NETWORKS_KEY);
@@ -85,17 +148,6 @@ export function getStoredNetwork(): NetworkItem {
     }
   } catch {}
   return DEFAULT_NETWORKS[0];
-}
-
-function normalizeStoredNetwork(value: any): NetworkItem {
-  const known = DEFAULT_NETWORKS.find((item) => item.key === value?.key || item.chainId === Number(value?.chainId));
-  if (!known) return value as NetworkItem;
-
-  return {
-    ...known,
-    ...value,
-    logo: known.logo,
-  };
 }
 
 export function saveStoredNetwork(network: NetworkItem) {
