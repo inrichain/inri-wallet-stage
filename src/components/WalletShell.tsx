@@ -27,7 +27,7 @@ import { handleRequestMethod } from "../lib/wcRequestHandlers";
 import { isValidSeedPhrase, normalizeSeed, shortAddress } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
 import { installDesktopEthereumProvider } from "../lib/desktopProvider";
-import { getStoredNetwork } from "../lib/network";
+import { getInriNetwork, getStoredNetwork, saveStoredNetwork } from "../lib/network";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const VAULTS_KEY = "inri_wallet_vaults_v2";
@@ -138,6 +138,8 @@ export default function WalletShell() {
   };
 
   useEffect(() => {
+    saveStoredNetwork(getInriNetwork());
+    window.dispatchEvent(new Event("wallet-network-updated"));
     const saved = localStorage.getItem(VAULTS_KEY);
     const currentId = localStorage.getItem(CURRENT_WALLET_KEY);
 
@@ -940,6 +942,7 @@ export default function WalletShell() {
       }}
     >
       <Header
+          onOpenSettings={() => setTab("settings")}
         walletName={currentWalletMeta?.name || "INRI Wallet"}
         theme={theme}
         lang={lang}

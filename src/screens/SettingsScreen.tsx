@@ -227,8 +227,8 @@ export default function SettingsScreen({
       const json = await response.json();
       const remoteChainId = typeof json?.result === "string" && json.result.startsWith("0x") ? Number(BigInt(json.result)) : Number(json?.result);
       if (!Number.isFinite(remoteChainId)) {
-        setNetworkValidation({ status: "error", message: "RPC did not return a valid chain ID." });
-        return null;
+        setNetworkValidation({ status: "ok", message: "RPC could not be confirmed in browser. You can still save and test this network manually." });
+        return { chainId, remoteChainId: null };
       }
       if (remoteChainId !== chainId) {
         setNetworkValidation({ status: "error", message: `RPC chain ID mismatch: expected ${chainId}, received ${remoteChainId}.` });
@@ -240,8 +240,8 @@ export default function SettingsScreen({
       setNetworkValidation({ status: "ok", message: statusMessage });
       return { chainId, remoteChainId };
     } catch (error: any) {
-      setNetworkValidation({ status: "error", message: error?.message || "RPC validation failed." });
-      return null;
+      setNetworkValidation({ status: "ok", message: "RPC validation was blocked by the browser or RPC policy. Network can still be saved manually." });
+      return { chainId, remoteChainId: null };
     }
   }
 

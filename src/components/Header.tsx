@@ -25,30 +25,26 @@ export default function Header({
   walletName,
   theme = "dark",
   lang = "en",
+  onOpenSettings,
 }: {
   walletName: string;
   theme?: "dark" | "light";
   lang?: string;
+  onOpenSettings?: () => void;
 }) {
   const isLight = theme === "light";
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
   const [networkOpen, setNetworkOpen] = useState(false);
-  const [avatar, setAvatar] = useState<string>(
-    localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR
-  );
+  const [avatar, setAvatar] = useState<string>(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
 
   useEffect(() => {
     const syncNetwork = () => setNetwork(getStoredNetwork());
-    const syncAvatar = () =>
-      setAvatar(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
-
+    const syncAvatar = () => setAvatar(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
     window.addEventListener("storage", syncNetwork);
     window.addEventListener("wallet-network-updated", syncNetwork as EventListener);
     window.addEventListener("wallet-avatar-updated", syncAvatar as EventListener);
-
     const closeMenu = () => setNetworkOpen(false);
     window.addEventListener("click", closeMenu);
-
     return () => {
       window.removeEventListener("storage", syncNetwork);
       window.removeEventListener("wallet-network-updated", syncNetwork as EventListener);
@@ -72,15 +68,14 @@ export default function Header({
         style={{
           maxWidth: 980,
           margin: "0 auto",
-          padding: "14px 16px",
-          display: "flex",
-          justifyContent: "space-between",
+          padding: "12px 16px",
+          display: "grid",
+          gridTemplateColumns: "minmax(0,1fr) auto",
+          gap: 12,
           alignItems: "center",
-          gap: 14,
-          flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <img
             src={BRAND_LOGO}
             alt="INRI"
@@ -91,41 +86,19 @@ export default function Header({
                 img.src = FALLBACK_BRAND;
               }
             }}
-            style={{
-              width: 48,
-              height: 48,
-              objectFit: "contain",
-              flexShrink: 0,
-            }}
+            style={{ width: 44, height: 44, objectFit: "contain", flexShrink: 0 }}
           />
-
           <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                fontWeight: 900,
-                fontSize: 18,
-                color: isLight ? "#10131a" : "#ffffff",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
+            <div style={{ fontWeight: 900, fontSize: 17, color: isLight ? "#10131a" : "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {walletName}
             </div>
-
-            <div
-              style={{
-                fontSize: 13,
-                color: isLight ? "#5b6578" : "#97a0b3",
-                lineHeight: 1.35,
-              }}
-            >
+            <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3", lineHeight: 1.35 }}>
               {tr(lang, "header_subtitle")}
             </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => setNetworkOpen((prev) => !prev)}
@@ -133,14 +106,15 @@ export default function Header({
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                padding: "8px 12px",
+                padding: "8px 10px",
                 borderRadius: 999,
                 border: "1px solid rgba(63,124,255,.35)",
                 background: "rgba(63,124,255,.12)",
                 color: "#3f7cff",
                 fontWeight: 800,
-                fontSize: 14,
+                fontSize: 13,
                 cursor: "pointer",
+                maxWidth: 170,
               }}
             >
               <img
@@ -153,18 +127,9 @@ export default function Header({
                     img.src = `${BASE}network-inri.png`;
                   }
                 }}
-                style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: 9,
-                  objectFit: "contain",
-                  flexShrink: 0,
-                }}
+                style={{ width: 18, height: 18, borderRadius: 9, objectFit: "contain", flexShrink: 0 }}
               />
-
-              <span style={{ whiteSpace: "nowrap" }}>
-                {network.name} • {network.chainId}
-              </span>
+              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{network.name}</span>
             </button>
 
             {networkOpen ? (
@@ -173,7 +138,7 @@ export default function Header({
                   position: "absolute",
                   right: 0,
                   top: "calc(100% + 8px)",
-                  minWidth: 220,
+                  minWidth: 240,
                   background: isLight ? "#ffffff" : "#0f1624",
                   border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`,
                   borderRadius: 16,
@@ -184,7 +149,6 @@ export default function Header({
                   overflowY: "auto",
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",
-                  touchAction: "pan-y",
                 }}
               >
                 {getAllNetworks().map((item) => (
@@ -221,6 +185,23 @@ export default function Header({
             ) : null}
           </div>
 
+          <button
+            onClick={onOpenSettings}
+            title={tr(lang, "nav_settings")}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 14,
+              border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+              background: isLight ? "#ffffff" : "#12182a",
+              color: isLight ? "#334155" : "#cfd6e4",
+              fontSize: 18,
+              cursor: "pointer",
+            }}
+          >
+            ⚙
+          </button>
+
           <img
             src={avatar}
             alt="avatar"
@@ -228,8 +209,8 @@ export default function Header({
               (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR;
             }}
             style={{
-              width: 44,
-              height: 44,
+              width: 42,
+              height: 42,
               borderRadius: "50%",
               objectFit: "cover",
               border: `2px solid ${isLight ? "#dbe2f0" : "#2b3650"}`,

@@ -170,34 +170,25 @@ export default function DashboardScreen({
           {address}
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-          <a
-            href={network.explorerAddressUrl + address}
-            target="_blank"
-            rel="noreferrer"
-            style={actionLink(isLight)}
-          >
-            {tr(lang, "dashboard_open_explorer")}
-          </a>
-
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginTop: 16 }}>
           <button onClick={() => setTab("send")} style={actionButton()}>
             {tr(lang, "dashboard_send")}
           </button>
-
-          <button onClick={() => setTab("receive")} style={actionLink(isLight)}>
+          <button onClick={() => setTab("receive")} style={actionButton()}>
             {tr(lang, "dashboard_receive")}
           </button>
-
-          {canInstall ? (
-            <button onClick={installApp} style={actionButton()}>
-              {tr(lang, "dashboard_install_app")}
-            </button>
-          ) : null}
-
           <button onClick={openWalletConnect} style={walletConnectButton(isLight)}>
             <span style={walletConnectIconStyle}>⌁</span>
             WalletConnect
           </button>
+          <a href={network.explorerAddressUrl + address} target="_blank" rel="noreferrer" style={actionLink(isLight)}>
+            {tr(lang, "dashboard_open_explorer")}
+          </a>
+          {canInstall ? (
+            <button onClick={installApp} style={actionLink(isLight)}>
+              {tr(lang, "dashboard_install_app")}
+            </button>
+          ) : null}
         </div>
       </section>
 

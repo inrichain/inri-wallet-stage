@@ -94,6 +94,10 @@ function presetToNetworkItem(preset: NetworkPreset): NetworkItem {
 
 export const DEFAULT_NETWORKS: NetworkItem[] = NETWORK_PRESETS.slice(0, 6).map(presetToNetworkItem);
 
+export function getInriNetwork(): NetworkItem {
+  return presetToNetworkItem(NETWORK_PRESETS[0]);
+}
+
 export function findPresetByChainId(chainId: number) {
   return NETWORK_PRESETS.find((item) => Number(item.chainId) === Number(chainId)) || null;
 }
@@ -181,7 +185,7 @@ export function getStoredNetwork(): NetworkItem {
       if (parsed?.key && parsed?.chainId && parsed?.rpcUrl) return normalizeStoredNetwork(parsed);
     }
   } catch {}
-  return DEFAULT_NETWORKS[0];
+  return getInriNetwork();
 }
 
 export function saveStoredNetwork(network: NetworkItem) {
