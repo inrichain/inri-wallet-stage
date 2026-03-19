@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import { getAllNetworks, getStoredNetwork, saveStoredNetwork, upsertCustomNetwork, type NetworkItem } from "./network";
 import { handleRequestMethod } from "./wcRequestHandlers";
+import { grantSitePermission, hasSitePermission, touchSitePermission } from "./sitePermissions";
 
 type ProviderEventName = "accountsChanged" | "chainChanged" | "connect" | "disconnect" | "message";
 
@@ -55,6 +56,23 @@ function providerRpcError(code: number, message: string, data?: any) {
 
 function toHexChainId(chainId: number) {
   return ethers.toQuantity(chainId);
+}
+
+
+function getCurrentOrigin() {
+  try {
+    return window.location.origin || "browser";
+  } catch {
+    return "browser";
+  }
+}
+
+function getCurrentSiteName() {
+  try {
+    return document.title || window.location.hostname || getCurrentOrigin();
+  } catch {
+    return getCurrentOrigin();
+  }
 }
 
 function sanitizeKey(name?: string, chainId?: number) {
@@ -232,22 +250,47 @@ class InriDesktopProvider {
     const method = payload?.method;
     const params = payload?.params ?? [];
 
+    if (this.currentAddress && hasSitePermission(getCurrentOrigin(), "browser")) {
+      touchSitePermission(getCurrentOrigin(), "browser", {
+        accounts: [this.currentAddress],
+        chains: [this.currentChainId],
+        methods: method ? [method] : [],
+      });
+    }
+
     switch (method) {
-      case "eth_requestAccounts":
+      case "eth_requestAccounts": {
         this.ensureUnlocked();
+        grantSitePermission({
+          origin: getCurrentOrigin(),
+          name: getCurrentSiteName(),
+          type: "browser",
+          accounts: [this.currentAddress],
+          chains: [this.currentChainId],
+          methods: ["eth_accounts", "eth_requestAccounts"],
+        });
         return [this.currentAddress];
+      }
       case "eth_accounts":
-        return this.currentAddress ? [this.currentAddress] : [];
+        return this.currentAddress && hasSitePermission(getCurrentOrigin(), "browser") ? [this.currentAddress] : [];
       case "eth_chainId":
         return toHexChainId(this.currentChainId);
       case "net_version":
         return String(this.currentChainId);
       case "wallet_getPermissions":
-        return this.currentAddress
+        return this.currentAddress && hasSitePermission(getCurrentOrigin(), "browser")
           ? [{ parentCapability: "eth_accounts", caveats: [{ type: "restrictReturnedAccounts", value: [this.currentAddress] }] }]
           : [];
       case "wallet_requestPermissions":
         this.ensureUnlocked();
+        grantSitePermission({
+          origin: getCurrentOrigin(),
+          name: getCurrentSiteName(),
+          type: "browser",
+          accounts: [this.currentAddress],
+          chains: [this.currentChainId],
+          methods: ["eth_accounts", "eth_requestAccounts", "wallet_requestPermissions"],
+        });
         return [{ parentCapability: "eth_accounts" }];
       case "wallet_switchEthereumChain":
         return this.handleSwitchEthereumChain(params);
@@ -305,6 +348,27 @@ class InriDesktopProvider {
         const provider = this.buildRpcProvider();
         return await provider.getLogs(params?.[0] || {});
       }
+      case "eth_getBlockByHash": {
+        const provider = this.buildRpcProvider();
+        return await provider.send("eth_getBlockByHash", [params?.[0], !!params?.[1]]);
+      }
+      case "eth_getStorageAt": {
+        const provider = this.buildRpcProvider();
+        return await provider.send("eth_getStorageAt", [params?.[0], params?.[1], params?.[2] || "latest"]);
+      }
+      case "eth_feeHistory": {
+        const provider = this.buildRpcProvider();
+        return await provider.send("eth_feeHistory", [params?.[0], params?.[1], params?.[2] || []]);
+      }
+      case "eth_maxPriorityFeePerGas": {
+        const provider = this.buildRpcProvider();
+        const feeData = await provider.getFeeData();
+        return ethers.toQuantity(feeData.maxPriorityFeePerGas || 0n);
+      }
+      case "web3_clientVersion":
+        return "INRI Wallet/1.0";
+      case "wallet_watchAsset":
+        return true;
       case "wallet_revokePermissions":
         return [];
       case "eth_sendTransaction":
