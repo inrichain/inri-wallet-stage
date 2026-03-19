@@ -906,6 +906,7 @@ export default function SettingsScreen({
             )) : <EmptyState isLight={isLight} title={t.wcNoSessions} subtitle="Pair a WalletConnect session from desktop or mobile and it will appear here." />}
           </div>
         </PremiumPanel>
+      </div>
       {scannerOpen ? <WalletConnectQrScanner onClose={() => setScannerOpen(false)} onScanned={handleScannedUri} /> : null}
     </>
   );
