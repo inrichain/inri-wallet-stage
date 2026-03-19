@@ -7,10 +7,8 @@ import {
   upsertCustomNetwork,
   removeCustomNetwork,
   findPresetByChainId,
-  makeNetworkFromChainId,
   type NetworkItem,
 } from "../lib/network";
-import { tr, trf } from "../i18n/translations";
 import {
   pairWalletConnect,
   getActiveSessions,
@@ -39,7 +37,8 @@ import {
 } from "../lib/assets";
 
 const AVATAR_KEY = "wallet_avatar";
-const BASE = import.meta.env.BASE_URL || "/";
+
+type MorePage = "hub" | "settings" | "walletconnect" | "chains" | "wallets" | "connected" | "assets";
 
 type CustomNetworkDraft = {
   name: string;
@@ -61,16 +60,7 @@ type RegistryDraft = {
   walletPath: string;
 };
 
-type IntegrationCard = {
-  key: string;
-  title: string;
-  subtitle: string;
-  badge: string;
-  action: () => void;
-  state: "live" | "soon";
-  logoKey?: string;
-  logoPath?: string;
-};
+const emptyDraft = (): CustomNetworkDraft => ({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" });
 
 export default function SettingsScreen({
   theme = "dark",
@@ -88,21 +78,19 @@ export default function SettingsScreen({
   const isLight = theme === "light";
   const text = isLight ? "#10131a" : "#ffffff";
   const muted = isLight ? "#5b6578" : "#97a0b3";
-  const border = isLight ? "#dbe2f0" : "#273042";
-  const panelBg = isLight ? "#ffffff" : "#111722";
 
+  const [page, setPage] = useState<MorePage>("hub");
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
-  const [customRpc, setCustomRpc] = useState(getStoredNetwork().rpcUrl || "");
   const [avatar, setAvatar] = useState<string>(localStorage.getItem(AVATAR_KEY) || "");
-  const [networkQuery, setNetworkQuery] = useState("");
+  const [securityState, setSecurityState] = useState<SecuritySettings>(security);
+  const [permissions, setPermissions] = useState<SitePermission[]>([]);
   const [wcUri, setWcUri] = useState("");
   const [wcSessions, setWcSessions] = useState<any[]>([]);
   const [wcLoading, setWcLoading] = useState(false);
   const [wcMessage, setWcMessage] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
-  const [securityState, setSecurityState] = useState<SecuritySettings>(security);
-  const [permissions, setPermissions] = useState<SitePermission[]>([]);
-  const [draft, setDraft] = useState<CustomNetworkDraft>({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" });
+  const [networkQuery, setNetworkQuery] = useState("");
+  const [draft, setDraft] = useState<CustomNetworkDraft>(emptyDraft());
   const [registryDraft, setRegistryDraft] = useState<RegistryDraft>({
     networkKey: "",
     networkPath: "",
@@ -113,80 +101,32 @@ export default function SettingsScreen({
     walletKey: "",
     walletPath: "",
   });
-  const [networkValidation, setNetworkValidation] = useState<{ status: "idle" | "checking" | "ok" | "error"; message: string }>({ status: "idle", message: "" });
   const [assetVersion, setAssetVersion] = useState(0);
+  const [networkValidation, setNetworkValidation] = useState<{ status: "idle" | "checking" | "ok" | "error"; message: string }>({ status: "idle", message: "" });
+
   const fileRef = useRef<HTMLInputElement | null>(null);
   const logoFileRef = useRef<HTMLInputElement | null>(null);
-  const walletConnectRef = useRef<HTMLDivElement | null>(null);
   const registryFileRef = useRef<HTMLInputElement | null>(null);
 
-  const t = {
-    rpcPlaceholder: tr(lang, "settings_rpc_placeholder"),
-    wcTitle: tr(lang, "settings_walletconnect_title"),
-    wcHint: tr(lang, "settings_walletconnect_hint"),
-    wcConnecting: tr(lang, "settings_walletconnect_connecting"),
-    wcConnectUri: tr(lang, "settings_walletconnect_connect_uri"),
-    wcScanQr: tr(lang, "settings_walletconnect_scan_qr"),
-    wcRefresh: tr(lang, "settings_walletconnect_refresh"),
-    wcDisconnectAll: tr(lang, "settings_walletconnect_disconnect_all"),
-    wcActiveSessions: tr(lang, "settings_walletconnect_active_sessions"),
-    wcNoSessions: tr(lang, "settings_walletconnect_no_sessions"),
-    wcNoUrl: tr(lang, "settings_walletconnect_no_url"),
-    wcTopic: tr(lang, "settings_walletconnect_topic"),
-    wcDisconnect: tr(lang, "settings_walletconnect_disconnect"),
-    securityTitle: tr(lang, "settings_security_title"),
-    securityAutolock: tr(lang, "settings_security_autolock"),
-    securityAutolockHint: tr(lang, "settings_security_autolock_hint"),
-    securityAutolockMinutes: tr(lang, "settings_security_autolock_minutes"),
-    securityLockHidden: tr(lang, "settings_security_lock_hidden"),
-    securityLockHiddenHint: tr(lang, "settings_security_lock_hidden_hint"),
-    securityRequirePassword: tr(lang, "settings_security_require_password"),
-    securityRequirePasswordHint: tr(lang, "settings_security_require_password_hint"),
-    settings: tr(lang, "settings"),
-    subtitle: tr(lang, "settings_subtitle"),
-    language: tr(lang, "settings_language"),
-    theme: tr(lang, "settings_theme"),
-    dark: tr(lang, "settings_dark"),
-    light: tr(lang, "settings_light"),
-    network: tr(lang, "settings_network"),
-    networkHint: tr(lang, "settings_network_hint"),
-    saveRpc: tr(lang, "settings_save_rpc"),
-    active: tr(lang, "settings_active"),
-    select: tr(lang, "settings_select"),
-    avatar: tr(lang, "settings_avatar"),
-    uploadAvatar: tr(lang, "settings_upload_avatar"),
-    removeAvatar: tr(lang, "settings_remove_avatar"),
-    avatarHint: tr(lang, "settings_avatar_hint"),
-  };
-
-  const networks = getAllNetworks();
-
   useEffect(() => {
-    setNetwork(getStoredNetwork());
-    setCustomRpc(getStoredNetwork().rpcUrl || "");
     setSecurityState(security);
     setPermissions(listSitePermissions());
+    setNetwork(getStoredNetwork());
     refreshSessions();
   }, [security]);
 
   useEffect(() => {
-    const id = window.setInterval(() => refreshSessions(), 2000);
     const sync = () => {
       setNetwork(getStoredNetwork());
       setPermissions(listSitePermissions());
       setAssetVersion((v) => v + 1);
     };
-    const openWalletConnect = () => {
-      window.setTimeout(() => {
-        walletConnectRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 60);
-    };
+    const openWalletConnect = () => setPage("walletconnect");
     window.addEventListener("wallet-site-permissions-updated", sync);
     window.addEventListener("wallet-network-updated", sync as EventListener);
     window.addEventListener("wallet-assets-updated", sync as EventListener);
     window.addEventListener("wallet-open-wc", openWalletConnect as EventListener);
     return () => {
-      window.clearInterval(id);
       window.removeEventListener("wallet-site-permissions-updated", sync);
       window.removeEventListener("wallet-network-updated", sync as EventListener);
       window.removeEventListener("wallet-assets-updated", sync as EventListener);
@@ -194,6 +134,8 @@ export default function SettingsScreen({
     };
   }, []);
 
+  const networks = useMemo(() => getAllNetworks(), [network.chainId, assetVersion]);
+  const customNetworks = useMemo(() => networks.filter((item) => item.isCustom), [networks]);
   const filteredNetworks = useMemo(() => {
     const q = networkQuery.trim().toLowerCase();
     if (!q) return networks;
@@ -207,964 +149,637 @@ export default function SettingsScreen({
     return { browser, walletconnect, methods, total: permissions.length };
   }, [permissions]);
 
-  const registry = useMemo(() => getAssetRegistry(), [assetVersion]);
-  const networkEntries = useMemo(() => listRegistryEntries("network").slice(0, 12), [assetVersion]);
-  const tokenEntries = useMemo(() => listRegistryEntries("token").slice(0, 12), [assetVersion]);
-  const dappEntries = useMemo(() => listRegistryEntries("dapp").slice(0, 12), [assetVersion]);
-  const walletEntries = useMemo(() => listRegistryEntries("wallet").slice(0, 12), [assetVersion]);
+  const registryEntries = useMemo(() => ({
+    network: listRegistryEntries("network").slice(0, 8),
+    token: listRegistryEntries("token").slice(0, 8),
+    dapp: listRegistryEntries("dapp").slice(0, 8),
+    wallet: listRegistryEntries("wallet").slice(0, 8),
+  }), [assetVersion]);
 
-  const integrationCards: IntegrationCard[] = useMemo(() => [
-    {
-      key: "ledger",
-      logoKey: "ledger",
-      title: "Ledger",
-      subtitle: "Premium card ready for desktop and mobile layouts.",
-      badge: "Soon",
-      state: "soon",
-      action: () => showWcMessage("Ledger UI card added. Native hardware flow still needs integration."),
-    },
-    {
-      key: "trezor",
-      logoKey: "trezor",
-      title: "Trezor",
-      subtitle: "Hardware wallet entry styled like top wallets.",
-      badge: "Soon",
-      state: "soon",
-      action: () => showWcMessage("Trezor card added. The connection backend is not wired yet."),
-    },
-    {
-      key: "lattice",
-      logoKey: "lattice",
-      title: "Lattice",
-      subtitle: "Ready for future expansion without changing the layout.",
-      badge: "Soon",
-      state: "soon",
-      action: () => showWcMessage("Lattice card added. Integration is pending."),
-    },
-    {
-      key: "qr",
-      logoKey: "qrbased",
-      title: "QR-based",
-      subtitle: "Use camera-based pairing and WalletConnect flows.",
-      badge: "Live",
-      state: "live",
-      action: () => setScannerOpen(true),
-    },
-    {
-      key: "import",
-      logoKey: "seedimport",
-      title: "Seed import",
-      subtitle: "Current app already supports imported wallets on the auth flow.",
-      badge: "Live",
-      state: "live",
-      action: () => showWcMessage("Seed import is available from the wallet unlock/create/import screen."),
-    },
-    {
-      key: "sync",
-      logoKey: "browsersync",
-      title: "Browser sync",
-      subtitle: "Prepared card for future multi-device sync experience.",
-      badge: "Soon",
-      state: "soon",
-      action: () => showWcMessage("Browser sync card added. Sync backend is not implemented yet."),
-    },
+  const walletCards = useMemo(() => [
+    { key: "ledger", title: "Ledger", subtitle: "Premium hardware wallet card ready for future native integration.", badge: "Soon", live: false },
+    { key: "trezor", title: "Trezor", subtitle: "Clean entry point for another major hardware wallet flow.", badge: "Soon", live: false },
+    { key: "lattice", title: "Lattice", subtitle: "Keeps the layout ready for power-user wallet expansion.", badge: "Soon", live: false },
+    { key: "qrbased", title: "QR-based", subtitle: "Best current option for camera-driven connect flows.", badge: "Live", live: true },
+    { key: "seedimport", title: "Seed import", subtitle: "Already supported in the unlock, create and import flow.", badge: "Live", live: true },
+    { key: "browsersync", title: "Browser sync", subtitle: "Reserved slot for future multi-device wallet sync.", badge: "Soon", live: false },
   ], []);
 
-  function applyPresetToDraft(chainIdValue: string) {
-    const chainId = Number(chainIdValue);
-    if (!Number.isFinite(chainId) || chainId <= 0) return;
-    const preset = findPresetByChainId(chainId);
-    if (!preset) return;
-    const presetNetwork = makeNetworkFromChainId(chainId);
-    setDraft((prev) => ({
-      ...prev,
-      chainId: String(chainId),
-      name: prev.name.trim() || preset.name,
-      symbol: prev.symbol.trim() || preset.symbol,
-      rpcUrl: prev.rpcUrl.trim() || preset.rpcUrl,
-      explorerUrl: prev.explorerUrl.trim() || preset.explorerBaseUrl,
-      logo: prev.logo || presetNetwork?.logo || "",
-    }));
-    setNetworkValidation({ status: "idle", message: `Known network detected: ${preset.name}. Review and save.` });
+  function showWcMessage(text: string) {
+    setWcMessage(text);
+    window.setTimeout(() => setWcMessage(""), 2600);
   }
 
-  function handleDraftChainIdChange(value: string) {
-    setDraft((prev) => ({ ...prev, chainId: value }));
-    if (/^\d+$/.test(value.trim())) applyPresetToDraft(value.trim());
-  }
-
-  function handleUploadNetworkLogo(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setDraft((prev) => ({ ...prev, logo: String(reader.result || "") }));
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function handleRegistryFileUpload(event: React.ChangeEvent<HTMLInputElement>, kind: "network" | "token" | "dapp" | "wallet") {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || "");
-      if (kind === "network") setRegistryDraft((prev) => ({ ...prev, networkPath: result }));
-      if (kind === "token") setRegistryDraft((prev) => ({ ...prev, tokenPath: result }));
-      if (kind === "dapp") setRegistryDraft((prev) => ({ ...prev, dappPath: result }));
-      if (kind === "wallet") setRegistryDraft((prev) => ({ ...prev, walletPath: result }));
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function showWcMessage(textValue: string) {
-    setWcMessage(textValue);
-    window.setTimeout(() => setWcMessage(""), 2800);
-  }
-
-  function refreshSessions() {
+  async function refreshSessions() {
     try {
-      const list = getActiveSessions();
-      setWcSessions(Array.isArray(list) ? list : []);
+      setWcSessions(await getActiveSessions());
     } catch {
       setWcSessions([]);
     }
   }
 
-  function handleSelectNetwork(item: NetworkItem) {
-    saveStoredNetwork(item);
-    setNetwork(item);
-    setCustomRpc(item.rpcUrl || "");
-    window.dispatchEvent(new Event("wallet-network-updated"));
-    showWcMessage(trf(lang, "settings_network_changed", { name: item.name, chainId: item.chainId }));
-  }
-
-  function handleSaveRpc() {
-    const next = { ...network, rpcUrl: customRpc.trim() || network.rpcUrl };
-    saveStoredNetwork(next);
-    if (network.isCustom) upsertCustomNetwork(next);
-    setNetwork(next);
-    window.dispatchEvent(new Event("wallet-network-updated"));
-    showWcMessage(tr(lang, "settings_rpc_saved"));
-  }
-
-  function isSuspiciousRpcUrl(value: string) {
-    const url = value.trim();
-    if (!url) return true;
-    if (/^https:\/\//i.test(url)) return false;
-    if (/^http:\/\/(127\.0\.0\.1|localhost|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/i.test(url)) return false;
-    return true;
-  }
-
-  async function validateNetworkDraftInput() {
-    const chainId = Number(draft.chainId);
-    if (!draft.name.trim() || !Number.isFinite(chainId) || chainId <= 0 || !draft.rpcUrl.trim()) {
-      setNetworkValidation({ status: "error", message: "Fill network name, valid chain ID and RPC URL." });
-      return null;
-    }
-    if (isSuspiciousRpcUrl(draft.rpcUrl)) {
-      setNetworkValidation({ status: "error", message: "Use HTTPS RPC URLs unless this is a trusted local RPC." });
-      return null;
-    }
-    setNetworkValidation({ status: "checking", message: "Validating RPC endpoint..." });
-    try {
-      const response = await fetch(draft.rpcUrl.trim(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
-      });
-      const json = await response.json();
-      const remoteChainId = typeof json?.result === "string" && json.result.startsWith("0x") ? Number(BigInt(json.result)) : Number(json?.result);
-      if (!Number.isFinite(remoteChainId)) {
-        setNetworkValidation({ status: "ok", message: "RPC could not be confirmed in browser. You can still save and test this network manually." });
-        return { chainId, remoteChainId: null };
-      }
-      if (remoteChainId !== chainId) {
-        setNetworkValidation({ status: "error", message: `RPC chain ID mismatch: expected ${chainId}, received ${remoteChainId}.` });
-        return null;
-      }
-      const statusMessage = getAllNetworks().some((item) => Number(item.chainId) === chainId && item.name !== draft.name.trim())
-        ? `RPC verified for chain ${chainId}. This overrides an existing network entry.`
-        : `RPC verified for chain ${chainId}.`;
-      setNetworkValidation({ status: "ok", message: statusMessage });
-      return { chainId, remoteChainId };
-    } catch {
-      setNetworkValidation({ status: "ok", message: "RPC validation was blocked by the browser or RPC policy. Network can still be saved manually." });
-      return { chainId, remoteChainId: null };
-    }
-  }
-
-  async function handleAddOrUpdateCustomNetwork() {
-    const validated = await validateNetworkDraftInput();
-    if (!validated) {
-      showWcMessage("Custom network validation failed.");
-      return;
-    }
-
-    const chainId = Number(draft.chainId);
-    const explorer = draft.explorerUrl.trim().replace(/\/$/, "");
-    const created = upsertCustomNetwork({
-      key: `custom-${chainId}`,
-      name: draft.name.trim(),
-      chainId,
-      symbol: draft.symbol.trim() || "ETH",
-      rpcUrl: draft.rpcUrl.trim(),
-      explorerAddressUrl: explorer ? `${explorer}/address/` : "",
-      explorerTxUrl: explorer ? `${explorer}/tx/` : "",
-      logo: draft.logo || networks.find((item) => item.chainId === chainId)?.logo || makeNetworkFromChainId(chainId)?.logo || `${BASE}network-inri.png`,
-      isCustom: true,
-    });
-    setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" });
-    handleSelectNetwork(created);
-    showWcMessage(`Network saved: ${created.name}`);
-  }
-
-  function handleEditCustomNetwork(item: NetworkItem) {
-    setDraft({
-      name: item.name,
-      chainId: String(item.chainId),
-      symbol: item.symbol,
-      rpcUrl: item.rpcUrl,
-      explorerUrl: (item.explorerAddressUrl || item.explorerTxUrl || "").replace(/\/(address|tx)\/?$/, ""),
-      logo: item.logo || "",
-    });
-  }
-
-  function handleDeleteCustomNetwork(item: NetworkItem) {
-    removeCustomNetwork(item.key);
-    if (Number(network.chainId) === Number(item.chainId)) handleSelectNetwork(getAllNetworks()[0]);
-    showWcMessage(`Removed network: ${item.name}`);
-  }
-
-  function handleSecurityPatch(patch: Partial<SecuritySettings>) {
-    const next = { ...securityState, ...patch };
-    setSecurityState(next);
-    saveSecuritySettings(next);
-    showWcMessage(tr(lang, "settings_security_saved"));
-  }
-
-  function handleUploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || "");
-      localStorage.setItem(AVATAR_KEY, result);
-      setAvatar(result);
-      window.dispatchEvent(new Event("wallet-avatar-updated"));
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function handleRemoveAvatar() {
-    localStorage.removeItem(AVATAR_KEY);
-    setAvatar("");
-    window.dispatchEvent(new Event("wallet-avatar-updated"));
-  }
-
   async function handleConnectWc() {
     if (!wcUri.trim()) {
-      showWcMessage(tr(lang, "settings_wc_paste_uri"));
+      showWcMessage("Paste a WalletConnect URI first.");
       return;
     }
-    setWcLoading(true);
     try {
+      setWcLoading(true);
       await pairWalletConnect(wcUri.trim());
       setWcUri("");
+      showWcMessage("WalletConnect pairing started.");
       refreshSessions();
-      showWcMessage(tr(lang, "settings_wc_pairing_started"));
     } catch (err: any) {
-      console.error(err);
-      showWcMessage(err?.message || tr(lang, "settings_wc_failed_connect"));
+      showWcMessage(err?.message || "Failed to start WalletConnect pairing.");
     } finally {
       setWcLoading(false);
     }
   }
 
   async function handleDisconnectSession(topic: string) {
-    setWcLoading(true);
     try {
       await disconnectSession(topic);
       refreshSessions();
-      showWcMessage(tr(lang, "settings_wc_session_disconnected"));
-    } catch (err: any) {
-      console.error(err);
-      showWcMessage(err?.message || tr(lang, "settings_wc_failed_disconnect"));
-    } finally {
-      setWcLoading(false);
+    } catch {
+      showWcMessage("Failed to disconnect session.");
     }
   }
 
   async function handleDisconnectAll() {
-    setWcLoading(true);
     try {
       await disconnectAllSessions();
       refreshSessions();
-      showWcMessage(tr(lang, "settings_wc_all_disconnected"));
-    } catch (err: any) {
-      console.error(err);
-      showWcMessage(err?.message || tr(lang, "settings_wc_failed_disconnect_all"));
-    } finally {
-      setWcLoading(false);
+    } catch {
+      showWcMessage("Failed to disconnect all sessions.");
     }
   }
 
-  async function handleScannedUri(value: string) {
+  function handleScannedUri(uri: string) {
+    setWcUri(uri);
     setScannerOpen(false);
-    setWcUri(value);
-    showWcMessage(tr(lang, "settings_wc_qr_detected"));
-    setWcLoading(true);
+    setPage("walletconnect");
+    window.setTimeout(() => handleConnectWc(), 120);
+  }
+
+  function updateSecurity(patch: Partial<SecuritySettings>) {
+    const next = { ...securityState, ...patch };
+    setSecurityState(next);
+    saveSecuritySettings(next);
+  }
+
+  function handleAvatarUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || "");
+      setAvatar(value);
+      localStorage.setItem(AVATAR_KEY, value);
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  }
+
+  function handleNetworkLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setDraft((prev) => ({ ...prev, logo: String(reader.result || "") }));
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  }
+
+  function handleRegistryUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || "");
+      if (registryDraft.networkKey) setRegistryDraft((prev) => ({ ...prev, networkPath: value }));
+      else if (registryDraft.tokenKey) setRegistryDraft((prev) => ({ ...prev, tokenPath: value }));
+      else if (registryDraft.dappKey) setRegistryDraft((prev) => ({ ...prev, dappPath: value }));
+      else setRegistryDraft((prev) => ({ ...prev, walletPath: value }));
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  }
+
+  async function validateNetworkRpc(rpcUrl: string, chainIdValue: number) {
+    if (!rpcUrl || !chainIdValue) return;
     try {
-      await pairWalletConnect(value.trim());
-      setWcUri("");
-      refreshSessions();
-      showWcMessage(tr(lang, "settings_wc_pairing_started"));
-    } catch (err: any) {
-      console.error(err);
-      setWcUri(value);
-      showWcMessage(err?.message || tr(lang, "settings_wc_failed_connect"));
-    } finally {
-      setWcLoading(false);
+      setNetworkValidation({ status: "checking", message: "Checking RPC…" });
+      const response = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
+      });
+      const json = await response.json();
+      const rpcChainId = parseInt(String(json?.result || "0"), 16);
+      if (rpcChainId === Number(chainIdValue)) setNetworkValidation({ status: "ok", message: `RPC responded with chain ${rpcChainId}.` });
+      else setNetworkValidation({ status: "error", message: `RPC returned chain ${rpcChainId}, expected ${chainIdValue}.` });
+    } catch {
+      setNetworkValidation({ status: "error", message: "Could not validate the RPC endpoint." });
     }
   }
 
-  function handleSaveRegistry(kind: "network" | "token" | "dapp" | "wallet") {
-    if (kind === "network") {
-      const cleanKey = sanitizeAssetKey(registryDraft.networkKey);
-      if (!cleanKey || !registryDraft.networkPath.trim()) return showWcMessage("Enter a network key and asset path.");
-      updateAssetRegistryEntry("network", cleanKey, registryDraft.networkPath.trim(), cleanKey);
-      setRegistryDraft((prev) => ({ ...prev, networkPath: "" }));
-      setAssetVersion((v) => v + 1);
-      return showWcMessage(`Saved network asset: ${cleanKey}`);
+  async function saveCustomChain() {
+    const chainId = Number(draft.chainId);
+    if (!draft.name.trim() || !chainId || !draft.rpcUrl.trim()) {
+      setNetworkValidation({ status: "error", message: "Name, chain ID and RPC URL are required." });
+      return;
     }
-    if (kind === "token") {
-      const cleanKey = sanitizeAssetKey(registryDraft.tokenKey);
-      if (!cleanKey || !registryDraft.tokenPath.trim()) return showWcMessage("Enter a token key and asset path.");
-      updateAssetRegistryEntry("token", cleanKey, registryDraft.tokenPath.trim(), cleanKey);
-      setRegistryDraft((prev) => ({ ...prev, tokenPath: "" }));
-      setAssetVersion((v) => v + 1);
-      return showWcMessage(`Saved token asset: ${cleanKey}`);
-    }
-    if (kind === "dapp") {
-      const cleanKey = sanitizeAssetKey(registryDraft.dappKey);
-      if (!cleanKey || !registryDraft.dappPath.trim()) return showWcMessage("Enter a dApp key and asset path.");
-      updateAssetRegistryEntry("dapp", cleanKey, registryDraft.dappPath.trim(), cleanKey);
-      setRegistryDraft((prev) => ({ ...prev, dappPath: "" }));
-      setAssetVersion((v) => v + 1);
-      return showWcMessage(`Saved dApp asset: ${cleanKey}`);
-    }
-    const cleanKey = sanitizeAssetKey(registryDraft.walletKey);
-    if (!cleanKey || !registryDraft.walletPath.trim()) return showWcMessage("Enter a wallet key and asset path.");
-    updateAssetRegistryEntry("wallet", cleanKey, registryDraft.walletPath.trim(), cleanKey);
-    setRegistryDraft((prev) => ({ ...prev, walletPath: "" }));
-    setAssetVersion((v) => v + 1);
-    return showWcMessage(`Saved wallet asset: ${cleanKey}`);
+    const preset = findPresetByChainId(chainId);
+    const key = sanitizeAssetKey(draft.name || preset?.key || draft.symbol || `chain${chainId}`) || `chain${chainId}`;
+    const explorerBase = String(draft.explorerUrl || "").replace(/\/$/, "");
+    const next = upsertCustomNetwork({
+      key,
+      name: draft.name.trim(),
+      chainId,
+      symbol: draft.symbol.trim() || preset?.symbol || "ETH",
+      rpcUrl: draft.rpcUrl.trim(),
+      explorerAddressUrl: explorerBase ? `${explorerBase}/address/` : "",
+      explorerTxUrl: explorerBase ? `${explorerBase}/tx/` : "",
+      logo: draft.logo || resolveNetworkAsset({ key, name: draft.name, symbol: draft.symbol || preset?.symbol || "ETH" }),
+      isCustom: true,
+    });
+    setDraft(emptyDraft());
+    setNetwork(next);
+    setNetworkValidation({ status: "ok", message: `Saved ${next.name}.` });
   }
+
+  function openNetworkEditor(item: NetworkItem) {
+    setDraft({
+      name: item.name,
+      chainId: String(item.chainId),
+      symbol: item.symbol,
+      rpcUrl: item.rpcUrl,
+      explorerUrl: item.explorerAddressUrl ? item.explorerAddressUrl.replace(/\/address\/$/, "") : "",
+      logo: item.logo,
+    });
+    setPage("chains");
+  }
+
+  function saveRegistry(kind: "network" | "token" | "dapp" | "wallet") {
+    if (kind === "network") updateAssetRegistryEntry("network", registryDraft.networkKey, registryDraft.networkPath);
+    if (kind === "token") updateAssetRegistryEntry("token", registryDraft.tokenKey, registryDraft.tokenPath);
+    if (kind === "dapp") updateAssetRegistryEntry("dapp", registryDraft.dappKey, registryDraft.dappPath);
+    if (kind === "wallet") updateAssetRegistryEntry("wallet", registryDraft.walletKey, registryDraft.walletPath);
+    setAssetVersion((v) => v + 1);
+  }
+
+  const hubCards = [
+    { key: "settings", title: "Settings", subtitle: "Appearance, language, security and wallet profile.", icon: "⚙" as const },
+    { key: "walletconnect", title: "WalletConnect", subtitle: "URI pairing, QR scanner and active sessions.", icon: "⌁" as const },
+    { key: "chains", title: "Chains", subtitle: "Active network, chain manager and custom RPC setup.", icon: "⛓" as const },
+    { key: "wallets", title: "Wallet additions", subtitle: "Hardware and connection entry points in one page.", icon: "▣" as const },
+    { key: "connected", title: "Connected sites", subtitle: "Permissions center with accounts, chains and methods.", icon: "◎" as const },
+    { key: "assets", title: "Asset registry", subtitle: "Central logo mapping from the public folder or URLs.", icon: "◉" as const },
+  ] as const;
 
   return (
     <>
-      <div style={{ display: "grid", gap: 18 }}>
-        <PremiumPanel isLight={isLight}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: text }}>{t.settings}</div>
-              <div style={{ marginTop: 8, color: muted, lineHeight: 1.6, maxWidth: 760 }}>{t.subtitle} Premium pass for desktop and mobile: cleaner spacing, stronger cards, better permissions and an admin-friendly logo registry.</div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 10, borderRadius: 18, border: `1px solid ${border}`, background: isLight ? "#f8fbff" : "#0f1624" }}>
-              <LogoImage src={avatar || undefined} alt="avatar" kind="dapp" label="Wallet" size={52} rounded={false} />
-              <div>
-                <div style={{ fontWeight: 800, color: text }}>{network.name}</div>
-                <div style={{ color: muted, fontSize: 13 }}>Active network • Chain ID {network.chainId}</div>
-              </div>
-            </div>
-          </div>
-        </PremiumPanel>
+      <div style={{ display: "grid", gap: 16, paddingBottom: 10 }}>
+        <Hero isLight={isLight} title={page === "hub" ? "More" : pageTitle(page)} subtitle={page === "hub" ? "A cleaner hub for advanced wallet tools, chain management and permissions." : pageSubtitle(page)}>
+          {page !== "hub" ? <button onClick={() => setPage("hub")} style={secondaryButton(isLight)}>Back to More</button> : null}
+        </Hero>
 
-        <div style={{ display: "grid", gap: 18, gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))" }}>
-          <PremiumPanel isLight={isLight}>
-            <SectionHeader title="Appearance" subtitle="Unified desktop and mobile presentation." isLight={isLight} />
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={labelStyle(isLight)}>{t.language}</div>
-              <select value={lang} onChange={(e) => setLang(e.target.value)} style={inputStyle(isLight)}>
-                <option value="en">English</option><option value="pt">Português</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="ru">Русский</option><option value="zh">中文</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="tr">Türkçe</option>
-              </select>
-              <div style={labelStyle(isLight)}>{t.theme}</div>
-              <select value={theme} onChange={(e) => setTheme(e.target.value as "dark" | "light")} style={inputStyle(isLight)}>
-                <option value="dark">{t.dark}</option>
-                <option value="light">{t.light}</option>
-              </select>
-            </div>
-          </PremiumPanel>
-
-          <PremiumPanel isLight={isLight}>
-            <SectionHeader title="Profile" subtitle="Keep the wallet identity consistent everywhere." isLight={isLight} />
-            <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-              <LogoImage src={avatar || undefined} alt="avatar" kind="dapp" label="Wallet" size={72} rounded={false} />
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <div style={{ color: text, fontWeight: 800, marginBottom: 4 }}>{t.avatar}</div>
-                <div style={{ color: muted, fontSize: 13, lineHeight: 1.55 }}>{t.avatarHint}</div>
-                <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                  <button onClick={() => fileRef.current?.click()} style={primaryButton}>{t.uploadAvatar}</button>
-                  <button onClick={handleRemoveAvatar} style={secondaryButton(isLight)}>{t.removeAvatar}</button>
-                </div>
-              </div>
-            </div>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleUploadAvatar} />
-          </PremiumPanel>
-
-          <PremiumPanel isLight={isLight}>
-            <SectionHeader title={t.securityTitle} subtitle="Faster settings but still safer flows." isLight={isLight} />
-            <div style={{ display: "grid", gap: 12 }}>
-              <SwitchRow isLight={isLight} label={t.securityLockHidden} hint={t.securityLockHiddenHint} checked={securityState.lockOnHidden} onChange={(checked) => handleSecurityPatch({ lockOnHidden: checked })} />
-              <SwitchRow isLight={isLight} label={t.securityRequirePassword} hint={t.securityRequirePasswordHint} checked={securityState.requirePasswordForSensitiveActions} onChange={(checked) => handleSecurityPatch({ requirePasswordForSensitiveActions: checked })} />
-              <div>
-                <div style={labelStyle(isLight)}>{t.securityAutolock}</div>
-                <div style={{ color: muted, fontSize: 13, marginBottom: 8 }}>{t.securityAutolockHint}</div>
-                <input type="number" min={0} max={240} value={securityState.autoLockMinutes} onChange={(e) => handleSecurityPatch({ autoLockMinutes: Math.max(0, Math.min(240, Number(e.target.value) || 0)) })} style={inputStyle(isLight)} />
-                <div style={{ color: muted, fontSize: 12, marginTop: 6 }}>{t.securityAutolockMinutes}</div>
-              </div>
-            </div>
-          </PremiumPanel>
-        </div>
-
-        <PremiumPanel isLight={isLight}>
-          <SectionHeader title="Wallet additions" subtitle="Grid-based wallet entry cards inspired by top wallets, ready for PC and mobile." isLight={isLight} />
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
-            {integrationCards.map((item) => (
-              <button key={item.key} onClick={item.action} style={integrationCard(isLight, item.state === "live")}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                    <LogoImage
-                      src={resolveWalletAsset({ key: item.logoKey || item.key, name: item.title, logo: item.logoPath })}
-                      alt={item.title}
-                      kind="wallet"
-                      label={item.title}
-                      symbol={item.title.slice(0,3).toUpperCase()}
-                      size={44}
-                      rounded={false}
-                      style={{ borderRadius: 12, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#fff" : "#0b1018", padding: 6 }}
-                    />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 22, fontWeight: 900, color: text, letterSpacing: ".04em" }}>{item.title}</div>
-                      <div style={{ color: muted, fontSize: 12, marginTop: 3 }}>Logo key: {item.logoKey || item.key}</div>
-                    </div>
+        {page === "hub" ? (
+          <Panel isLight={isLight}>
+            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+              {hubCards.map((item) => (
+                <button key={item.key} onClick={() => setPage(item.key)} style={hubCardStyle(isLight)}>
+                  <div style={{ fontSize: 28 }}>{item.icon}</div>
+                  <div>
+                    <div style={{ color: text, fontWeight: 900, fontSize: 18 }}>{item.title}</div>
+                    <div style={{ color: muted, fontSize: 13, lineHeight: 1.6, marginTop: 6 }}>{item.subtitle}</div>
                   </div>
-                  <span style={integrationBadge(isLight, item.state)}>{item.badge}</span>
-                </div>
-                <div style={{ color: muted, fontSize: 13, lineHeight: 1.55, marginTop: 12 }}>{item.subtitle}</div>
-              </button>
-            ))}
-          </div>
-        </PremiumPanel>
+                  <div style={{ color: "#3f7cff", fontWeight: 800 }}>Open</div>
+                </button>
+              ))}
+            </div>
+          </Panel>
+        ) : null}
 
-        <PremiumPanel isLight={isLight}>
-          <SectionHeader title={t.network} subtitle="Searchable network center with cleaner cards and easier custom network editing." isLight={isLight} />
-          <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1.2fr .8fr" }}>
-              <input value={networkQuery} onChange={(e) => setNetworkQuery(e.target.value)} placeholder="Search network, symbol or chain ID" style={inputStyle(isLight)} />
-              <input value={customRpc} onChange={(e) => setCustomRpc(e.target.value)} placeholder={t.rpcPlaceholder} style={inputStyle(isLight)} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={handleSaveRpc} style={primaryButton}>{t.saveRpc}</button>
-            </div>
-            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))" }}>
-              {filteredNetworks.map((item) => {
-                const active = Number(item.chainId) === Number(network.chainId);
-                return (
-                  <button key={`${item.key}-${item.chainId}`} onClick={() => handleSelectNetwork(item)} style={networkCard(isLight, active)}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={34} />
-                      <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
-                        <div style={{ fontWeight: 800, color: text, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</div>
-                        <div style={{ color: muted, fontSize: 13, marginTop: 4 }}>Chain ID {item.chainId} • {item.symbol}{item.isCustom ? " • Custom" : ""}</div>
-                      </div>
-                      <span style={active ? statusPillActive : statusPillIdle(isLight)}>{active ? t.active : t.select}</span>
-                    </div>
-                    {item.isCustom ? (
-                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                        <button onClick={(e) => { e.stopPropagation(); handleEditCustomNetwork(item); }} style={secondaryButton(isLight)}>Edit</button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteCustomNetwork(item); }} style={dangerButton}>Remove</button>
-                      </div>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </PremiumPanel>
-
-        <PremiumPanel isLight={isLight}>
-          <SectionHeader title="Custom networks" subtitle="Preset-aware form with cleaner validation and image preview." isLight={isLight} />
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
-            <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Network name" style={inputStyle(isLight)} />
-            <input value={draft.chainId} onChange={(e) => handleDraftChainIdChange(e.target.value)} onBlur={(e) => applyPresetToDraft(e.target.value)} placeholder="Chain ID" style={inputStyle(isLight)} />
-            <input value={draft.symbol} onChange={(e) => setDraft({ ...draft, symbol: e.target.value })} placeholder="Symbol" style={inputStyle(isLight)} />
-            <input value={draft.rpcUrl} onChange={(e) => setDraft({ ...draft, rpcUrl: e.target.value })} placeholder="RPC URL" style={inputStyle(isLight)} />
-            <input value={draft.explorerUrl} onChange={(e) => setDraft({ ...draft, explorerUrl: e.target.value })} placeholder="Explorer base URL" style={inputStyle(isLight)} />
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 16, border: `1px solid ${border}`, background: isLight ? "#f8fbff" : "#0f1624" }}>
-              <LogoImage src={draft.logo || resolveNetworkAsset({ key: draft.name, name: draft.name || "Custom network", symbol: draft.symbol || "NET" })} alt="network logo" kind="network" label={draft.name || "Custom network"} symbol={draft.symbol || "NET"} size={44} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: text, fontWeight: 800, marginBottom: 4 }}>Network logo</div>
-                <div style={{ color: muted, fontSize: 12 }}>Upload a file or paste a data URL / public file path.</div>
-              </div>
-              <button onClick={() => logoFileRef.current?.click()} style={secondaryButton(isLight)}>Upload</button>
-              <input ref={logoFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleUploadNetworkLogo} />
-            </div>
-          </div>
-          <input value={draft.logo} onChange={(e) => setDraft({ ...draft, logo: e.target.value })} placeholder="Optional logo path, URL or data:image/..." style={{ ...inputStyle(isLight), marginTop: 12 }} />
-          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <button onClick={handleAddOrUpdateCustomNetwork} style={primaryButton}>Save custom network</button>
-            {networkValidation.message ? <span style={validationPill(isLight, networkValidation.status)}>{networkValidation.message}</span> : null}
-          </div>
-        </PremiumPanel>
-
-        <PremiumPanel isLight={isLight}>
-          <SectionHeader title="Connected sites & permissions" subtitle="Cleaner permission center with better revoke controls, stronger hierarchy and faster audits on desktop and mobile." isLight={isLight} />
-          <div style={heroStrip(isLight)}>
-            <div>
-              <div style={{ color: text, fontWeight: 900, fontSize: 18 }}>Permission center</div>
-              <div style={{ color: muted, fontSize: 13, lineHeight: 1.6, marginTop: 6, maxWidth: 720 }}>Every approved site keeps its methods, accounts and networks visible here so the user can audit access quickly and revoke permissions without hunting through the app.</div>
-            </div>
-            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", flex: 1 }}>
-              <MetricCard isLight={isLight} label="Connected" value={String(permissionSummary.total)} />
-              <MetricCard isLight={isLight} label="Browser" value={String(permissionSummary.browser)} />
-              <MetricCard isLight={isLight} label="WalletConnect" value={String(permissionSummary.walletconnect)} />
-              <MetricCard isLight={isLight} label="Methods" value={String(permissionSummary.methods)} />
-            </div>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap", marginTop: 16 }}>
-            <div style={{ color: muted, fontSize: 13, lineHeight: 1.55 }}>Review the site origin, last activity and approved methods before keeping access alive.</div>
-            <button onClick={() => { revokeAllSitePermissions(); setPermissions(listSitePermissions()); showWcMessage("All site permissions revoked."); }} style={dangerButton}>Revoke all</button>
-          </div>
-          <div style={{ display: "grid", gap: 12 }}>
-            {permissions.length ? permissions.map((item) => (
-              <div key={item.id} style={permissionCard(isLight)}>
-                <div style={{ display: "flex", gap: 12, alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0, flex: 1 }}>
-                    <LogoImage src={resolveDappAsset(item.icon, item.name)} alt={item.name} kind="dapp" label={item.name} size={42} rounded={false} />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: text, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</div>
-                      <div style={{ color: muted, fontSize: 13, wordBreak: "break-all" }}>{item.origin}</div>
-                      <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>Last used {new Date(item.lastUsedAt).toLocaleString()}</div>
-                    </div>
-                  </div>
+        {page === "settings" ? (
+          <div style={{ display: "grid", gap: 16 }}>
+            <Panel isLight={isLight}>
+              <SectionHeader title="Wallet profile" subtitle="Keep the main settings page clean and focused on the essentials." isLight={isLight} />
+              <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                <LogoImage src={avatar || resolveDappAsset(undefined, "INRI")} alt="Wallet avatar" kind="dapp" label="Wallet" size={72} rounded={false} />
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ color: muted, fontSize: 13 }}>This avatar appears across the wallet on desktop and mobile.</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <span style={typePill(isLight, item.type === "walletconnect")}>{item.type === "walletconnect" ? "WalletConnect" : "Browser"}</span>
-                    <button onClick={() => { revokeSitePermission(item.id); setPermissions(listSitePermissions()); showWcMessage(`Permission revoked: ${item.name}`); }} style={dangerButton}>Revoke</button>
+                    <button onClick={() => fileRef.current?.click()} style={secondaryButton(isLight)}>Upload avatar</button>
+                    <button onClick={() => { setAvatar(""); localStorage.removeItem(AVATAR_KEY); }} style={dangerButton}>Remove</button>
                   </div>
                 </div>
-                <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", marginTop: 14 }}>
-                  <PermissionGroup title="Accounts" values={item.accounts?.length ? item.accounts : ["No accounts saved"]} isLight={isLight} />
-                  <PermissionGroup title="Networks" values={item.chains?.length ? item.chains.map((chain) => `Chain ${chain}`) : ["No chains saved"]} isLight={isLight} />
-                  <PermissionGroup title="Methods" values={item.methods?.length ? item.methods : ["No methods saved"]} isLight={isLight} />
-                </div>
               </div>
-            )) : <EmptyState isLight={isLight} title="No connected sites yet" subtitle="When a dApp gets access, it will appear here with accounts, networks and methods." />}
-          </div>
-        </PremiumPanel>
+              <input ref={fileRef} type="file" accept="image/*" hidden onChange={handleAvatarUpload} />
+            </Panel>
 
-        <PremiumPanel isLight={isLight}>
-          <SectionHeader title="Asset registry" subtitle="Admin-friendly logo registry to map public files once and reflect them across the whole app." isLight={isLight} />
-          <div style={{ color: muted, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-            Use plain keys like <strong style={{ color: text }}>celo</strong>, <strong style={{ color: text }}>iusd</strong> or <strong style={{ color: text }}>mydapp</strong>. The path can be a public file such as <strong style={{ color: text }}>network-celo.png</strong>, an absolute URL, or a data URL. After saving, desktop and mobile builds resolve the same asset automatically.
-          </div>
-          <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))" }}>
-            <RegistryEditor
-              title="Networks"
-              preview={resolveNetworkAsset({ key: registryDraft.networkKey, name: registryDraft.networkKey || "network", logo: registryDraft.networkPath || undefined })}
-              previewLabel={registryDraft.networkKey || "network"}
-              keyValue={registryDraft.networkKey}
-              pathValue={registryDraft.networkPath}
-              onKeyChange={(value) => setRegistryDraft((prev) => ({ ...prev, networkKey: value }))}
-              onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, networkPath: value }))}
-              onUpload={() => registryFileRef.current?.click()}
-              onSave={() => handleSaveRegistry("network")}
-              suggestedPath={suggestPublicAssetPath("network", registryDraft.networkKey)}
-              onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, networkPath: suggestPublicAssetPath("network", prev.networkKey) }))}
-              existingEntries={networkEntries}
-              isLight={isLight}
-            />
-            <RegistryEditor
-              title="Tokens"
-              preview={resolveTokenAsset({ symbol: registryDraft.tokenKey, name: registryDraft.tokenKey || "token", logo: registryDraft.tokenPath || undefined })}
-              previewLabel={registryDraft.tokenKey || "token"}
-              keyValue={registryDraft.tokenKey}
-              pathValue={registryDraft.tokenPath}
-              onKeyChange={(value) => setRegistryDraft((prev) => ({ ...prev, tokenKey: value }))}
-              onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, tokenPath: value }))}
-              onUpload={() => registryFileRef.current?.click()}
-              onSave={() => handleSaveRegistry("token")}
-              suggestedPath={suggestPublicAssetPath("token", registryDraft.tokenKey)}
-              onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, tokenPath: suggestPublicAssetPath("token", prev.tokenKey) }))}
-              existingEntries={tokenEntries}
-              isLight={isLight}
-            />
-            <RegistryEditor
-              title="dApps"
-              preview={resolveDappAsset(registryDraft.dappPath || undefined, registryDraft.dappKey || "dApp")}
-              previewLabel={registryDraft.dappKey || "dApp"}
-              keyValue={registryDraft.dappKey}
-              pathValue={registryDraft.dappPath}
-              onKeyChange={(value) => setRegistryDraft((prev) => ({ ...prev, dappKey: value }))}
-              onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, dappPath: value }))}
-              onUpload={() => registryFileRef.current?.click()}
-              onSave={() => handleSaveRegistry("dapp")}
-              suggestedPath={suggestPublicAssetPath("dapp", registryDraft.dappKey)}
-              onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, dappPath: suggestPublicAssetPath("dapp", prev.dappKey) }))}
-              existingEntries={dappEntries}
-              isLight={isLight}
-            />
-            <RegistryEditor
-              title="Wallets"
-              preview={resolveWalletAsset({ key: registryDraft.walletKey, name: registryDraft.walletKey || "wallet", logo: registryDraft.walletPath || undefined })}
-              previewLabel={registryDraft.walletKey || "wallet"}
-              keyValue={registryDraft.walletKey}
-              pathValue={registryDraft.walletPath}
-              onKeyChange={(value) => setRegistryDraft((prev) => ({ ...prev, walletKey: value }))}
-              onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, walletPath: value }))}
-              onUpload={() => registryFileRef.current?.click()}
-              onSave={() => handleSaveRegistry("wallet")}
-              suggestedPath={suggestPublicAssetPath("wallet", registryDraft.walletKey)}
-              onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, walletPath: suggestPublicAssetPath("wallet", prev.walletKey) }))}
-              existingEntries={walletEntries}
-              isLight={isLight}
-            />
-          </div>
-          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <label style={secondaryButton(isLight)}>
-              Upload image
-              <input ref={registryFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
-                if (registryDraft.walletKey && !registryDraft.networkKey && !registryDraft.tokenKey && !registryDraft.dappKey) handleRegistryFileUpload(e, "wallet");
-                else if (registryDraft.dappKey && !registryDraft.networkKey && !registryDraft.tokenKey) handleRegistryFileUpload(e, "dapp");
-                else if (registryDraft.tokenKey && !registryDraft.networkKey) handleRegistryFileUpload(e, "token");
-                else handleRegistryFileUpload(e, "network");
-              }} />
-            </label>
-            <button onClick={() => { resetAssetRegistry(); setAssetVersion((v) => v + 1); showWcMessage("Asset registry reset to defaults."); }} style={dangerButton}>Reset registry</button>
-          </div>
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", marginTop: 16 }}>
-            <RegistryList title="Network keys" entries={Object.keys(registry.networks).slice(0, 16)} isLight={isLight} />
-            <RegistryList title="Token keys" entries={Object.keys(registry.tokens).slice(0, 16)} isLight={isLight} />
-            <RegistryList title="dApp keys" entries={Object.keys(registry.dapps).slice(0, 16)} isLight={isLight} />
-            <RegistryList title="Wallet keys" entries={Object.keys(registry.wallets || {}).slice(0, 16)} isLight={isLight} />
-          </div>
-        </PremiumPanel>
+            <Panel isLight={isLight}>
+              <SectionHeader title="Preferences" subtitle="Quick controls stay here. Bigger modules now live inside More as their own pages." isLight={isLight} />
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
+                <Field label="Theme">
+                  <select value={theme} onChange={(e) => setTheme(e.target.value as "dark" | "light")} style={inputStyle(isLight)}>
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                  </select>
+                </Field>
+                <Field label="Language">
+                  <select value={lang} onChange={(e) => setLang(e.target.value)} style={inputStyle(isLight)}>
+                    <option value="en">English</option>
+                    <option value="pt">Português</option>
+                    <option value="es">Español</option>
+                  </select>
+                </Field>
+              </div>
+            </Panel>
 
-        <PremiumPanel isLight={isLight} ref={walletConnectRef}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-            <LogoImage src={resolveDappAsset(undefined, "walletconnect")} alt="WalletConnect" kind="dapp" label="WalletConnect" size={42} rounded={false} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <SectionHeader title={t.wcTitle} subtitle={`${t.wcHint} Save the WalletConnect brand as brand-walletconnect.png in public or map the key walletconnect in the asset registry.`} isLight={isLight} />
-            </div>
+            <Panel isLight={isLight}>
+              <SectionHeader title="Security" subtitle="The important protections stay visible without crowding the page." isLight={isLight} />
+              <div style={{ display: "grid", gap: 10 }}>
+                <ToggleCard isLight={isLight} label="Auto-lock" hint="Automatically lock the wallet after inactivity." checked={securityState.autoLockEnabled} onChange={(checked) => updateSecurity({ autoLockEnabled: checked })} />
+                <Field label="Auto-lock minutes">
+                  <input type="number" min={1} max={120} value={securityState.autoLockMinutes} onChange={(e) => updateSecurity({ autoLockMinutes: Math.max(1, Number(e.target.value) || 1) })} style={inputStyle(isLight)} />
+                </Field>
+                <ToggleCard isLight={isLight} label="Lock hidden tab" hint="Lock the wallet when the app goes into the background." checked={securityState.lockOnHidden} onChange={(checked) => updateSecurity({ lockOnHidden: checked })} />
+                <ToggleCard isLight={isLight} label="Require password for sensitive actions" hint="Adds an extra confirmation before exporting or revealing private data." checked={securityState.requirePasswordForSensitiveActions} onChange={(checked) => updateSecurity({ requirePasswordForSensitiveActions: checked })} />
+              </div>
+            </Panel>
+
+            <Panel isLight={isLight}>
+              <SectionHeader title="Advanced modules" subtitle="These moved out of Settings to keep the experience cleaner." isLight={isLight} />
+              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+                {hubCards.filter((item) => item.key !== "settings").map((item) => (
+                  <button key={item.key} onClick={() => setPage(item.key)} style={miniNavCard(isLight)}>
+                    <div style={{ color: text, fontWeight: 800 }}>{item.title}</div>
+                    <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>{item.subtitle}</div>
+                  </button>
+                ))}
+              </div>
+            </Panel>
           </div>
-          <div style={heroStrip(isLight)}>
-            <div>
-              <div style={{ color: text, fontWeight: 900, fontSize: 18 }}>WalletConnect hub</div>
-              <div style={{ color: muted, fontSize: 13, lineHeight: 1.6, marginTop: 6, maxWidth: 620 }}>Pair by URI or QR, then review every active session with clearer brand, domain and revoke controls.</div>
-            </div>
-            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", minWidth: 280, flex: 1 }}>
-              <MetricCard isLight={isLight} label="Sessions" value={String(wcSessions.length)} />
-              <MetricCard isLight={isLight} label="Brand key" value="wc" />
-            </div>
-          </div>
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
-            <input value={wcUri} onChange={(e) => setWcUri(e.target.value)} placeholder={t.wcConnectUri || "Paste WalletConnect URI"} style={inputStyle(isLight)} />
-            <button onClick={() => setScannerOpen(true)} style={secondaryButton(isLight)}>{t.wcScanQr}</button>
-            <button onClick={refreshSessions} style={secondaryButton(isLight)}>{t.wcRefresh}</button>
-            <button onClick={handleConnectWc} style={primaryButton}>{wcLoading ? t.wcConnecting : "Connect"}</button>
-          </div>
-          {wcMessage ? <div style={{ marginTop: 12, color: text, fontWeight: 700 }}>{wcMessage}</div> : null}
-          <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ fontWeight: 800, color: text }}>{t.wcActiveSessions}</div>
-            <button onClick={handleDisconnectAll} style={dangerButton}>{t.wcDisconnectAll}</button>
-          </div>
-          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-            {wcSessions.length ? wcSessions.map((session: any) => (
-              <div key={session.topic} style={permissionCard(isLight)}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
-                    <LogoImage
-                      src={resolveDappAsset(session.peer?.metadata?.icons?.[0], session.peer?.metadata?.name || "walletconnect")}
-                      alt={session.peer?.metadata?.name || "WalletConnect session"}
-                      kind="dapp"
-                      label={session.peer?.metadata?.name || "WalletConnect"}
-                      size={40}
-                      rounded={false}
-                    />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <div style={{ color: text, fontWeight: 800 }}>{session.peer?.metadata?.name || "WalletConnect session"}</div>
-                        <span style={typePill(isLight, true)}>WalletConnect</span>
+        ) : null}
+
+        {page === "walletconnect" ? (
+          <div style={{ display: "grid", gap: 16 }}>
+            <Panel isLight={isLight}>
+              <SectionHeader title="WalletConnect" subtitle="A dedicated page for pairing, scanning and managing active sessions." isLight={isLight} />
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
+                <MetricCard isLight={isLight} label="Active sessions" value={String(wcSessions.length)} />
+                <MetricCard isLight={isLight} label="Permission links" value={String(permissionSummary.walletconnect)} />
+                <MetricCard isLight={isLight} label="Brand key" value="walletconnect" />
+              </div>
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1.4fr repeat(3,minmax(120px,1fr))", marginTop: 16 }}>
+                <input value={wcUri} onChange={(e) => setWcUri(e.target.value)} placeholder="Paste WalletConnect URI" style={inputStyle(isLight)} />
+                <button onClick={() => setScannerOpen(true)} style={secondaryButton(isLight)}>Scan QR</button>
+                <button onClick={refreshSessions} style={secondaryButton(isLight)}>Refresh</button>
+                <button onClick={handleConnectWc} style={primaryButton}>{wcLoading ? "Connecting…" : "Connect"}</button>
+              </div>
+              {wcMessage ? <div style={{ marginTop: 12, color: text, fontWeight: 700 }}>{wcMessage}</div> : null}
+            </Panel>
+
+            <Panel isLight={isLight}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                <SectionHeader title="Active sessions" subtitle="Each dApp session is separated here instead of cluttering the main settings page." isLight={isLight} />
+                <button onClick={handleDisconnectAll} style={dangerButton}>Disconnect all</button>
+              </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {wcSessions.length ? wcSessions.map((session: any) => (
+                  <div key={session.topic} style={itemCard(isLight)}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
+                        <LogoImage src={resolveDappAsset(session.peer?.metadata?.icons?.[0], session.peer?.metadata?.name || "walletconnect")} alt={session.peer?.metadata?.name || "WalletConnect"} kind="dapp" label={session.peer?.metadata?.name || "WalletConnect"} size={42} rounded={false} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ color: text, fontWeight: 800 }}>{session.peer?.metadata?.name || "WalletConnect session"}</div>
+                          <div style={{ color: muted, fontSize: 13, wordBreak: "break-all" }}>{session.peer?.metadata?.url || session.topic}</div>
+                          <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>Topic: {String(session.topic || "").slice(0, 20)}…</div>
+                        </div>
                       </div>
-                      <div style={{ color: muted, fontSize: 13, wordBreak: "break-all" }}>{session.peer?.metadata?.url || session.topic}</div>
-                      <div style={{ color: muted, fontSize: 12, marginTop: 6 }}>Topic: {String(session.topic || "").slice(0, 18)}…</div>
+                      <button onClick={() => handleDisconnectSession(session.topic)} style={dangerButton}>Disconnect</button>
                     </div>
                   </div>
-                  <button onClick={() => handleDisconnectSession(session.topic)} style={dangerButton}>{t.wcDisconnect}</button>
+                )) : <EmptyState isLight={isLight} title="No WalletConnect sessions yet" subtitle="Pair from mobile or desktop and the session will appear here." />}
+              </div>
+            </Panel>
+          </div>
+        ) : null}
+
+        {page === "chains" ? (
+          <div style={{ display: "grid", gap: 16 }}>
+            <Panel isLight={isLight}>
+              <SectionHeader title="Chains" subtitle="A dedicated network manager with active network, search and custom chain editing." isLight={isLight} />
+              <div style={itemCard(isLight)}>
+                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <LogoImage src={network.logo} alt={network.name} kind="network" label={network.name} size={46} />
+                  <div>
+                    <div style={{ color: text, fontWeight: 900, fontSize: 18 }}>{network.name}</div>
+                    <div style={{ color: muted, fontSize: 13 }}>Chain {network.chainId} · {network.symbol}</div>
+                  </div>
                 </div>
               </div>
-            )) : <EmptyState isLight={isLight} title={t.wcNoSessions} subtitle="Pair a WalletConnect session from desktop or mobile and it will appear here." />}
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                <input value={networkQuery} onChange={(e) => setNetworkQuery(e.target.value)} placeholder="Search networks by name, symbol or chain ID" style={inputStyle(isLight)} />
+                <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+                  {filteredNetworks.slice(0, 18).map((item) => (
+                    <button key={`${item.key}-${item.chainId}`} onClick={() => { saveStoredNetwork(item); setNetwork(item); }} style={networkCard(isLight, item.chainId === network.chainId)}>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} size={38} />
+                        <div style={{ textAlign: "left" }}>
+                          <div style={{ color: item.chainId === network.chainId ? "#ffffff" : text, fontWeight: 800 }}>{item.name}</div>
+                          <div style={{ color: item.chainId === network.chainId ? "rgba(255,255,255,.76)" : muted, fontSize: 12 }}>Chain {item.chainId} · {item.symbol}</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </Panel>
+
+            <Panel isLight={isLight}>
+              <SectionHeader title="Custom chains" subtitle="Add or edit your own RPCs, explorers and chain logos here instead of inside the main settings page." isLight={isLight} />
+              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+                <input value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Network name" style={inputStyle(isLight)} />
+                <input value={draft.chainId} onChange={(e) => setDraft((prev) => ({ ...prev, chainId: e.target.value }))} placeholder="Chain ID" style={inputStyle(isLight)} />
+                <input value={draft.symbol} onChange={(e) => setDraft((prev) => ({ ...prev, symbol: e.target.value }))} placeholder="Symbol" style={inputStyle(isLight)} />
+                <input value={draft.rpcUrl} onChange={(e) => setDraft((prev) => ({ ...prev, rpcUrl: e.target.value }))} placeholder="RPC URL" style={inputStyle(isLight)} />
+                <input value={draft.explorerUrl} onChange={(e) => setDraft((prev) => ({ ...prev, explorerUrl: e.target.value }))} placeholder="Explorer base URL" style={inputStyle(isLight)} />
+                <input value={draft.logo} onChange={(e) => setDraft((prev) => ({ ...prev, logo: e.target.value }))} placeholder="Logo path, URL or data:image/..." style={inputStyle(isLight)} />
+              </div>
+              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={() => logoFileRef.current?.click()} style={secondaryButton(isLight)}>Upload logo</button>
+                <button onClick={() => validateNetworkRpc(draft.rpcUrl.trim(), Number(draft.chainId))} style={secondaryButton(isLight)}>Validate RPC</button>
+                <button onClick={saveCustomChain} style={primaryButton}>Save chain</button>
+                <button onClick={() => { setDraft(emptyDraft()); setNetworkValidation({ status: "idle", message: "" }); }} style={secondaryButton(isLight)}>Clear</button>
+              </div>
+              <input ref={logoFileRef} type="file" accept="image/*" hidden onChange={handleNetworkLogoUpload} />
+              {networkValidation.message ? <div style={{ marginTop: 12, color: networkValidation.status === "error" ? "#ef4444" : text, fontWeight: 700 }}>{networkValidation.message}</div> : null}
+              <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+                {customNetworks.length ? customNetworks.map((item) => (
+                  <div key={`${item.key}-${item.chainId}`} style={itemCard(isLight)}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                        <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} size={40} />
+                        <div>
+                          <div style={{ color: text, fontWeight: 800 }}>{item.name}</div>
+                          <div style={{ color: muted, fontSize: 12 }}>Chain {item.chainId} · {item.rpcUrl}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button onClick={() => openNetworkEditor(item)} style={secondaryButton(isLight)}>Edit</button>
+                        <button onClick={() => removeCustomNetwork(item.chainId)} style={dangerButton}>Remove</button>
+                      </div>
+                    </div>
+                  </div>
+                )) : <EmptyState isLight={isLight} title="No custom chains yet" subtitle="Add your own RPC networks here and keep the main settings screen simple." />}
+              </div>
+            </Panel>
           </div>
-        </PremiumPanel>
+        ) : null}
+
+        {page === "wallets" ? (
+          <div style={{ display: "grid", gap: 16 }}>
+            <Panel isLight={isLight}>
+              <SectionHeader title="Wallet additions" subtitle="A separate page for hardware and import options, similar to major wallets." isLight={isLight} />
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+                {walletCards.map((item) => (
+                  <button key={item.key} onClick={() => item.key === "qrbased" ? setScannerOpen(true) : showWcMessage(`${item.title} UI card is ready. Native integration can be connected later.`)} style={hubCardStyle(isLight)}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <LogoImage src={resolveWalletAsset(item.key)} alt={item.title} kind="wallet" label={item.title} size={42} rounded={false} />
+                      <div style={{ textAlign: "left" }}>
+                        <div style={{ color: text, fontWeight: 900 }}>{item.title}</div>
+                        <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>{item.subtitle}</div>
+                      </div>
+                    </div>
+                    <span style={pill(isLight, item.live)}>{item.badge}</span>
+                  </button>
+                ))}
+              </div>
+              {wcMessage ? <div style={{ marginTop: 12, color: text, fontWeight: 700 }}>{wcMessage}</div> : null}
+            </Panel>
+          </div>
+        ) : null}
+
+        {page === "connected" ? (
+          <div style={{ display: "grid", gap: 16 }}>
+            <Panel isLight={isLight}>
+              <SectionHeader title="Connected sites" subtitle="A cleaner permissions center with separate cards for origins, accounts, chains and methods." isLight={isLight} />
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
+                <MetricCard isLight={isLight} label="Total" value={String(permissionSummary.total)} />
+                <MetricCard isLight={isLight} label="Browser" value={String(permissionSummary.browser)} />
+                <MetricCard isLight={isLight} label="WalletConnect" value={String(permissionSummary.walletconnect)} />
+                <MetricCard isLight={isLight} label="Methods" value={String(permissionSummary.methods)} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+                <button onClick={() => { revokeAllSitePermissions(); setPermissions(listSitePermissions()); }} style={dangerButton}>Revoke all</button>
+              </div>
+            </Panel>
+            <Panel isLight={isLight}>
+              <div style={{ display: "grid", gap: 10 }}>
+                {permissions.length ? permissions.map((item) => (
+                  <div key={item.id} style={itemCard(isLight)}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
+                        <LogoImage src={resolveDappAsset(item.icon, item.name || item.origin)} alt={item.name || item.origin} kind="dapp" label={item.name || item.origin} size={44} rounded={false} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                            <div style={{ color: text, fontWeight: 800 }}>{item.name || item.origin}</div>
+                            <span style={pill(isLight, item.type === "walletconnect")}>{item.type === "walletconnect" ? "WalletConnect" : "Browser"}</span>
+                          </div>
+                          <div style={{ color: muted, fontSize: 13, wordBreak: "break-all" }}>{item.origin}</div>
+                        </div>
+                      </div>
+                      <button onClick={() => { revokeSitePermission(item.id); setPermissions(listSitePermissions()); }} style={dangerButton}>Revoke</button>
+                    </div>
+                    <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", marginTop: 14 }}>
+                      <InfoGroup isLight={isLight} title="Accounts" values={item.accounts?.length ? item.accounts : ["No accounts"]} />
+                      <InfoGroup isLight={isLight} title="Chains" values={item.chains?.length ? item.chains.map((chain) => `Chain ${chain}`) : ["No chains"]} />
+                      <InfoGroup isLight={isLight} title="Methods" values={item.methods?.length ? item.methods : ["No methods"]} />
+                    </div>
+                  </div>
+                )) : <EmptyState isLight={isLight} title="No connected sites yet" subtitle="Sites and dApps you approve will appear here in a cleaner permissions center." />}
+              </div>
+            </Panel>
+          </div>
+        ) : null}
+
+        {page === "assets" ? (
+          <div style={{ display: "grid", gap: 16 }}>
+            <Panel isLight={isLight}>
+              <SectionHeader title="Asset registry" subtitle="Map one logo once and reuse it across desktop, mobile, WalletConnect, chains and tokens." isLight={isLight} />
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))" }}>
+                <RegistryEditor
+                  isLight={isLight}
+                  title="Network logos"
+                  preview={resolveNetworkAsset({ key: registryDraft.networkKey || "inri", name: registryDraft.networkKey || "INRI", symbol: "ETH", logo: registryDraft.networkPath })}
+                  keyValue={registryDraft.networkKey}
+                  pathValue={registryDraft.networkPath}
+                  entries={registryEntries.network}
+                  suggestedPath={registryDraft.networkKey ? suggestPublicAssetPath("network", registryDraft.networkKey) : ""}
+                  onKeyChange={(value) => setRegistryDraft((prev) => ({ ...prev, networkKey: value }))}
+                  onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, networkPath: value }))}
+                  onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, networkPath: suggestPublicAssetPath("network", prev.networkKey) }))}
+                  onUpload={() => registryFileRef.current?.click()}
+                  onSave={() => saveRegistry("network")}
+                />
+                <RegistryEditor
+                  isLight={isLight}
+                  title="Token logos"
+                  preview={resolveTokenAsset({ symbol: registryDraft.tokenKey || "inri", name: registryDraft.tokenKey || "INRI", logo: registryDraft.tokenPath })}
+                  keyValue={registryDraft.tokenKey}
+                  pathValue={registryDraft.tokenPath}
+                  entries={registryEntries.token}
+                  suggestedPath={registryDraft.tokenKey ? suggestPublicAssetPath("token", registryDraft.tokenKey) : ""}
+                  onKeyChange={(value) => setRegistryDraft((prev) => ({ ...prev, tokenKey: value }))}
+                  onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, tokenPath: value }))}
+                  onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, tokenPath: suggestPublicAssetPath("token", prev.tokenKey) }))}
+                  onUpload={() => registryFileRef.current?.click()}
+                  onSave={() => saveRegistry("token")}
+                />
+                <RegistryEditor
+                  isLight={isLight}
+                  title="dApp logos"
+                  preview={resolveDappAsset(registryDraft.dappPath, registryDraft.dappKey || "walletconnect")}
+                  keyValue={registryDraft.dappKey}
+                  pathValue={registryDraft.dappPath}
+                  entries={registryEntries.dapp}
+                  suggestedPath={registryDraft.dappKey ? suggestPublicAssetPath("dapp", registryDraft.dappKey) : ""}
+                  onKeyChange={(value) => setRegistryDraft((prev) => ({ ...prev, dappKey: value }))}
+                  onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, dappPath: value }))}
+                  onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, dappPath: suggestPublicAssetPath("dapp", prev.dappKey) }))}
+                  onUpload={() => registryFileRef.current?.click()}
+                  onSave={() => saveRegistry("dapp")}
+                />
+                <RegistryEditor
+                  isLight={isLight}
+                  title="Wallet logos"
+                  preview={resolveWalletAsset(registryDraft.walletKey || "ledger", registryDraft.walletPath)}
+                  keyValue={registryDraft.walletKey}
+                  pathValue={registryDraft.walletPath}
+                  entries={registryEntries.wallet}
+                  suggestedPath={registryDraft.walletKey ? suggestPublicAssetPath("wallet", registryDraft.walletKey) : ""}
+                  onKeyChange={(value) => setRegistryDraft((prev) => ({ ...prev, walletKey: value }))}
+                  onPathChange={(value) => setRegistryDraft((prev) => ({ ...prev, walletPath: value }))}
+                  onUseSuggested={() => setRegistryDraft((prev) => ({ ...prev, walletPath: suggestPublicAssetPath("wallet", prev.walletKey) }))}
+                  onUpload={() => registryFileRef.current?.click()}
+                  onSave={() => saveRegistry("wallet")}
+                />
+              </div>
+              <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={() => { resetAssetRegistry(); setAssetVersion((v) => v + 1); }} style={dangerButton}>Reset registry</button>
+              </div>
+              <input ref={registryFileRef} type="file" accept="image/*" hidden onChange={handleRegistryUpload} />
+            </Panel>
+          </div>
+        ) : null}
       </div>
       {scannerOpen ? <WalletConnectQrScanner onClose={() => setScannerOpen(false)} onScanned={handleScannedUri} /> : null}
     </>
   );
 }
 
-type PanelProps = React.PropsWithChildren<{ isLight: boolean }> & { ref?: React.Ref<HTMLDivElement> };
-const PremiumPanel = React.forwardRef<HTMLDivElement, React.PropsWithChildren<{ isLight: boolean }>>(function PremiumPanel({ isLight, children }, ref) {
+function pageTitle(page: MorePage) {
+  switch (page) {
+    case "settings": return "Settings";
+    case "walletconnect": return "WalletConnect";
+    case "chains": return "Chains";
+    case "wallets": return "Wallet additions";
+    case "connected": return "Connected sites";
+    case "assets": return "Asset registry";
+    default: return "More";
+  }
+}
+
+function pageSubtitle(page: MorePage) {
+  switch (page) {
+    case "settings": return "Core preferences and security only, with advanced sections moved into their own pages.";
+    case "walletconnect": return "A dedicated WalletConnect page keeps the main settings screen clean.";
+    case "chains": return "Manage active networks and custom RPC chains in one clean page.";
+    case "wallets": return "Keep wallet additions and hardware cards out of the main settings page.";
+    case "connected": return "Review and revoke site permissions in a dedicated permissions center.";
+    case "assets": return "Centralize logos so changing files in public reflects across the app with less work.";
+    default: return "";
+  }
+}
+
+function Hero({ isLight, title, subtitle, children }: React.PropsWithChildren<{ isLight: boolean; title: string; subtitle: string }>) {
   return (
-    <div
-      ref={ref}
-      style={{
-        background: isLight ? "rgba(255,255,255,.96)" : "rgba(17,23,34,.96)",
-        border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`,
-        borderRadius: 24,
-        padding: 20,
-        boxShadow: isLight ? "0 20px 60px rgba(20,30,50,.10)" : "0 18px 50px rgba(0,0,0,.22)",
-      }}
-    >
+    <div style={{ borderRadius: 24, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "linear-gradient(180deg,#ffffff 0%,#f7faff 100%)" : "linear-gradient(180deg,#141d2a 0%,#0e1522 100%)", padding: 20, display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+      <div>
+        <div style={{ color: isLight ? "#10131a" : "#ffffff", fontWeight: 900, fontSize: 28 }}>{title}</div>
+        <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginTop: 6, lineHeight: 1.6 }}>{subtitle}</div>
+      </div>
       {children}
     </div>
   );
-});
+}
 
-
-function heroStrip(isLight: boolean): React.CSSProperties {
-  return {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 16,
-    flexWrap: "wrap",
-    alignItems: "stretch",
-    padding: 16,
-    borderRadius: 20,
-    border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`,
-    background: isLight ? "linear-gradient(180deg,#ffffff 0%,#f7faff 100%)" : "linear-gradient(180deg,#131b29 0%,#0e1522 100%)",
-    marginBottom: 16,
-  };
+function Panel({ isLight, children }: React.PropsWithChildren<{ isLight: boolean }>) {
+  return <div style={{ background: isLight ? "rgba(255,255,255,.96)" : "rgba(17,23,34,.96)", border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, borderRadius: 24, padding: 20, boxShadow: isLight ? "0 18px 45px rgba(20,30,50,.08)" : "0 18px 45px rgba(0,0,0,.20)" }}>{children}</div>;
 }
 
 function SectionHeader({ title, subtitle, isLight }: { title: string; subtitle: string; isLight: boolean }) {
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ marginBottom: 14 }}>
       <div style={{ fontSize: 20, fontWeight: 900, color: isLight ? "#10131a" : "#ffffff" }}>{title}</div>
       <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, lineHeight: 1.6, marginTop: 4 }}>{subtitle}</div>
     </div>
   );
 }
 
+function Field({ label, children }: React.PropsWithChildren<{ label: string }>) {
+  return <label style={{ display: "grid", gap: 8 }}><span style={{ fontWeight: 700, fontSize: 13 }}>{label}</span>{children}</label>;
+}
+
 function MetricCard({ label, value, isLight }: { label: string; value: string; isLight: boolean }) {
-  return (
-    <div style={{ borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1624", padding: 14 }}>
-      <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em" }}>{label}</div>
-      <div style={{ marginTop: 8, color: isLight ? "#10131a" : "#ffffff", fontWeight: 900, fontSize: 24 }}>{value}</div>
-    </div>
-  );
+  return <div style={{ borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1624", padding: 14 }}><div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em" }}>{label}</div><div style={{ marginTop: 8, color: isLight ? "#10131a" : "#ffffff", fontWeight: 900, fontSize: 24 }}>{value}</div></div>;
 }
 
-function PermissionGroup({ title, values, isLight }: { title: string; values: string[]; isLight: boolean }) {
-  return (
-    <div style={{ borderRadius: 16, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1624", padding: 12 }}>
-      <div style={{ color: isLight ? "#10131a" : "#ffffff", fontWeight: 800, marginBottom: 10 }}>{title}</div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {values.map((value) => <span key={`${title}-${value}`} style={chipStyle(isLight)}>{value}</span>)}
-      </div>
-    </div>
-  );
+function ToggleCard({ isLight, label, hint, checked, onChange }: { isLight: boolean; label: string; hint: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return <label style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", padding: 12, borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1624", cursor: "pointer" }}><div><div style={{ fontWeight: 800 }}>{label}</div><div style={{ fontSize: 13, marginTop: 4, color: isLight ? "#5b6578" : "#97a0b3" }}>{hint}</div></div><input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /></label>;
 }
 
-function EmptyState({ title, subtitle, isLight }: { title: string; subtitle: string; isLight: boolean }) {
-  return (
-    <div style={{ padding: 18, borderRadius: 18, border: `1px dashed ${isLight ? "#cad6ea" : "#31425d"}`, color: isLight ? "#5b6578" : "#97a0b3", background: isLight ? "#f8fbff" : "#0f1624" }}>
-      <div style={{ color: isLight ? "#10131a" : "#ffffff", fontWeight: 800, marginBottom: 6 }}>{title}</div>
-      <div style={{ fontSize: 13, lineHeight: 1.55 }}>{subtitle}</div>
-    </div>
-  );
+function InfoGroup({ isLight, title, values }: { isLight: boolean; title: string; values: string[] }) {
+  return <div style={{ borderRadius: 16, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1624", padding: 12 }}><div style={{ fontWeight: 800, marginBottom: 8 }}>{title}</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{values.map((value) => <span key={`${title}-${value}`} style={chipStyle(isLight)}>{value}</span>)}</div></div>;
 }
 
-function SwitchRow({ isLight, label, hint, checked, onChange }: { isLight: boolean; label: string; hint: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return (
-    <label style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", padding: 12, borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1624", cursor: "pointer" }}>
-      <div>
-        <div style={{ color: isLight ? "#10131a" : "#ffffff", fontWeight: 800 }}>{label}</div>
-        <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginTop: 4 }}>{hint}</div>
-      </div>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-    </label>
-  );
+function EmptyState({ isLight, title, subtitle }: { isLight: boolean; title: string; subtitle: string }) {
+  return <div style={{ padding: 18, borderRadius: 18, border: `1px dashed ${isLight ? "#cad6ea" : "#31425d"}`, color: isLight ? "#5b6578" : "#97a0b3", background: isLight ? "#f8fbff" : "#0f1624" }}><div style={{ color: isLight ? "#10131a" : "#ffffff", fontWeight: 800, marginBottom: 6 }}>{title}</div><div style={{ fontSize: 13, lineHeight: 1.55 }}>{subtitle}</div></div>;
 }
 
-function RegistryEditor({ title, preview, previewLabel, keyValue, pathValue, onKeyChange, onPathChange, onUpload, onSave, suggestedPath, onUseSuggested, existingEntries, isLight }: {
-  title: string;
-  preview: string;
-  previewLabel: string;
-  keyValue: string;
-  pathValue: string;
-  onKeyChange: (value: string) => void;
-  onPathChange: (value: string) => void;
-  onUpload: () => void;
-  onSave: () => void;
-  suggestedPath?: string;
-  onUseSuggested?: () => void;
-  existingEntries?: Array<{ key: string; path: string }>;
-  isLight: boolean;
-}) {
+function RegistryEditor({ isLight, title, preview, keyValue, pathValue, entries, suggestedPath, onKeyChange, onPathChange, onUseSuggested, onUpload, onSave }: { isLight: boolean; title: string; preview: string; keyValue: string; pathValue: string; entries: Array<{ key: string; path: string }>; suggestedPath?: string; onKeyChange: (value: string) => void; onPathChange: (value: string) => void; onUseSuggested: () => void; onUpload: () => void; onSave: () => void; }) {
   return (
     <div style={{ borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1624", padding: 14 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12 }}>
-        <LogoImage src={preview} alt={previewLabel} kind="dapp" label={previewLabel} size={42} rounded={false} />
-        <div>
-          <div style={{ color: isLight ? "#10131a" : "#ffffff", fontWeight: 800 }}>{title}</div>
-          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12 }}>Map once, reuse everywhere.</div>
-        </div>
+        <LogoImage src={preview} alt={title} kind="dapp" label={title} size={42} rounded={false} />
+        <div><div style={{ fontWeight: 800 }}>{title}</div><div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>Map once, reuse everywhere.</div></div>
       </div>
       <div style={{ display: "grid", gap: 10 }}>
         <input value={keyValue} onChange={(e) => onKeyChange(e.target.value)} placeholder={`${title} key`} style={inputStyle(isLight)} />
         <input value={pathValue} onChange={(e) => onPathChange(e.target.value)} placeholder="public file, URL or data:image/..." style={inputStyle(isLight)} />
-        {suggestedPath ? (
-          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12, lineHeight: 1.5 }}>Suggested public filename: <strong style={{ color: isLight ? "#10131a" : "#fff" }}>{suggestedPath}</strong></div>
-        ) : null}
+        {suggestedPath ? <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12 }}>Suggested filename: <strong style={{ color: isLight ? "#10131a" : "#ffffff" }}>{suggestedPath}</strong></div> : null}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={onUpload} style={secondaryButton(isLight)}>Upload</button>
           {suggestedPath ? <button onClick={onUseSuggested} style={secondaryButton(isLight)}>Use suggested name</button> : null}
           <button onClick={onSave} style={primaryButton}>Save</button>
         </div>
-        {existingEntries?.length ? (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {existingEntries.slice(0, 6).map((entry) => (
-              <button key={`${title}-${entry.key}`} onClick={() => { onKeyChange(entry.key); onPathChange(entry.path); }} style={chipButton(isLight)}>{entry.key}</button>
-            ))}
-          </div>
-        ) : null}
+        {entries.length ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{entries.map((entry) => <button key={`${title}-${entry.key}`} onClick={() => { onKeyChange(entry.key); onPathChange(entry.path); }} style={chipButton(isLight)}>{entry.key}</button>)}</div> : null}
       </div>
     </div>
   );
-}
-
-function chipButton(isLight: boolean): React.CSSProperties {
-  return {
-    padding: "7px 10px", borderRadius: 999, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#ffffff" : "#111722", color: isLight ? "#10131a" : "#ffffff", cursor: "pointer", fontWeight: 700, fontSize: 12
-  };
-}
-
-function RegistryList({ title, entries, isLight }: { title: string; entries: string[]; isLight: boolean }) {
-  return (
-    <div style={{ borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1624", padding: 14 }}>
-      <div style={{ color: isLight ? "#10131a" : "#ffffff", fontWeight: 800, marginBottom: 10 }}>{title}</div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {entries.length ? entries.map((item) => <span key={item} style={chipStyle(isLight)}>{item}</span>) : <span style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>No entries</span>}
-      </div>
-    </div>
-  );
-}
-
-function labelStyle(isLight: boolean): React.CSSProperties {
-  return { color: isLight ? "#10131a" : "#ffffff", fontWeight: 800, fontSize: 13 };
 }
 
 function inputStyle(isLight: boolean): React.CSSProperties {
-  return {
-    width: "100%",
-    minHeight: 46,
-    borderRadius: 16,
-    border: `1px solid ${isLight ? "#d7e0ee" : "#2b3950"}`,
-    background: isLight ? "#f7fafe" : "#0d1420",
-    color: isLight ? "#10131a" : "#fff",
-    outline: "none",
-    padding: "12px 14px",
-  };
+  return { width: "100%", minWidth: 0, borderRadius: 16, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#ffffff" : "#0f1624", color: isLight ? "#10131a" : "#ffffff", padding: "12px 14px", boxSizing: "border-box" };
 }
-
-const primaryButton: React.CSSProperties = {
-  minHeight: 44,
-  borderRadius: 14,
-  border: "none",
-  background: "#3f7cff",
-  color: "#fff",
-  fontWeight: 800,
-  padding: "0 16px",
-  cursor: "pointer",
-};
-
-function secondaryButton(isLight: boolean): React.CSSProperties {
-  return {
-    minHeight: 44,
-    borderRadius: 14,
-    border: `1px solid ${isLight ? "#d3dceb" : "#2c3950"}`,
-    background: isLight ? "#ffffff" : "#12182a",
-    color: isLight ? "#10131a" : "#ffffff",
-    fontWeight: 800,
-    padding: "0 16px",
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-  };
-}
-
-const dangerButton: React.CSSProperties = {
-  minHeight: 44,
-  borderRadius: 14,
-  border: "1px solid rgba(255,107,107,.32)",
-  background: "rgba(255,107,107,.10)",
-  color: "#ff7e7e",
-  fontWeight: 800,
-  padding: "0 16px",
-  cursor: "pointer",
-};
-
-function networkCard(isLight: boolean, active: boolean): React.CSSProperties {
-  return {
-    width: "100%",
-    textAlign: "left",
-    borderRadius: 18,
-    border: active ? "1px solid rgba(63,124,255,.36)" : `1px solid ${isLight ? "#dbe2f0" : "#273042"}`,
-    background: active ? (isLight ? "#eef4ff" : "#162138") : (isLight ? "#f8fbff" : "#0f1624"),
-    padding: 14,
-    cursor: "pointer",
-  };
-}
-
-function permissionCard(isLight: boolean): React.CSSProperties {
-  return {
-    borderRadius: 20,
-    border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`,
-    background: isLight ? "#f8fbff" : "#0f1624",
-    padding: 16,
-  };
-}
-
-function integrationCard(isLight: boolean, live: boolean): React.CSSProperties {
-  return {
-    width: "100%",
-    textAlign: "left",
-    borderRadius: 20,
-    border: `1px solid ${live ? "rgba(63,124,255,.34)" : isLight ? "#dbe2f0" : "#273042"}`,
-    background: live ? (isLight ? "#eef4ff" : "#162138") : (isLight ? "#f8fbff" : "#0f1624"),
-    padding: 16,
-    cursor: "pointer",
-    minHeight: 132,
-  };
-}
-
-function integrationBadge(isLight: boolean, state: "live" | "soon"): React.CSSProperties {
-  return state === "live"
-    ? { padding: "6px 10px", borderRadius: 999, background: "rgba(63,124,255,.14)", color: "#3f7cff", fontWeight: 800, fontSize: 12 }
-    : { padding: "6px 10px", borderRadius: 999, background: isLight ? "#fff7eb" : "rgba(255,176,32,.08)", color: "#ffb020", fontWeight: 800, fontSize: 12 };
-}
-
-const statusPillActive: React.CSSProperties = { padding: "6px 10px", borderRadius: 999, background: "rgba(63,124,255,.14)", color: "#3f7cff", fontWeight: 800, fontSize: 12 };
-function statusPillIdle(isLight: boolean): React.CSSProperties { return { padding: "6px 10px", borderRadius: 999, background: isLight ? "#edf2f8" : "#172133", color: isLight ? "#5b6578" : "#97a0b3", fontWeight: 800, fontSize: 12 }; }
-function typePill(isLight: boolean, walletconnect: boolean): React.CSSProperties { return walletconnect ? statusPillActive : statusPillIdle(isLight); }
-function chipStyle(isLight: boolean): React.CSSProperties { return { padding: "6px 10px", borderRadius: 999, background: isLight ? "#edf2f8" : "#172133", color: isLight ? "#334155" : "#c8d1e0", fontSize: 12, fontWeight: 700 }; }
-function validationPill(isLight: boolean, status: "idle" | "checking" | "ok" | "error"): React.CSSProperties {
-  const map = {
-    idle: { bg: isLight ? "#edf2f8" : "#172133", color: isLight ? "#334155" : "#c8d1e0" },
-    checking: { bg: isLight ? "#fff7eb" : "rgba(255,176,32,.08)", color: "#ffb020" },
-    ok: { bg: isLight ? "#ecfdf3" : "rgba(38,182,109,.10)", color: "#26b66d" },
-    error: { bg: isLight ? "#fff1f1" : "rgba(255,107,107,.10)", color: "#ff7e7e" },
-  }[status];
-  return { padding: "8px 12px", borderRadius: 999, background: map.bg, color: map.color, fontSize: 12, fontWeight: 800 };
-}
+function primaryButton(): React.CSSProperties { return { border: "none", borderRadius: 16, background: "#3f7cff", color: "#ffffff", padding: "12px 16px", fontWeight: 800, cursor: "pointer" }; }
+function secondaryButton(isLight: boolean): React.CSSProperties { return { border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, borderRadius: 16, background: isLight ? "#ffffff" : "#111722", color: isLight ? "#10131a" : "#ffffff", padding: "12px 16px", fontWeight: 700, cursor: "pointer" }; }
+const dangerButton: React.CSSProperties = { border: "1px solid rgba(239,68,68,.35)", borderRadius: 16, background: "rgba(239,68,68,.12)", color: "#ef4444", padding: "12px 16px", fontWeight: 800, cursor: "pointer" };
+function hubCardStyle(isLight: boolean): React.CSSProperties { return { display: "grid", gap: 10, textAlign: "left", borderRadius: 20, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#ffffff" : "#0f1624", padding: 16, cursor: "pointer" }; }
+function miniNavCard(isLight: boolean): React.CSSProperties { return { textAlign: "left", borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1624", padding: 14, cursor: "pointer" }; }
+function itemCard(isLight: boolean): React.CSSProperties { return { borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#ffffff" : "#0f1624", padding: 14 }; }
+function networkCard(isLight: boolean, active: boolean): React.CSSProperties { return { textAlign: "left", borderRadius: 18, border: active ? "1px solid #4d7ef2" : `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: active ? "#3f7cff" : isLight ? "#ffffff" : "#0f1624", color: active ? "#ffffff" : isLight ? "#10131a" : "#ffffff", padding: 14, cursor: "pointer" }; }
+function chipStyle(isLight: boolean): React.CSSProperties { return { display: "inline-flex", padding: "6px 10px", borderRadius: 999, background: isLight ? "#eef4ff" : "#162138", color: isLight ? "#33528f" : "#d4dfff", fontSize: 12, fontWeight: 700 }; }
+function chipButton(isLight: boolean): React.CSSProperties { return { ...chipStyle(isLight), border: "none", cursor: "pointer" }; }
+function pill(isLight: boolean, live: boolean): React.CSSProperties { return { display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "6px 10px", borderRadius: 999, background: live ? "rgba(34,197,94,.14)" : isLight ? "#eef2ff" : "#162138", color: live ? "#16a34a" : "#3f7cff", fontSize: 12, fontWeight: 800, width: "fit-content" }; }

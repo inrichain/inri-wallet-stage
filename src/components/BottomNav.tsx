@@ -11,7 +11,7 @@ export type Tab =
   | "swap"
   | "bridge"
   | "staking"
-  | "settings";
+  | "more";
 
 export default function BottomNav({
   tab,
@@ -32,7 +32,7 @@ export default function BottomNav({
     { id: "dashboard", label: tr(lang, "nav_home"), icon: "⌂" },
     { id: "tokens", label: tr(lang, "nav_tokens"), icon: "◈" },
     { id: "activity", label: tr(lang, "nav_activity"), icon: "↻" },
-    { id: "settings", label: tr(lang, "nav_settings"), icon: "⚙" },
+    { id: "more", label: "More", icon: "⋯" },
   ];
 
   const secondaryItems: { id: Tab; label: string }[] = [

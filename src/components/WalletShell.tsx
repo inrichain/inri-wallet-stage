@@ -45,7 +45,7 @@ export type Tab =
   | "swap"
   | "bridge"
   | "staking"
-  | "settings";
+  | "more";
 
 type View = "auth" | "wallet";
 type AuthMode = "unlock" | "create" | "import";
@@ -665,7 +665,7 @@ export default function WalletShell() {
       case "staking":
         return <StakingScreen theme={theme} lang={lang} />;
 
-      case "settings":
+      case "more":
         return (
           <SettingsScreen
             theme={theme}
@@ -944,7 +944,7 @@ export default function WalletShell() {
       }}
     >
       <Header
-          onOpenSettings={() => setTab("settings")}
+          onOpenSettings={() => setTab("more")}
         walletName={currentWalletMeta?.name || "INRI Wallet"}
         theme={theme}
         lang={lang}
