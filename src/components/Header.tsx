@@ -184,6 +184,7 @@ export default function Header({
                   overflowY: "auto",
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",
+                  touchAction: "pan-y",
                 }}
               >
                 {getAllNetworks().map((item) => (
@@ -209,7 +210,7 @@ export default function Header({
                       textAlign: "left",
                     }}
                   >
-                    <img src={item.logo} alt={item.name} style={{ width: 18, height: 18, borderRadius: 9, objectFit: "contain", flexShrink: 0 }} />
+                    <img src={item.logo} alt={item.name} onError={(e) => { const img = e.currentTarget; if (!img.dataset.fallbackApplied) { img.dataset.fallbackApplied = "true"; img.src = `${BASE}network-inri.png`; } }} style={{ width: 18, height: 18, borderRadius: 9, objectFit: "contain", flexShrink: 0 }} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 800 }}>{item.name}</div>
                       <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>Chain ID {item.chainId}</div>

@@ -60,6 +60,7 @@ export default function SettingsScreen({
   const [networkValidation, setNetworkValidation] = useState<{ status: "idle" | "checking" | "ok" | "error"; message: string }>({ status: "idle", message: "" });
   const fileRef = useRef<HTMLInputElement | null>(null);
   const logoFileRef = useRef<HTMLInputElement | null>(null);
+  const walletConnectRef = useRef<HTMLDivElement | null>(null);
 
   const t = {
     rpcPlaceholder: tr(lang, "settings_rpc_placeholder"),
@@ -116,12 +117,19 @@ export default function SettingsScreen({
       setNetwork(getStoredNetwork());
       setPermissions(listSitePermissions());
     };
+    const openWalletConnect = () => {
+      window.setTimeout(() => {
+        walletConnectRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 60);
+    };
     window.addEventListener("wallet-site-permissions-updated", sync);
     window.addEventListener("wallet-network-updated", sync as EventListener);
+    window.addEventListener("wallet-open-wc", openWalletConnect as EventListener);
     return () => {
       window.clearInterval(id);
       window.removeEventListener("wallet-site-permissions-updated", sync);
       window.removeEventListener("wallet-network-updated", sync as EventListener);
+      window.removeEventListener("wallet-open-wc", openWalletConnect as EventListener);
     };
   }, []);
 
@@ -492,6 +500,7 @@ export default function SettingsScreen({
         </Panel>
 
         <Panel isLight={isLight}>
+          <div ref={walletConnectRef} />
           <SectionTitle isLight={isLight}>{t.wcTitle}</SectionTitle>
           <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginBottom: 14, lineHeight: 1.55 }}>{t.wcHint}</div>
           <div style={{ display: "grid", gap: 10 }}>

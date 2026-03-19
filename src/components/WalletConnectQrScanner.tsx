@@ -23,6 +23,9 @@ export default function WalletConnectQrScanner({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const openingRef = useRef(false);
+  const scannedRef = useRef(false);
   const [cameraError, setCameraError] = useState("");
   const [scannedText, setScannedText] = useState("");
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
@@ -32,6 +35,7 @@ export default function WalletConnectQrScanner({
   useEffect(() => {
     if (!open) return;
 
+    scannedRef.current = false;
     readerRef.current = new BrowserMultiFormatReader();
     void prepareAndOpenCamera();
 
@@ -46,12 +50,28 @@ export default function WalletConnectQrScanner({
   useEffect(() => {
     if (!open || !selectedDeviceId) return;
     void openCamera(selectedDeviceId);
-  }, [selectedDeviceId]);
+  }, [open, selectedDeviceId]);
+
+  useEffect(() => {
+    if (!open) return;
+    const cleanup = () => stopCameraTracks();
+    window.addEventListener("pagehide", cleanup);
+    document.addEventListener("visibilitychange", cleanup);
+    return () => {
+      window.removeEventListener("pagehide", cleanup);
+      document.removeEventListener("visibilitychange", cleanup);
+    };
+  }, [open]);
 
   function stopCameraTracks() {
     const video = videoRef.current;
-    const stream = video?.srcObject as MediaStream | null;
-    if (stream) stream.getTracks().forEach((track) => track.stop());
+    const stream = streamRef.current || (video?.srcObject as MediaStream | null);
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        try { track.stop(); } catch {}
+      });
+    }
+    streamRef.current = null;
     if (video) video.srcObject = null;
   }
 
@@ -73,26 +93,30 @@ export default function WalletConnectQrScanner({
       const list = Array.isArray(devices) ? devices : [];
       setCameras(list);
       const preferred = selectedDeviceId || findBackCamera(list)?.deviceId || list[0]?.deviceId || "";
-      if (preferred) {
-        setSelectedDeviceId(preferred);
-        await openCamera(preferred);
-      } else {
-        await openCamera();
-      }
+      if (preferred) setSelectedDeviceId(preferred);
+      else await openCamera();
     } catch (err: any) {
       console.error(err);
       setCameraError(err?.message || t("scanner_could_not_open"));
+    } finally {
+      openingRef.current = false;
     }
   }
 
   async function startDecodeWithConstraints(constraints: MediaStreamConstraints) {
-    if (!readerRef.current || !videoRef.current) return;
+    if (!readerRef.current || !videoRef.current || scannedRef.current) return;
     stopCameraTracks();
-    await readerRef.current.decodeFromConstraints(constraints, videoRef.current, (result) => {
-      if (!result) return;
+    const stream = await navigator.mediaDevices.getUserMedia(constraints.video ? constraints : { audio: false, video: true });
+    streamRef.current = stream;
+    videoRef.current.srcObject = stream;
+    await videoRef.current.play().catch(() => {});
+    await readerRef.current.decodeFromVideoElement(videoRef.current, (result) => {
+      if (!result || scannedRef.current) return;
       const text = result.getText()?.trim() || "";
       setScannedText(text);
       if (text.startsWith("wc:")) {
+        scannedRef.current = true;
+        stopCameraTracks();
         handleClose();
         void onScan(text);
       }
@@ -100,6 +124,8 @@ export default function WalletConnectQrScanner({
   }
 
   async function openCamera(deviceId?: string) {
+    if (openingRef.current || scannedRef.current) return;
+    openingRef.current = true;
     setCameraError("");
     setScannedText("");
     try {
@@ -132,6 +158,8 @@ export default function WalletConnectQrScanner({
     } catch (err: any) {
       console.error(err);
       setCameraError(err?.message || t("scanner_could_not_open"));
+    } finally {
+      openingRef.current = false;
     }
   }
 

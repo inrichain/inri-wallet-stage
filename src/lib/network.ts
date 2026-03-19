@@ -36,9 +36,9 @@ function initialsFromName(name: string) {
 }
 
 function networkBadge(name: string, symbol = "ETH", color = "#3f7cff") {
-  const text = encodeURIComponent(initialsFromName(name));
-  const symbolSafe = encodeURIComponent(String(symbol || "ETH").slice(0, 4).toUpperCase());
-  const fill = encodeURIComponent(color);
+  const text = initialsFromName(name);
+  const symbolSafe = String(symbol || "ETH").slice(0, 4).toUpperCase();
+  const fill = String(color || "#3f7cff");
   const svg = `
   <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
     <defs>
@@ -52,7 +52,7 @@ function networkBadge(name: string, symbol = "ETH", color = "#3f7cff") {
     <text x="64" y="54" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#ffffff">${text}</text>
     <text x="64" y="94" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="800" fill="#ffffff">${symbolSafe}</text>
   </svg>`;
-  return `data:image/svg+xml;utf8,${svg.replace(/\n\s*/g, "")}`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg.replace(/\n\s*/g, ""))}`;
 }
 
 export const NETWORK_PRESETS: NetworkPreset[] = [

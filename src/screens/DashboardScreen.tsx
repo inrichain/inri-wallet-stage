@@ -101,6 +101,12 @@ export default function DashboardScreen({
     };
   }, [address, network.key, homeTokens.length, network.symbol]);
 
+
+  function openWalletConnect() {
+    window.dispatchEvent(new CustomEvent("wallet-open-wc", { detail: { source: "dashboard" } }));
+    setTab("settings");
+  }
+
   async function installApp() {
     const promptEvent = window.deferredPrompt;
     if (!promptEvent) return;
@@ -187,6 +193,11 @@ export default function DashboardScreen({
               {tr(lang, "dashboard_install_app")}
             </button>
           ) : null}
+
+          <button onClick={openWalletConnect} style={walletConnectButton(isLight)}>
+            <span style={walletConnectIconStyle}>⌁</span>
+            WalletConnect
+          </button>
         </div>
       </section>
 
@@ -296,3 +307,31 @@ function actionLink(isLight: boolean): React.CSSProperties {
     cursor: "pointer",
   };
 }
+
+
+function walletConnectButton(isLight: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "12px 16px",
+    borderRadius: 14,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#ffffff" : "#121621",
+    color: isLight ? "#10131a" : "#ffffff",
+    cursor: "pointer",
+    fontWeight: 800,
+  };
+}
+
+const walletConnectIconStyle: React.CSSProperties = {
+  width: 22,
+  height: 22,
+  borderRadius: 11,
+  display: "grid",
+  placeItems: "center",
+  background: "rgba(63,124,255,.14)",
+  color: "#3f7cff",
+  fontWeight: 900,
+  fontSize: 14,
+};
