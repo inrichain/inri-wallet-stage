@@ -3,20 +3,6 @@ import { DEFAULT_NETWORKS, getStoredNetwork, type NetworkItem } from "./network"
 
 const BASE = import.meta.env.BASE_URL || "/";
 
-function normalizeAssetSlug(value: string) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-export function getPublicTokenLogoPath(value: string) {
-  const slug = normalizeAssetSlug(value);
-  return slug ? `${BASE}token-${slug}.png` : `getPublicTokenLogoPath("inri")`;
-}
-
-
 export const RPC_URL = "https://rpc.inri.life";
 export const RPC_FALLBACK_URL = "https://rpc-chain.inri.life";
 export const CHAIN_ID = 3777;
@@ -81,7 +67,7 @@ export const DEFAULT_TOKENS: TokenItem[] = [
   {
     symbol: "INRI",
     subtitle: "native coin • pays gas",
-    logo: `getPublicTokenLogoPath("inri")`,
+    logo: `${BASE}token-inri.png`,
     isDefault: true,
     isNative: true,
     decimals: 18,
@@ -90,7 +76,7 @@ export const DEFAULT_TOKENS: TokenItem[] = [
   {
     symbol: "iUSD",
     subtitle: "stable token",
-    logo: `getPublicTokenLogoPath("iusd")`,
+    logo: `${BASE}token-iusd.png`,
     isDefault: true,
     address: "0x116b2fF23e062A52E2c0ea12dF7e2638b62Fa0FC",
     decimals: 6,
@@ -99,7 +85,7 @@ export const DEFAULT_TOKENS: TokenItem[] = [
   {
     symbol: "WINRI",
     subtitle: "wrapped native token",
-    logo: `getPublicTokenLogoPath("winri")`,
+    logo: `${BASE}token-winri.png`,
     isDefault: true,
     address: "0x8731F1709745173470821eAeEd9BC600EEC9A3D1",
     decimals: 18,
@@ -108,7 +94,7 @@ export const DEFAULT_TOKENS: TokenItem[] = [
   {
     symbol: "DNR",
     subtitle: "token",
-    logo: `getPublicTokenLogoPath("dnr")`,
+    logo: `${BASE}token-dnr.png`,
     isDefault: true,
     address: "0xDa9541bB01d9EC1991328516C71B0E539a97d27f",
     decimals: 18,
@@ -281,20 +267,18 @@ export async function getTokenBalance(
 }
 
 function guessTokenLogo(symbol: string) {
-  const publicPath = getPublicTokenLogoPath(symbol);
-  if (publicPath) return publicPath;
   const clean = symbol.trim().toUpperCase();
 
   if (clean === "USDT") return `${BASE}token-usdt.png`;
-  if (clean === "INRI") return `getPublicTokenLogoPath("inri")`;
-  if (clean === "IUSD") return `getPublicTokenLogoPath("iusd")`;
-  if (clean === "WINRI") return `getPublicTokenLogoPath("winri")`;
-  if (clean === "DNR") return `getPublicTokenLogoPath("dnr")`;
+  if (clean === "INRI") return `${BASE}token-inri.png`;
+  if (clean === "IUSD") return `${BASE}token-iusd.png`;
+  if (clean === "WINRI") return `${BASE}token-winri.png`;
+  if (clean === "DNR") return `${BASE}token-dnr.png`;
   if (clean === "POL") return `${BASE}network-polygon.png`;
   if (clean === "ETH") return `${BASE}network-ethereum.png`;
   if (clean === "BNB") return `${BASE}network-bnb.png`;
 
-  return `getPublicTokenLogoPath("inri")`;
+  return `${BASE}token-inri.png`;
 }
 
 function parseBytes32Text(value: string) {
