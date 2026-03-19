@@ -19,3 +19,5 @@ body{
 #root{min-height:100dvh}
 button,input,select,textarea{font:inherit}
 img{max-width:100%}
+
+@keyframes inri-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}

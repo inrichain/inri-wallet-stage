@@ -138,8 +138,10 @@ export default function WalletShell() {
   };
 
   useEffect(() => {
-    saveStoredNetwork(getInriNetwork());
-    window.dispatchEvent(new Event("wallet-network-updated"));
+    if (!localStorage.getItem("wallet_active_network")) {
+      saveStoredNetwork(getInriNetwork());
+      window.dispatchEvent(new Event("wallet-network-updated"));
+    }
     const saved = localStorage.getItem(VAULTS_KEY);
     const currentId = localStorage.getItem(CURRENT_WALLET_KEY);
 

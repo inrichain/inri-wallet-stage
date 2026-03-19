@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
-import { DEFAULT_NETWORKS, getStoredNetwork, type NetworkItem } from "./network";
+import { getAllNetworks, getStoredNetwork, type NetworkItem } from "./network";
+import { resolveTokenAsset } from "./assets";
 
 const BASE = import.meta.env.BASE_URL || "/";
 
@@ -34,10 +35,10 @@ const providerCache = new Map<string, ethers.JsonRpcProvider>();
 
 export function getNetworkConfig(networkKey?: string): NetworkItem {
   const active = networkKey
-    ? DEFAULT_NETWORKS.find((item) => item.key === networkKey)
+    ? getAllNetworks().find((item) => item.key === networkKey)
     : getStoredNetwork();
 
-  return active || DEFAULT_NETWORKS[0];
+  return active || getAllNetworks()[0] || getStoredNetwork();
 }
 
 export function getProvider(networkKey?: string) {
@@ -266,19 +267,8 @@ export async function getTokenBalance(
   }
 }
 
-function guessTokenLogo(symbol: string) {
-  const clean = symbol.trim().toUpperCase();
-
-  if (clean === "USDT") return `${BASE}token-usdt.png`;
-  if (clean === "INRI") return `${BASE}token-inri.png`;
-  if (clean === "IUSD") return `${BASE}token-iusd.png`;
-  if (clean === "WINRI") return `${BASE}token-winri.png`;
-  if (clean === "DNR") return `${BASE}token-dnr.png`;
-  if (clean === "POL") return `${BASE}network-polygon.png`;
-  if (clean === "ETH") return `${BASE}network-ethereum.png`;
-  if (clean === "BNB") return `${BASE}network-bnb.png`;
-
-  return `${BASE}token-inri.png`;
+function guessTokenLogo(symbol: string, networkKey?: string, name?: string) {
+  return resolveTokenAsset({ symbol, networkKey, name });
 }
 
 function parseBytes32Text(value: string) {
@@ -308,7 +298,7 @@ async function resolveTokenMetadataWithProvider(
       name: String(name || symbol || "Token"),
       symbol: finalSymbol,
       decimals: Number(decimals),
-      logo: guessTokenLogo(finalSymbol),
+      logo: guessTokenLogo(finalSymbol, undefined, String(name || symbol || "Token")),
     };
   } catch {
     const fallbackContract = new ethers.Contract(tokenAddress, ERC20_STRING_FALLBACK_ABI, providerLike);
@@ -325,7 +315,7 @@ async function resolveTokenMetadataWithProvider(
       name,
       symbol,
       decimals: Number(decimals),
-      logo: guessTokenLogo(symbol),
+      logo: guessTokenLogo(symbol, undefined, name),
     };
   }
 }

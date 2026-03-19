@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getAllNetworks, getStoredNetwork, saveStoredNetwork, type NetworkItem } from "../lib/network";
 import { tr } from "../i18n/translations";
+import LogoImage from "./LogoImage";
 
 const DEFAULT_AVATAR = `data:image/svg+xml;utf8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
@@ -19,7 +20,6 @@ const DEFAULT_AVATAR = `data:image/svg+xml;utf8,${encodeURIComponent(`
 
 const BASE = import.meta.env.BASE_URL || "/";
 const BRAND_LOGO = `${BASE}brand-inri.png`;
-const FALLBACK_BRAND = `${BASE}pwa-192.png`;
 
 export default function Header({
   walletName,
@@ -35,15 +35,16 @@ export default function Header({
   const isLight = theme === "light";
   const [network, setNetwork] = useState<NetworkItem>(getStoredNetwork());
   const [networkOpen, setNetworkOpen] = useState(false);
+  const [networkQuery, setNetworkQuery] = useState("");
   const [avatar, setAvatar] = useState<string>(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
 
   useEffect(() => {
     const syncNetwork = () => setNetwork(getStoredNetwork());
     const syncAvatar = () => setAvatar(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
+    const closeMenu = () => setNetworkOpen(false);
     window.addEventListener("storage", syncNetwork);
     window.addEventListener("wallet-network-updated", syncNetwork as EventListener);
     window.addEventListener("wallet-avatar-updated", syncAvatar as EventListener);
-    const closeMenu = () => setNetworkOpen(false);
     window.addEventListener("click", closeMenu);
     return () => {
       window.removeEventListener("storage", syncNetwork);
@@ -52,6 +53,13 @@ export default function Header({
       window.removeEventListener("click", closeMenu);
     };
   }, []);
+
+  const filteredNetworks = useMemo(() => {
+    const q = networkQuery.trim().toLowerCase();
+    const items = getAllNetworks();
+    if (!q) return items;
+    return items.filter((item) => [item.name, item.symbol, String(item.chainId)].join(" ").toLowerCase().includes(q));
+  }, [networkQuery, network.chainId]);
 
   return (
     <header
@@ -76,18 +84,7 @@ export default function Header({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <img
-            src={BRAND_LOGO}
-            alt="INRI"
-            onError={(e) => {
-              const img = e.currentTarget;
-              if (!img.dataset.fallbackApplied) {
-                img.dataset.fallbackApplied = "true";
-                img.src = FALLBACK_BRAND;
-              }
-            }}
-            style={{ width: 44, height: 44, objectFit: "contain", flexShrink: 0 }}
-          />
+          <LogoImage src={BRAND_LOGO} alt="INRI" kind="dapp" label="INRI" size={44} rounded={false} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 900, fontSize: 17, color: isLight ? "#10131a" : "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {walletName}
@@ -114,21 +111,10 @@ export default function Header({
                 fontWeight: 800,
                 fontSize: 13,
                 cursor: "pointer",
-                maxWidth: 170,
+                maxWidth: 190,
               }}
             >
-              <img
-                src={network.logo}
-                alt={network.name}
-                onError={(e) => {
-                  const img = e.currentTarget;
-                  if (!img.dataset.fallbackApplied) {
-                    img.dataset.fallbackApplied = "true";
-                    img.src = `${BASE}network-inri.png`;
-                  }
-                }}
-                style={{ width: 18, height: 18, borderRadius: 9, objectFit: "contain", flexShrink: 0 }}
-              />
+              <LogoImage src={network.logo} alt={network.name} kind="network" label={network.name} symbol={network.symbol} size={20} />
               <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{network.name}</span>
             </button>
 
@@ -138,49 +124,72 @@ export default function Header({
                   position: "absolute",
                   right: 0,
                   top: "calc(100% + 8px)",
-                  minWidth: 240,
+                  width: "min(360px, calc(100vw - 32px))",
                   background: isLight ? "#ffffff" : "#0f1624",
                   border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`,
-                  borderRadius: 16,
+                  borderRadius: 18,
                   boxShadow: isLight ? "0 18px 50px rgba(20,30,50,.15)" : "0 18px 50px rgba(0,0,0,.45)",
-                  padding: 8,
+                  padding: 10,
                   zIndex: 100,
-                  maxHeight: "min(420px, calc(100vh - 120px))",
+                  maxHeight: "min(520px, calc(100vh - 120px))",
                   overflowY: "auto",
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",
                 }}
               >
-                {getAllNetworks().map((item) => (
-                  <button
-                    key={item.chainId}
-                    onClick={() => {
-                      saveStoredNetwork(item);
-                      setNetwork(item);
-                      setNetworkOpen(false);
-                      window.dispatchEvent(new Event("wallet-network-updated"));
-                    }}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "none",
-                      background: Number(item.chainId) === Number(network.chainId) ? (isLight ? "#eef4ff" : "#162138") : "transparent",
-                      color: isLight ? "#10131a" : "#ffffff",
-                      cursor: "pointer",
-                      textAlign: "left",
-                    }}
-                  >
-                    <img src={item.logo} alt={item.name} onError={(e) => { const img = e.currentTarget; if (!img.dataset.fallbackApplied) { img.dataset.fallbackApplied = "true"; img.src = `${BASE}network-inri.png`; } }} style={{ width: 18, height: 18, borderRadius: 9, objectFit: "contain", flexShrink: 0 }} />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 800 }}>{item.name}</div>
-                      <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>Chain ID {item.chainId}</div>
-                    </div>
-                  </button>
-                ))}
+                <input
+                  value={networkQuery}
+                  onChange={(e) => setNetworkQuery(e.target.value)}
+                  placeholder="Search network, symbol or chain ID"
+                  style={{
+                    width: "100%",
+                    marginBottom: 8,
+                    padding: "11px 12px",
+                    borderRadius: 14,
+                    border: `1px solid ${isLight ? "#d7e0ee" : "#2b3950"}`,
+                    background: isLight ? "#f7fafe" : "#0d1420",
+                    color: isLight ? "#10131a" : "#fff",
+                    outline: "none",
+                  }}
+                />
+                <div style={{ display: "grid", gap: 6 }}>
+                  {filteredNetworks.map((item) => {
+                    const active = Number(item.chainId) === Number(network.chainId);
+                    return (
+                      <button
+                        key={item.chainId}
+                        onClick={() => {
+                          saveStoredNetwork(item);
+                          setNetwork(item);
+                          setNetworkOpen(false);
+                          setNetworkQuery("");
+                          window.dispatchEvent(new Event("wallet-network-updated"));
+                        }}
+                        style={{
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          padding: "11px 12px",
+                          borderRadius: 14,
+                          border: active ? "1px solid rgba(63,124,255,.36)" : "1px solid transparent",
+                          background: active ? (isLight ? "#eef4ff" : "#162138") : "transparent",
+                          color: isLight ? "#10131a" : "#ffffff",
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={24} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</div>
+                          <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>Chain ID {item.chainId} • {item.symbol}{item.isCustom ? " • Custom" : ""}</div>
+                        </div>
+                        {active ? <span style={{ fontSize: 12, fontWeight: 800, color: "#3f7cff" }}>ACTIVE</span> : null}
+                      </button>
+                    );
+                  })}
+                  {!filteredNetworks.length ? <div style={{ padding: 12, color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>No networks found.</div> : null}
+                </div>
               </div>
             ) : null}
           </div>

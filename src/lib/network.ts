@@ -1,3 +1,5 @@
+import { resolveNetworkAsset } from "./assets";
+
 const BASE = import.meta.env.BASE_URL || "/";
 
 export type NetworkItem = {
@@ -26,53 +28,8 @@ export type NetworkPreset = {
 export const NETWORKS_KEY = "wallet_active_network";
 const CUSTOM_NETWORKS_KEY = "wallet_custom_networks_v1";
 
-function initialsFromName(name: string) {
-  const parts = String(name || "NET")
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .slice(0, 2);
-  if (!parts.length) return "N";
-  return parts.map((part) => part[0]?.toUpperCase() || "").join("");
-}
-
 export function buildNetworkBadge(name: string, symbol = "ETH", color = "#3f7cff") {
-  const text = initialsFromName(name);
-  const symbolSafe = String(symbol || "ETH").slice(0, 4).toUpperCase();
-  const fill = String(color || "#3f7cff");
-  const svg = `
-  <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-    <defs>
-      <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
-        <stop offset="0%" stop-color="${fill}" />
-        <stop offset="100%" stop-color="#111827" />
-      </linearGradient>
-    </defs>
-    <rect width="128" height="128" rx="32" fill="url(#g)"/>
-    <circle cx="64" cy="44" r="24" fill="rgba(255,255,255,.12)"/>
-    <text x="64" y="54" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#ffffff">${text}</text>
-    <text x="64" y="94" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="800" fill="#ffffff">${symbolSafe}</text>
-  </svg>`;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg.replace(/\n\s*/g, ""))}`;
-}
-
-const LOGO_KEY_ALIASES: Record<string, string[]> = {
-  bsc: ["bnb", "bsc"],
-  zksync: ["zksyncera", "zksync"],
-  sei: ["seievm", "sei"],
-};
-
-function sanitizeAssetKey(value: string) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "")
-    .trim();
-}
-
-function resolveAssetCandidates(key: string, name: string) {
-  const cleanKey = sanitizeAssetKey(key);
-  const cleanName = sanitizeAssetKey(name);
-  const aliases = LOGO_KEY_ALIASES[cleanKey] || [];
-  return Array.from(new Set([cleanKey, cleanName, ...aliases].filter(Boolean)));
+  return resolveNetworkAsset({ name, symbol, color });
 }
 
 export function resolveNetworkLogo(input: {
@@ -82,11 +39,7 @@ export function resolveNetworkLogo(input: {
   color?: string;
   logo?: string;
 }) {
-  if (input.logo) return input.logo;
-  const candidates = resolveAssetCandidates(String(input.key || ""), String(input.name || ""));
-  const primary = candidates[0];
-  if (primary) return `${BASE}network-${primary}.png`;
-  return buildNetworkBadge(input.name || "Network", input.symbol || "ETH", input.color || "#3f7cff");
+  return resolveNetworkAsset(input);
 }
 
 export function getNetworkLogoFallback(input: {
@@ -94,7 +47,7 @@ export function getNetworkLogoFallback(input: {
   symbol?: string;
   color?: string;
 }) {
-  return buildNetworkBadge(input.name || "Network", input.symbol || "ETH", input.color || "#3f7cff");
+  return resolveNetworkAsset(input);
 }
 
 export const NETWORK_PRESETS: NetworkPreset[] = [
@@ -165,7 +118,12 @@ function normalizeStoredNetwork(value: any): NetworkItem {
   return {
     ...known,
     ...value,
-    logo: value?.logo || known.logo,
+    logo: resolveNetworkLogo({
+      key: value?.key || known.key,
+      name: value?.name || known.name,
+      symbol: value?.symbol || known.symbol,
+      logo: value?.logo || known.logo,
+    }),
   };
 }
 
@@ -208,7 +166,7 @@ export function getAllNetworks(): NetworkItem[] {
     if (index >= 0) merged[index] = { ...merged[index], ...custom, isCustom: true };
     else merged.push(custom);
   }
-  return merged;
+  return merged.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function upsertCustomNetwork(item: NetworkItem) {
