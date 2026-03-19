@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import { tr, trf } from "../i18n/translations";
 import { getNetworkByChainId, getStoredNetwork } from "./network";
+import { analyzeTransactionCalldata } from "./txAnalysis";
 
 function shorten(value: string, left = 8, right = 6) {
   if (!value) return "-";
@@ -114,18 +115,20 @@ export function buildWcRequestDetails(request: any, lang = "en") {
     const effectiveGasPrice = maxFeePerGas ?? gasPrice;
     const estimatedFee = gasLimit !== undefined && effectiveGasPrice !== undefined ? gasLimit * effectiveGasPrice : undefined;
     const hasData = !!tx?.data && tx.data !== "0x";
+    const analysis = analyzeTransactionCalldata(tx?.data);
 
     const riskItems: string[] = [];
     if (!tx?.to) riskItems.push(tr(lang, "wc_details_contract_creation"));
     if (hasData) riskItems.push(tr(lang, "wc_details_calls_contract"));
     if (value > 0n) riskItems.push(tr(lang, "wc_details_moves_funds"));
+    if (analysis?.warnings?.length) riskItems.push(...analysis.warnings);
     if (riskItems.length === 0) riskItems.push(tr(lang, "wc_details_confirm_destination"));
 
     return {
       ...base,
       kind: "transaction",
       title: trf(lang, "wc_details_send_title", { network: network?.name || "Wallet" }),
-      subtitle: tr(lang, "wc_details_send_subtitle"),
+      subtitle: analysis ? `${analysis.action} • ${analysis.functionName}` : tr(lang, "wc_details_send_subtitle"),
       from: tx?.from ? shorten(tx.from) : tr(lang, "wc_details_current_wallet"),
       to: tx?.to ? shorten(tx.to) : tr(lang, "wc_details_new_contract"),
       toFull: tx?.to || "",
@@ -143,7 +146,9 @@ export function buildWcRequestDetails(request: any, lang = "en") {
       dataPreview: hasData ? shorten(tx.data, 14, 10) : tr(lang, "wc_details_no_calldata"),
       rawTx: tx,
       riskItems,
-      displayMethod: cleanMethodLabel,
+      analysis,
+      riskLevel: analysis?.riskLevel || (hasData ? "medium" : "low"),
+      displayMethod: analysis?.action || cleanMethodLabel,
     };
   }
 
@@ -157,6 +162,8 @@ export function buildWcRequestDetails(request: any, lang = "en") {
       title: `Switch to ${target?.name || "requested network"}`,
       subtitle: `The dApp wants to switch from ${network?.name || "current network"} to ${target?.name || "another network"}.`,
       requestedNetwork: target?.name || "Unknown network",
+      requestedChainId: Number(target?.chainId || parsed || 0),
+      currentNetwork: getStoredNetwork().name,
       riskItems: [
         "Confirm the requested network before continuing.",
         "Only approve network switches you trust.",
@@ -173,6 +180,8 @@ export function buildWcRequestDetails(request: any, lang = "en") {
       title: `Add network ${payload?.chainName || "custom chain"}`,
       subtitle: "The dApp wants to add a custom RPC network to the wallet.",
       requestedNetwork: payload?.chainName || "Custom network",
+      requestedChainId: payload?.chainId,
+      requestedRpc: payload?.rpcUrls?.[0] || "-",
       riskItems: [
         "Check the RPC URL and chain ID carefully.",
         "Only add custom networks from trusted sources.",
@@ -182,7 +191,7 @@ export function buildWcRequestDetails(request: any, lang = "en") {
     };
   }
 
-  if (method === "personal_sign") {
+  if (method === "personal_sign" || method === "eth_sign") {
     const rawMessage = Array.isArray(request?.params) ? request.params[0] ?? request.params[1] : "";
 
     const messageText =
@@ -211,16 +220,19 @@ export function buildWcRequestDetails(request: any, lang = "en") {
     const payloadRaw = Array.isArray(request?.params) ? request.params[1] : null;
     const payload = typeof payloadRaw === "string" ? parseJsonSafe(payloadRaw) : payloadRaw;
     const summary = summarizeTypedData(payload, lang);
+    const analysis = analyzeTransactionCalldata(payload?.message?.data || payload?.message?.input || payload?.message?.calldata);
 
     return {
       ...base,
       kind: "typedData",
       title: trf(lang, "wc_details_sign_typed_title", { network: network?.name || "Wallet" }),
-      subtitle: tr(lang, "wc_details_sign_typed_subtitle"),
+      subtitle: analysis ? `${summary?.primaryType || "Typed data"} • ${analysis.action}` : tr(lang, "wc_details_sign_typed_subtitle"),
       summary,
+      analysis,
       riskItems: [
         tr(lang, "wc_details_typed_risk1"),
         tr(lang, "wc_details_typed_risk2"),
+        ...(analysis?.warnings || []),
       ],
       displayMethod: cleanMethodLabel,
     };

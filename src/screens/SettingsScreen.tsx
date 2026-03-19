@@ -54,6 +54,7 @@ export default function SettingsScreen({
   const [securityState, setSecurityState] = useState<SecuritySettings>(security);
   const [permissions, setPermissions] = useState<any[]>([]);
   const [draft, setDraft] = useState<CustomNetworkDraft>({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "" });
+  const [networkValidation, setNetworkValidation] = useState<{ status: "idle" | "checking" | "ok" | "error"; message: string }>({ status: "idle", message: "" });
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const t = {
@@ -153,12 +154,60 @@ export default function SettingsScreen({
     showWcMessage(tr(lang, "settings_rpc_saved"));
   }
 
-  function handleAddOrUpdateCustomNetwork() {
+  function isSuspiciousRpcUrl(value: string) {
+    const url = value.trim();
+    if (!url) return true;
+    if (/^https:\/\//i.test(url)) return false;
+    if (/^http:\/\/(127\.0\.0\.1|localhost|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/i.test(url)) return false;
+    return true;
+  }
+
+  async function validateNetworkDraftInput() {
     const chainId = Number(draft.chainId);
-    if (!draft.name.trim() || !Number.isFinite(chainId) || !draft.rpcUrl.trim()) {
-      showWcMessage("Fill network name, chain ID and RPC URL.");
+    if (!draft.name.trim() || !Number.isFinite(chainId) || chainId <= 0 || !draft.rpcUrl.trim()) {
+      setNetworkValidation({ status: "error", message: "Fill network name, valid chain ID and RPC URL." });
+      return null;
+    }
+    if (isSuspiciousRpcUrl(draft.rpcUrl)) {
+      setNetworkValidation({ status: "error", message: "Use HTTPS RPC URLs unless this is a trusted local RPC." });
+      return null;
+    }
+    setNetworkValidation({ status: "checking", message: "Validating RPC endpoint..." });
+    try {
+      const response = await fetch(draft.rpcUrl.trim(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
+      });
+      const json = await response.json();
+      const remoteChainId = typeof json?.result === "string" && json.result.startsWith("0x") ? Number(BigInt(json.result)) : Number(json?.result);
+      if (!Number.isFinite(remoteChainId)) {
+        setNetworkValidation({ status: "error", message: "RPC did not return a valid chain ID." });
+        return null;
+      }
+      if (remoteChainId !== chainId) {
+        setNetworkValidation({ status: "error", message: `RPC chain ID mismatch: expected ${chainId}, received ${remoteChainId}.` });
+        return null;
+      }
+      const statusMessage = getAllNetworks().some((item) => Number(item.chainId) === chainId && item.name !== draft.name.trim())
+        ? `RPC verified for chain ${chainId}. This overrides an existing network entry.`
+        : `RPC verified for chain ${chainId}.`;
+      setNetworkValidation({ status: "ok", message: statusMessage });
+      return { chainId, remoteChainId };
+    } catch (error: any) {
+      setNetworkValidation({ status: "error", message: error?.message || "RPC validation failed." });
+      return null;
+    }
+  }
+
+  async function handleAddOrUpdateCustomNetwork() {
+    const validated = await validateNetworkDraftInput();
+    if (!validated) {
+      showWcMessage("Custom network validation failed.");
       return;
     }
+
+    const chainId = Number(draft.chainId);
     const explorer = draft.explorerUrl.trim().replace(/\/$/, "");
     const created = upsertCustomNetwork({
       key: `custom-${chainId}`,
@@ -175,6 +224,7 @@ export default function SettingsScreen({
     handleSelectNetwork(created);
     showWcMessage(`Network saved: ${created.name}`);
   }
+
 
   function handleEditCustomNetwork(item: NetworkItem) {
     setDraft({
@@ -347,6 +397,19 @@ export default function SettingsScreen({
           <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
             <button onClick={handleAddOrUpdateCustomNetwork} style={primaryButton}>Save custom network</button>
             <button onClick={() => setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "" })} style={secondaryButton(isLight)}>Clear</button>
+          </div>
+          {networkValidation.status !== "idle" ? (
+            <div style={{ marginTop: 10, padding: 12, borderRadius: 14, background: networkValidation.status === "ok" ? (isLight ? "#eefaf1" : "rgba(74,222,128,.08)") : networkValidation.status === "checking" ? (isLight ? "#eef4ff" : "rgba(63,124,255,.08)") : (isLight ? "#fff3f3" : "rgba(255,123,123,.08)"), border: `1px solid ${networkValidation.status === "ok" ? "rgba(74,222,128,.28)" : networkValidation.status === "checking" ? "rgba(63,124,255,.22)" : "rgba(255,123,123,.22)"}`, color: isLight ? "#10131a" : "#fff" }}>{networkValidation.message}</div>
+          ) : null}
+        </Panel>
+
+        <Panel isLight={isLight}>
+          <SectionTitle isLight={isLight}>Connection center</SectionTitle>
+          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginBottom: 14, lineHeight: 1.55 }}>A single place to review browser permissions, WalletConnect sessions and the networks they can use.</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
+            <div style={sessionCard(isLight)}><div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>Connected sites</div><div style={{ fontSize: 24, fontWeight: 900, color: isLight ? "#10131a" : "#fff" }}>{permissions.length}</div></div>
+            <div style={sessionCard(isLight)}><div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>WalletConnect sessions</div><div style={{ fontSize: 24, fontWeight: 900, color: isLight ? "#10131a" : "#fff" }}>{wcSessions.length}</div></div>
+            <div style={sessionCard(isLight)}><div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>Active network</div><div style={{ fontSize: 24, fontWeight: 900, color: isLight ? "#10131a" : "#fff" }}>{network.name}</div><div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>Chain ID {network.chainId}</div></div>
           </div>
         </Panel>
 

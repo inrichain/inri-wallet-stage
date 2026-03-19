@@ -41,7 +41,7 @@ export default function WcRequestModal({
           ) : (
             <div style={iconFallback(theme)}>{details.networkName.slice(0, 1).toUpperCase()}</div>
           )}
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 22, fontWeight: 800 }}>{details.title}</div>
             <div style={{ color: sub, fontSize: 14, lineHeight: 1.4 }}>{details.subtitle}</div>
             <div style={{ color: text, fontWeight: 700, marginTop: 4 }}>{details.dappName}</div>
@@ -49,6 +49,7 @@ export default function WcRequestModal({
               <div style={{ color: sub, fontSize: 13, wordBreak: "break-all" }}>{details.dappUrl}</div>
             )}
           </div>
+          <RiskPill theme={theme} level={details.riskLevel || details.analysis?.riskLevel || "medium"} />
         </div>
 
         <div style={heroBox(theme)}>
@@ -59,6 +60,17 @@ export default function WcRequestModal({
 
         {details.kind === "transaction" && (
           <>
+            {details.analysis ? (
+              <>
+                <SectionTitle text="Action summary" />
+                <div style={gridStyle}>
+                  <Card theme={theme} label="Action" value={details.analysis.action} hint={details.analysis.functionName} />
+                  <Card theme={theme} label="Risk" value={String(details.analysis.riskLevel).toUpperCase()} hint={details.analysis.isUnlimitedApproval ? "Unlimited approval detected" : ""} />
+                  {details.analysis.spender ? <Card theme={theme} label="Spender" value={details.analysis.spender} hint="Address allowed by this request" /> : null}
+                  {details.analysis.amountLabel ? <Card theme={theme} label="Amount" value={details.analysis.amountLabel} hint="Decoded from calldata" /> : null}
+                </div>
+              </>
+            ) : null}
             <SectionTitle text={t("wc_request_transaction_details")} />
             <div style={gridStyle}>
               <Card theme={theme} label={t("wc_request_to")} value={details.to} hint={details.toFull || t("wc_request_destination_address")} />
@@ -83,6 +95,38 @@ export default function WcRequestModal({
                 hint={details.dataPreview}
               />
             </div>
+            {details.analysis?.fields?.length ? (
+              <>
+                <SectionTitle text="Decoded calldata" />
+                <div style={gridStyle}>
+                  {details.analysis.fields.map((field: any, index: number) => (
+                    <Card key={index} theme={theme} label={field.label} value={field.value} />
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </>
+        )}
+
+        {details.kind === "networkSwitch" && (
+          <>
+            <SectionTitle text="Network request" />
+            <div style={gridStyle}>
+              <Card theme={theme} label="Current network" value={details.currentNetwork || details.networkName} />
+              <Card theme={theme} label="Requested network" value={details.requestedNetwork || "Unknown"} />
+              <Card theme={theme} label="Requested chain" value={String(details.requestedChainId || "-")} hint="Verify before switching" />
+            </div>
+          </>
+        )}
+
+        {details.kind === "networkAdd" && (
+          <>
+            <SectionTitle text="Add custom network" />
+            <div style={gridStyle}>
+              <Card theme={theme} label="Network" value={details.requestedNetwork || "Custom network"} />
+              <Card theme={theme} label="Chain ID" value={String(details.requestedChainId || "-")} />
+              <Card theme={theme} label="RPC URL" value={details.requestedRpc || "-"} hint="Make sure the RPC is trusted" />
+            </div>
           </>
         )}
 
@@ -105,6 +149,7 @@ export default function WcRequestModal({
                 value={String(details.summary?.fieldCount || 0)}
                 hint={(details.summary?.fields || []).join(", ") || t("wc_request_no_visible_fields")}
               />
+              {details.analysis?.action ? <Card theme={theme} label="Decoded intent" value={details.analysis.action} hint={details.analysis.functionName} /> : null}
             </div>
             <pre style={preStyle(theme)}>{JSON.stringify(request.params, null, 2)}</pre>
           </>
@@ -113,10 +158,10 @@ export default function WcRequestModal({
         {details.kind === "raw" && <pre style={preStyle(theme)}>{JSON.stringify(request.params, null, 2)}</pre>}
 
         <SectionTitle text={t("wc_request_security_notice")} />
-        <div style={riskBox(theme)}>
+        <div style={riskBox(theme, details.riskLevel || details.analysis?.riskLevel || "medium")}>
           {details.riskItems.map((item: string, index: number) => (
             <div key={index} style={{ display: "flex", gap: 8, color: sub, lineHeight: 1.45 }}>
-              <span style={{ color: "#ffb020", fontWeight: 900 }}>•</span>
+              <span style={{ color: (details.riskLevel || details.analysis?.riskLevel) === "high" ? "#ff7b7b" : "#ffb020", fontWeight: 900 }}>•</span>
               <span>{item}</span>
             </div>
           ))}
@@ -127,12 +172,31 @@ export default function WcRequestModal({
             {t("wc_request_reject")}
           </button>
           <button style={primaryBtn(approving)} onClick={onApprove} disabled={approving}>
-            {approving ? t("wc_request_approving") : t("wc_request_approve")}
+            {approving ? <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Spinner /> {t("wc_request_approving")}</span> : buttonLabel(details.kind, t)}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+function buttonLabel(kind: string, t: (key: string) => string) {
+  if (kind === "networkSwitch") return "Switch network";
+  if (kind === "networkAdd") return "Add network";
+  if (kind === "message") return "Sign message";
+  if (kind === "typedData") return "Sign typed data";
+  if (kind === "transaction") return "Approve transaction";
+  return t("wc_request_approve");
+}
+
+function Spinner() {
+  return <span style={{ width: 14, height: 14, borderRadius: 999, border: "2px solid rgba(255,255,255,.35)", borderTopColor: "#fff", display: "inline-block", animation: "inri-spin .8s linear infinite" }} />;
+}
+
+function RiskPill({ theme, level }: { theme: "dark" | "light"; level: string }) {
+  const label = String(level || "medium").toUpperCase();
+  const tone = label === "HIGH" ? { bg: theme === "light" ? "#fff1f1" : "rgba(255,123,123,.12)", bd: "rgba(255,123,123,.35)", fg: "#ff7b7b" } : label === "LOW" ? { bg: theme === "light" ? "#eefaf1" : "rgba(74,222,128,.1)", bd: "rgba(74,222,128,.25)", fg: "#6ee7a6" } : { bg: theme === "light" ? "#fff7eb" : "rgba(255,176,32,.08)", bd: "rgba(255,176,32,.22)", fg: "#ffb020" };
+  return <div style={{ padding: "8px 10px", borderRadius: 999, background: tone.bg, border: `1px solid ${tone.bd}`, color: tone.fg, fontWeight: 800, fontSize: 12 }}>{label} RISK</div>;
 }
 
 function SectionTitle({ text }: { text: string }) {
@@ -233,14 +297,15 @@ function cardStyle(theme: "dark" | "light"): React.CSSProperties {
   };
 }
 
-function riskBox(theme: "dark" | "light"): React.CSSProperties {
+function riskBox(theme: "dark" | "light", level: string): React.CSSProperties {
+  const high = String(level) === "high";
   return {
     display: "grid",
     gap: 8,
     padding: 14,
     borderRadius: 16,
-    background: theme === "light" ? "#fff7eb" : "rgba(255,176,32,.08)",
-    border: `1px solid ${theme === "light" ? "#ffe0ae" : "rgba(255,176,32,.22)"}`,
+    background: high ? (theme === "light" ? "#fff3f3" : "rgba(255,123,123,.1)") : theme === "light" ? "#fff7eb" : "rgba(255,176,32,.08)",
+    border: `1px solid ${high ? (theme === "light" ? "#ffc6c6" : "rgba(255,123,123,.22)") : theme === "light" ? "#ffe0ae" : "rgba(255,176,32,.22)"}`,
   };
 }
 
@@ -259,17 +324,16 @@ function preStyle(theme: "dark" | "light"): React.CSSProperties {
   };
 }
 
-function primaryBtn(disabled: boolean): React.CSSProperties {
+function primaryBtn(loading: boolean): React.CSSProperties {
   return {
     flex: 1,
     height: 48,
     borderRadius: 14,
     border: "none",
-    background: disabled ? "#6f89c9" : "#3f7cff",
+    background: loading ? "#6b8df5" : "#3f7cff",
     color: "#fff",
     fontWeight: 800,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.85 : 1,
+    cursor: loading ? "wait" : "pointer",
   };
 }
 
@@ -293,9 +357,8 @@ function iconFallback(theme: "dark" | "light"): React.CSSProperties {
     borderRadius: 12,
     display: "grid",
     placeItems: "center",
+    background: theme === "light" ? "#eef4ff" : "#16213b",
+    color: "#3f7cff",
     fontWeight: 900,
-    background: theme === "light" ? "#e6eefc" : "#1b2740",
-    color: theme === "light" ? "#234692" : "#8fb0ff",
-    flexShrink: 0,
   };
 }
