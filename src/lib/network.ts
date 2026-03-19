@@ -76,6 +76,24 @@ export const DEFAULT_NETWORKS: NetworkItem[] = [
   },
 ];
 
+export function getNetworkByChainId(chainId?: number | string | null): NetworkItem | null {
+  if (chainId === undefined || chainId === null || chainId === "") return null;
+  const numericChainId = Number(chainId);
+  if (!Number.isFinite(numericChainId)) return null;
+  return DEFAULT_NETWORKS.find((item) => Number(item.chainId) === numericChainId) || null;
+}
+
+export function getNetworkByNamespaceChain(namespaceChain?: string | null): NetworkItem | null {
+  if (!namespaceChain) return null;
+  const match = String(namespaceChain).match(/:(\d+)$/);
+  if (!match) return null;
+  return getNetworkByChainId(Number(match[1]));
+}
+
+export function getAllSupportedNetworks(): NetworkItem[] {
+  return [...DEFAULT_NETWORKS];
+}
+
 export function getStoredNetwork(): NetworkItem {
   try {
     const raw = localStorage.getItem(NETWORKS_KEY);

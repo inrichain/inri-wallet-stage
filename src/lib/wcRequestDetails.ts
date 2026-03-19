@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import { tr, trf } from "../i18n/translations";
-import { getStoredNetwork } from "./network";
+import { getNetworkByNamespaceChain, getStoredNetwork } from "./network";
 
 function shorten(value: string, left = 8, right = 6) {
   if (!value) return "-";
@@ -75,7 +75,7 @@ function summarizeTypedData(payload: any, lang = "en") {
 }
 
 export function buildWcRequestDetails(request: any, lang = "en") {
-  const network = getStoredNetwork();
+  const network = getNetworkByNamespaceChain(request?.chainId) || getStoredNetwork();
   const chainId = Number(network?.chainId || 3777);
   const method = request?.method || tr(lang, "wc_details_unknown");
   const cleanMethod = prettyMethod(method, lang);
