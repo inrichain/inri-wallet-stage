@@ -697,3 +697,48 @@ img{max-width:100%}
     width:100%;
   }
 }
+
+
+/* v10 nav width + shadow cleanup */
+.wallet-bottom-nav{
+  padding-left:16px;
+  padding-right:16px;
+}
+.wallet-bottom-nav-inner{
+  max-width:948px;
+  width:100%;
+  box-shadow:none !important;
+}
+.wallet-bottom-nav-item{
+  box-shadow:none !important;
+}
+.wallet-bottom-nav-item.active{
+  box-shadow:none !important;
+  transform:none !important;
+}
+.wallet-header-settings-fab,
+.wallet-header-avatar-btn,
+.wallet-surface,
+.wallet-ui-card{
+  box-shadow:none;
+}
+@media (max-width: 760px){
+  .wallet-bottom-nav{
+    padding-left:12px;
+    padding-right:12px;
+  }
+  .wallet-bottom-nav-inner{
+    max-width:956px;
+    width:100%;
+  }
+}
+@media (max-width: 560px){
+  .wallet-bottom-nav{
+    padding-left:10px;
+    padding-right:10px;
+  }
+  .wallet-bottom-nav-inner{
+    max-width:none;
+    width:100%;
+  }
+}

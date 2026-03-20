@@ -27,7 +27,7 @@ export default function BottomNav({
       <div className="wallet-bottom-nav-inner" style={{
         background: isLight ? "#ffffff" : "#09101d",
         border: `1px solid ${isLight ? "#dbe2f0" : "#1e2535"}`,
-        boxShadow: isLight ? "0 12px 30px rgba(16,22,35,.10)" : "0 14px 34px rgba(0,0,0,.28)",
+        boxShadow: "none",
       }}>
         {items.map((item) => {
           const active = item.active ?? tab === item.id;
