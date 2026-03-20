@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+
+const P2P_FAVORITES_KEY = "inri_p2p_favorite_makers";
 import ScreenCard from "../components/ScreenCard";
 import SectionTitle from "../components/SectionTitle";
 import EmptyState from "../components/EmptyState";
@@ -103,6 +105,9 @@ export default function P2PScreen({
   const [walletHasMore, setWalletHasMore] = useState(false);
   const [walletEvents, setWalletEvents] = useState<P2PEventItem[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<P2POrder | null>(null);
+  const [favoriteMakers, setFavoriteMakers] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(P2P_FAVORITES_KEY) || "[]"); } catch { return []; }
+  });
 
   const inriAmountRaw = useMemo(() => {
     try { return parseInriAmount(inriAmount); } catch { return 0n; }
@@ -144,6 +149,9 @@ export default function P2PScreen({
       .filter((item) => (minSizeRaw > 0n ? item.remainingInri >= minSizeRaw : true))
       .filter((item) => (maxSizeRaw > 0n ? item.remainingInri <= maxSizeRaw : true));
     const sorted = [...filtered].sort((a, b) => {
+      const aFav = isFavoriteMaker(a.maker) ? 1 : 0;
+      const bFav = isFavoriteMaker(b.maker) ? 1 : 0;
+      if (aFav !== bFav) return bFav - aFav;
       if (sortMode === "price-asc") return Number(a.priceRaw - b.priceRaw);
       if (sortMode === "price-desc") return Number(b.priceRaw - a.priceRaw);
       if (sortMode === "size-desc") return Number(b.remainingInri - a.remainingInri);
@@ -157,6 +165,31 @@ export default function P2PScreen({
 
   const bestSell = useMemo(() => visibleOrders.filter((item) => item.side === "sell" && item.active && !item.expired).sort((a,b)=>Number(a.priceRaw-b.priceRaw))[0] || null, [visibleOrders]);
   const bestBuy = useMemo(() => visibleOrders.filter((item) => item.side === "buy" && item.active && !item.expired).sort((a,b)=>Number(b.priceRaw-a.priceRaw))[0] || null, [visibleOrders]);
+
+  useEffect(() => {
+    try { localStorage.setItem(P2P_FAVORITES_KEY, JSON.stringify(favoriteMakers)); } catch {}
+  }, [favoriteMakers]);
+
+  function isFavoriteMaker(maker: string) {
+    return favoriteMakers.includes(maker.toLowerCase());
+  }
+
+  function toggleFavoriteMaker(maker: string) {
+    const key = maker.toLowerCase();
+    setFavoriteMakers((prev) => prev.includes(key) ? prev.filter((item) => item !== key) : [key, ...prev].slice(0, 24));
+  }
+
+  const marketDepth = useMemo(() => {
+    const active = visibleOrders.filter((item) => item.active && !item.expired);
+    const asks = active.filter((item) => item.side === "sell").sort((a, b) => Number(a.priceRaw - b.priceRaw)).slice(0, 6);
+    const bids = active.filter((item) => item.side === "buy").sort((a, b) => Number(b.priceRaw - a.priceRaw)).slice(0, 6);
+    const maxAsk = asks.reduce((max, item) => item.remainingInri > max ? item.remainingInri : max, 0n);
+    const maxBid = bids.reduce((max, item) => item.remainingInri > max ? item.remainingInri : max, 0n);
+    return { asks, bids, maxAsk, maxBid };
+  }, [visibleOrders]);
+
+  const favoriteOrders = useMemo(() => visibleOrders.filter((item) => isFavoriteMaker(item.maker)), [visibleOrders, favoriteMakers]);
+
   const tradeLeaderboard = useMemo(() => {
     const buyers = new Map<string, { address: string; fills: number; inri: number }>();
     const sellers = new Map<string, { address: string; fills: number; inri: number }>();
@@ -560,7 +593,16 @@ export default function P2PScreen({
             actions={<ActionButton theme={theme} compact onClick={() => loadData(page)}>Refresh</ActionButton>}
           />
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 12 }}>
+          <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 20, padding: 14, marginBottom: 12, background: isLight ? "#f8fbff" : "#0b1120", display: "grid", gap: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: 15, color: isLight ? "#10131a" : "#fff" }}>Market filters</div>
+                <div className="wallet-ui-subtle">Combine side, status, price range, size range and sort in one premium filter block.</div>
+              </div>
+              <ActionButton theme={theme} compact tone="ghost" onClick={() => { setSideFilter("all"); setStatusFilter("all"); setSearchMaker(""); setMinPriceFilter(""); setMaxPriceFilter(""); setMinSizeFilter(""); setMaxSizeFilter(""); setSortMode("best"); }}>Reset</ActionButton>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 }}>
             <Field theme={theme} label="Side">
               <select className="wallet-ui-input" value={sideFilter} onChange={(e) => setSideFilter(e.target.value as FilterSide)}>
                 <option value="all">All</option>
@@ -591,6 +633,44 @@ export default function P2PScreen({
             <Field theme={theme} label="Max size INRI">
               <input className="wallet-ui-input" value={maxSizeFilter} onChange={(e) => setMaxSizeFilter(e.target.value)} placeholder="5000" inputMode="decimal" />
             </Field>
+            <Field theme={theme} label="Sort">
+              <select className="wallet-ui-input" value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)}>
+                <option value="best">Best offers</option>
+                <option value="price-asc">Price low → high</option>
+                <option value="price-desc">Price high → low</option>
+                <option value="size-desc">Largest first</option>
+                <option value="newest">Newest</option>
+              </select>
+            </Field>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
+            <DepthPanel theme={theme} title="Sell depth" rows={marketDepth.asks.map((item) => ({ label: `${item.priceDisplay} iUSD`, sub: `${item.remainingInriDisplay} INRI`, fill: marketDepth.maxAsk > 0n ? Number((item.remainingInri * 100n) / marketDepth.maxAsk) : 0 }))} emptyText="No active asks" />
+            <DepthPanel theme={theme} title="Buy depth" rows={marketDepth.bids.map((item) => ({ label: `${item.priceDisplay} iUSD`, sub: `${item.remainingInriDisplay} INRI`, fill: marketDepth.maxBid > 0n ? Number((item.remainingInri * 100n) / marketDepth.maxBid) : 0 }))} emptyText="No active bids" />
+          </div>
+
+          {favoriteOrders.length ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff" }}>Watchlist makers</div>
+                <div className="wallet-ui-subtle">Orders from addresses you marked as favorite appear first in the market.</div>
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {favoriteOrders.slice(0, 4).map((item) => (
+                  <div key={`fav-${item.id}`} className="wallet-list-row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <span>Order #{item.id} • {shortenAddress(item.maker, 5)}</span>
+                        <StatusPill theme={theme} tone="warning">Favorite</StatusPill>
+                      </div>
+                      <div className="wallet-ui-subtle">{item.side === "sell" ? "Sell" : "Buy"} • {item.priceDisplay} iUSD / INRI • {item.remainingInriDisplay} INRI remaining</div>
+                    </div>
+                    <ActionButton theme={theme} compact tone="ghost" onClick={() => setSelectedOrder(item)}>Details</ActionButton>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           </div>
 
           {loading ? (
@@ -615,8 +695,9 @@ export default function P2PScreen({
                           <StatusPill theme={theme} tone={tone as any}>{order.side === "sell" ? "SELL INRI" : "BUY INRI"}</StatusPill>
                           {!order.active ? <StatusPill theme={theme} tone="danger">Closed</StatusPill> : order.expired ? <StatusPill theme={theme} tone="warning">Expired</StatusPill> : <StatusPill theme={theme} tone="success">Active</StatusPill>}
                           {mine ? <StatusPill theme={theme} tone="primary">Mine</StatusPill> : null}
+                          {isFavoriteMaker(order.maker) ? <StatusPill theme={theme} tone="warning">Favorite</StatusPill> : null}
                         </div>
-                        <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>Maker {shortenAddress(order.maker)} • Price {order.priceDisplay} iUSD / INRI</div>
+                        <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>Maker {shortenAddress(order.maker)} • Price {order.priceDisplay} iUSD / INRI • {order.side === "sell" ? "Best ask candidate" : "Best bid candidate"}</div>
                       </div>
                       <div style={{ textAlign: "right" }}>
                         <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff", fontSize: 18 }}>{order.remainingInriDisplay} INRI</div>
@@ -636,6 +717,7 @@ export default function P2PScreen({
                         <div className="wallet-action-row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                           <div className="wallet-ui-subtle">You created this order from {shortenAddress(address)}.</div>
                           <div className="wallet-action-row" style={{ gap: 8 }}>
+                            <ActionButton theme={theme} compact tone={isFavoriteMaker(order.maker) ? "warning" : "ghost"} onClick={() => toggleFavoriteMaker(order.maker)}>{isFavoriteMaker(order.maker) ? "Unfavorite" : "Favorite maker"}</ActionButton>
                             {editingOrderId === order.id ? null : <ActionButton theme={theme} compact tone="secondary" onClick={() => openEdit(order)}>Edit price/deadline</ActionButton>}
                             {order.active ? <ActionButton theme={theme} tone="danger" compact onClick={() => setPendingAction({ kind: "cancel", order })} disabled={busy}>Cancel</ActionButton> : null}
                           </div>
@@ -680,6 +762,7 @@ export default function P2PScreen({
                               inputMode="decimal"
                             />
                           </Field>
+                          <ActionButton theme={theme} tone={isFavoriteMaker(order.maker) ? "warning" : "ghost"} compact onClick={() => toggleFavoriteMaker(order.maker)}>{isFavoriteMaker(order.maker) ? "Unfavorite" : "Favorite maker"}</ActionButton>
                           <ActionButton theme={theme} tone="ghost" compact onClick={() => setSelectedOrder(order)}>Details</ActionButton>
                           <ActionButton theme={theme} tone="primary" compact onClick={() => setPendingAction({ kind: "fill", order })} disabled={busy || wrongNetwork}>Fill fraction</ActionButton>
                         </div>
@@ -760,7 +843,7 @@ export default function P2PScreen({
                     <span>#{index + 1} • {shortenAddress(item.address, 5)}</span>
                     <StatusPill theme={theme} tone={performanceTone(index)}>{performanceLabel(index)}</StatusPill>
                   </div>
-                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent buy volume</div>
+                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent buy volume • score {(item.inri + item.fills * 25).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                 </div>
                 <a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a>
               </div>
@@ -782,7 +865,7 @@ export default function P2PScreen({
                     <span>#{index + 1} • {shortenAddress(item.address, 5)}</span>
                     <StatusPill theme={theme} tone={performanceTone(index)}>{performanceLabel(index)}</StatusPill>
                   </div>
-                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent sell volume</div>
+                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent sell volume • score {(item.inri + item.fills * 25).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                 </div>
                 <a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a>
               </div>
@@ -805,7 +888,15 @@ export default function P2PScreen({
         open={Boolean(selectedOrder)}
         theme={theme}
         title={selectedOrder ? `Order #${selectedOrder.id} details` : "Order details"}
-        description={selectedOrder ? `${selectedOrder.side === "sell" ? "Sell" : "Buy"} order by ${shortenAddress(selectedOrder.maker, 5)} • price ${selectedOrder.priceDisplay} iUSD per INRI • remaining ${selectedOrder.remainingInriDisplay} INRI${selectedOrder.remainingIusd > 0n ? ` • locked ${selectedOrder.remainingIusdDisplay} iUSD` : ""} • estimated total ${formatIusd((selectedOrder.remainingInri * selectedOrder.priceRaw) / 10n ** 18n)} iUSD${selectedOrder.deadline ? ` • deadline ${new Date(selectedOrder.deadline * 1000).toLocaleString()}` : " • no deadline"} • ${selectedOrder.active ? (selectedOrder.expired ? "expired" : "active") : "closed"}` : ""}
+        description={selectedOrder ? `${selectedOrder.side === "sell" ? "Sell" : "Buy"} order by ${shortenAddress(selectedOrder.maker, 5)}
+
+Price: ${selectedOrder.priceDisplay} iUSD per INRI
+Remaining size: ${selectedOrder.remainingInriDisplay} INRI
+Locked iUSD: ${selectedOrder.remainingIusdDisplay}
+Estimated total: ${formatIusd((selectedOrder.remainingInri * selectedOrder.priceRaw) / 10n ** 18n)} iUSD
+Deadline: ${selectedOrder.deadline ? new Date(selectedOrder.deadline * 1000).toLocaleString() : "No deadline"}
+Status: ${selectedOrder.active ? (selectedOrder.expired ? "Expired" : "Active") : "Closed"}
+Maker favorite: ${isFavoriteMaker(selectedOrder.maker) ? "Yes" : "No"}` : ""}
         confirmLabel="Close"
         cancelLabel=""
         tone="primary"
@@ -878,6 +969,27 @@ function TokenStat({ logo, label, value, theme }: { logo: string; label: string;
         <div style={{ fontSize: 12, fontWeight: 800, color: isLight ? "#64748b" : "#94a3b8", textTransform: "uppercase", letterSpacing: ".03em" }}>{label}</div>
         <div style={{ fontWeight: 900, fontSize: 18, color: isLight ? "#10131a" : "#ffffff", overflowWrap: "anywhere" }}>{value}</div>
       </div>
+    </div>
+  );
+}
+
+
+function DepthPanel({ theme, title, rows, emptyText }: { theme: "dark" | "light"; title: string; rows: Array<{ label: string; sub: string; fill: number }>; emptyText: string }) {
+  const isLight = theme === "light";
+  return (
+    <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 16, padding: 14, background: isLight ? "#f8fbff" : "#0b1120", display: "grid", gap: 10 }}>
+      <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff", fontSize: 15 }}>{title}</div>
+      {rows.length === 0 ? <div className="wallet-ui-subtle">{emptyText}</div> : rows.map((row, index) => (
+        <div key={`${title}-${index}`} style={{ display: "grid", gap: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+            <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>{row.label}</div>
+            <div className="wallet-ui-subtle">{row.sub}</div>
+          </div>
+          <div style={{ height: 8, borderRadius: 999, overflow: "hidden", background: isLight ? "#e2e8f0" : "#172033" }}>
+            <div style={{ width: `${Math.max(8, Math.min(100, row.fill))}%`, height: "100%", borderRadius: 999, background: isLight ? "#2563eb" : "#60a5fa", transition: "width 180ms ease" }} />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
