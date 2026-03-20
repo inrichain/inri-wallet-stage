@@ -47,7 +47,7 @@ export default function BridgeScreen({
 }) {
   const t = getText(lang);
   const isLight = theme === "light";
-  const network = getStoredNetwork();
+  const [network, setNetwork] = useState(getStoredNetwork());
   const [direction, setDirection] = useState<BridgeDirection>("polygon_to_inri");
   const [amount, setAmount] = useState("");
   const [destination, setDestination] = useState(address);
@@ -68,6 +68,12 @@ export default function BridgeScreen({
   });
 
   useEffect(() => setDestination(address), [address]);
+
+  useEffect(() => {
+    const sync = () => setNetwork(getStoredNetwork());
+    window.addEventListener("wallet-network-updated", sync as EventListener);
+    return () => window.removeEventListener("wallet-network-updated", sync as EventListener);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -213,13 +219,13 @@ export default function BridgeScreen({
       ) : null}
 
       <ScreenCard theme={theme}>
-        <div className="wallet-section-head" style={{ alignItems: "flex-start" }}>
-          <div>
+        <div className="wallet-section-head" style={{ alignItems: "flex-start", gap: 14 }}>
+          <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12, color: isLight ? "#64748b" : "#94a3b8", fontWeight: 800, textTransform: "uppercase" }}>{t.route}</div>
             <div style={{ marginTop: 4, fontWeight: 900, fontSize: 22, color: isLight ? "#0f172a" : "#fff" }}>{fromToken.network} → {toToken.network}</div>
             <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>{statusSubtitle}</div>
           </div>
-          <div className="wallet-mini-stat">
+          <div className="wallet-mini-stat" style={{ alignSelf: "flex-start" }}>
             <LogoImage src={fromToken.logo} alt={fromToken.symbol} kind="token" label={fromToken.symbol} size={20} />
             <span>{fromToken.symbol}</span>
             <span>→</span>
@@ -284,7 +290,7 @@ export default function BridgeScreen({
           <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
             {operations.map((item) => (
               <div key={item.id} style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 16, padding: 14, background: isLight ? "#f8fafc" : "#0b1120" }}>
-                <div className="wallet-section-head" style={{ alignItems: "flex-start" }}>
+                <div className="wallet-section-head" style={{ alignItems: "flex-start", gap: 12 }}>
                   <div>
                     <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{item.fromSymbol} → {item.toSymbol}</div>
                     <div className="wallet-ui-subtle" style={{ marginTop: 4 }}>{item.stageLabel}</div>
@@ -296,8 +302,6 @@ export default function BridgeScreen({
                   <InfoRow theme={theme} label={t.youReceive} value={`${item.amountOut} ${item.toSymbol}`} />
                   <InfoRow theme={theme} label={t.destination} value={item.destination} mono />
                   <InfoRow theme={theme} label={t.fee} value={`${item.feePercent.toFixed(2)}%`} />
-                  <InfoRow theme={theme} label={t.sourceContract} value={item.contractAddress || contractAddress} mono />
-                  {item.claimContractAddress ? <InfoRow theme={theme} label={t.validatorTarget} value={item.claimContractAddress} mono /> : null}
                 </div>
                 <div className="wallet-action-row" style={{ marginTop: 12 }}>
                   {item.sourceTxHash ? <a href={bridgeTxUrl(item.direction, item.sourceTxHash)} target="_blank" rel="noreferrer" className="wallet-link-chip">{t.openTx}</a> : null}

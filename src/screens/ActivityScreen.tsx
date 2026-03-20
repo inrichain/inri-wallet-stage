@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getAllNetworks, getStoredNetwork } from "../lib/network";
 import { tr } from "../i18n/translations";
 import ScreenCard from "../components/ScreenCard";
@@ -11,17 +11,34 @@ const ACTIVITY_KEY = "wallet_activity_demo";
 
 export default function ActivityScreen({ theme = "dark", lang = "en", address }: { theme?: "dark" | "light"; lang?: string; address: string; }) {
   const isLight = theme === "light";
-  const network = getStoredNetwork();
+  const [networkKey, setNetworkKey] = useState(getStoredNetwork().key);
+
+  useEffect(() => {
+    const sync = () => setNetworkKey(getStoredNetwork().key);
+    window.addEventListener("wallet-network-updated", sync as EventListener);
+    return () => window.removeEventListener("wallet-network-updated", sync as EventListener);
+  }, []);
 
   const allNetworks = useMemo(() => getAllNetworks({ includeHidden: true }), []);
+  const activeNetwork = useMemo(() => allNetworks.find((entry) => entry.key === networkKey) || getStoredNetwork(), [allNetworks, networkKey]);
+
+  function resolveActivityNetworkKey(item: any) {
+    if (item?.networkKey) return String(item.networkKey);
+    const chain = String(item?.chainId || "").toLowerCase();
+    const name = String(item?.networkName || "").toLowerCase();
+    if (chain === "3777" || chain === "inri" || name.includes("inri")) return "inri";
+    if (chain === "137" || chain === "polygon" || name.includes("polygon")) return "polygon";
+    const hit = allNetworks.find((entry) => String(entry.chainId) === String(item?.chainId) || String(entry.name).toLowerCase() === name);
+    return hit?.key || null;
+  }
 
   const items = useMemo(() => {
     const raw = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]");
     return raw
       .filter((item: any) => item.from?.toLowerCase() === address.toLowerCase() || item.to?.toLowerCase() === address.toLowerCase())
-      .filter((item: any) => !item.networkKey || String(item.networkKey) === String(network.key))
+      .filter((item: any) => resolveActivityNetworkKey(item) === String(networkKey))
       .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  }, [address, network.key]);
+  }, [address, networkKey, allNetworks]);
 
   function priorityLabel(priority: string) {
     if (priority === "high") return tr(lang, "activity_priority_high");
@@ -48,7 +65,7 @@ export default function ActivityScreen({ theme = "dark", lang = "en", address }:
           {items.map((item: any, index: number) => {
             const isOutgoing = item.from?.toLowerCase() === address.toLowerCase();
             const txHash = item.hash || "";
-            const itemNetwork = allNetworks.find((entry) => entry.key === item.networkKey || Number(entry.chainId) === Number(item.chainId)) || network;
+            const itemNetwork = allNetworks.find((entry) => entry.key === resolveActivityNetworkKey(item) || Number(entry.chainId) === Number(item.chainId)) || activeNetwork;
             const title = item.method === "approve" ? `Approve ${item.symbol || "token"}` : isOutgoing ? tr(lang, "activity_sent") : tr(lang, "activity_received");
             return (
               <ScreenCard key={item.hash || index} theme={theme}>
