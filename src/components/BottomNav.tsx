@@ -23,11 +23,11 @@ export default function BottomNav({
   ];
 
   return (
-    <nav className="wallet-bottom-nav" style={{ background: "transparent", borderTop: "none" }}>
+    <nav className="wallet-bottom-nav wallet-bottom-nav-solid" style={{ background: "transparent", borderTop: "none" }}>
       <div className="wallet-bottom-nav-inner" style={{
-        background: isLight ? "rgba(255,255,255,.98)" : "rgba(9,13,22,.98)",
+        background: isLight ? "#ffffff" : "#09101d",
         border: `1px solid ${isLight ? "#dbe2f0" : "#1e2535"}`,
-        boxShadow: isLight ? "0 12px 34px rgba(16,22,35,.12)" : "0 16px 40px rgba(0,0,0,.34)",
+        boxShadow: isLight ? "0 12px 30px rgba(16,22,35,.10)" : "0 14px 34px rgba(0,0,0,.28)",
       }}>
         {items.map((item) => {
           const active = item.active ?? tab === item.id;

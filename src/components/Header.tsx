@@ -132,8 +132,7 @@ export default function Header({
     <header
       style={{
         borderBottom: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-        background: isLight ? "rgba(255,255,255,.94)" : "rgba(10,14,24,.94)",
-        backdropFilter: "blur(12px)",
+        background: isLight ? "#ffffff" : "#0b1020",
         position: "sticky",
         top: 0,
         zIndex: 30,
