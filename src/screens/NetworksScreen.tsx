@@ -1,15 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import LogoImage from "../components/LogoImage";
 import {
+  findPresetByChainId,
   getAllNetworks,
+  getHiddenPresetNetworks,
   getStoredNetwork,
+  hideNetwork,
+  isProtectedNetwork,
+  makeNetworkFromChainId,
+  restoreHiddenPresetNetwork,
   saveStoredNetwork,
   upsertCustomNetwork,
-  removeCustomNetwork,
-  findPresetByChainId,
-  makeNetworkFromChainId,
   type NetworkItem,
 } from "../lib/network";
+
+const emptyDraft = { name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" };
 
 export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "light"; lang?: string }) {
   const isLight = theme === "light";
@@ -17,7 +22,8 @@ export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "l
   const [query, setQuery] = useState("");
   const [customRpc, setCustomRpc] = useState(getStoredNetwork().rpcUrl || "");
   const [message, setMessage] = useState("");
-  const [draft, setDraft] = useState({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" });
+  const [draft, setDraft] = useState(emptyDraft);
+  const [editingNetworkKey, setEditingNetworkKey] = useState("");
 
   useEffect(() => {
     const sync = () => {
@@ -34,11 +40,18 @@ export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "l
     const items = getAllNetworks();
     if (!q) return items;
     return items.filter((item) => [item.name, item.symbol, item.chainId].join(" ").toLowerCase().includes(q));
-  }, [query, network.chainId]);
+  }, [query, network.chainId, message]);
+
+  const hiddenPresets = useMemo(() => getHiddenPresetNetworks(), [message]);
 
   function showMessage(text: string) {
     setMessage(text);
     window.setTimeout(() => setMessage(""), 2400);
+  }
+
+  function resetDraft() {
+    setDraft(emptyDraft);
+    setEditingNetworkKey("");
   }
 
   function selectNetwork(item: NetworkItem) {
@@ -52,7 +65,7 @@ export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "l
   function saveRpc() {
     if (!customRpc.trim()) return showMessage("RPC URL required");
     const next = { ...network, rpcUrl: customRpc.trim() };
-    if (network.isCustom) upsertCustomNetwork(next);
+    if (!isProtectedNetwork(next.key)) upsertCustomNetwork(next);
     saveStoredNetwork(next);
     setNetwork(next);
     window.dispatchEvent(new Event("wallet-network-updated"));
@@ -76,12 +89,26 @@ export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "l
     if (preset) showMessage(`Preset found for ${preset.name}`);
   }
 
+  function startEdit(item: NetworkItem) {
+    if (isProtectedNetwork(item.key) || isProtectedNetwork(item.chainId)) return;
+    setEditingNetworkKey(item.key || String(item.chainId));
+    setDraft({
+      name: item.name,
+      chainId: String(item.chainId),
+      symbol: item.symbol,
+      rpcUrl: item.rpcUrl,
+      explorerUrl: (item.explorerAddressUrl || "").replace(/\/address\/$/, ""),
+      logo: item.logo || "",
+    });
+  }
+
   function saveCustom() {
     const chainId = Number(draft.chainId);
     if (!draft.name.trim() || !chainId || !draft.rpcUrl.trim()) return showMessage("Name, chain ID and RPC URL are required");
+    if (isProtectedNetwork(chainId) || isProtectedNetwork(draft.name.trim().toLowerCase())) return showMessage("INRI is protected");
     const explorerBase = draft.explorerUrl.trim().replace(/\/$/, "");
     const item: NetworkItem = {
-      key: draft.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      key: editingNetworkKey || draft.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"),
       name: draft.name.trim(),
       chainId,
       symbol: draft.symbol.trim() || "ETH",
@@ -92,15 +119,27 @@ export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "l
       isCustom: true,
     };
     const saved = upsertCustomNetwork(item);
-    setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" });
+    resetDraft();
     showMessage(`${saved.name} saved`);
+  }
+
+  function removeNetworkItem(item: NetworkItem) {
+    if (isProtectedNetwork(item.key) || isProtectedNetwork(item.chainId)) return showMessage("INRI cannot be removed");
+    hideNetwork(item);
+    if (editingNetworkKey === (item.key || String(item.chainId))) resetDraft();
+    showMessage(`${item.name} removed`);
+  }
+
+  function restorePreset(item: NetworkItem) {
+    restoreHiddenPresetNetwork(item.chainId);
+    showMessage(`${item.name} restored`);
   }
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <section style={cardStyle(isLight)}>
         <div style={titleStyle(isLight)}>Networks</div>
-        <div style={subtitleStyle(isLight)}>Dedicated chain management keeps Settings clean and makes RPC editing much safer.</div>
+        <div style={subtitleStyle(isLight)}>You can now edit or remove every network except INRI. Removed preset networks can be restored below.</div>
       </section>
 
       <section style={cardStyle(isLight)}>
@@ -122,37 +161,61 @@ export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "l
         <div style={sectionTitleStyle(isLight)}>Available networks</div>
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, symbol or chain ID" style={inputStyle(isLight)} />
         <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-          {networks.map((item) => (
-            <div key={`${item.key}-${item.chainId}`} style={rowStyle(isLight)}>
-              <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr)", gap: 12, alignItems: "center", minWidth: 0 }}>
-                <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={44} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#ffffff" }}>{item.name}</div>
-                  <div style={subtitleStyle(isLight)}>Chain {item.chainId} • {item.symbol}{item.isCustom ? " • Custom" : ""}</div>
+          {networks.map((item) => {
+            const locked = isProtectedNetwork(item.key) || isProtectedNetwork(item.chainId);
+            return (
+              <div key={`${item.key}-${item.chainId}`} style={rowStyle(isLight)}>
+                <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr)", gap: 12, alignItems: "center", minWidth: 0 }}>
+                  <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={44} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#ffffff" }}>{item.name}</div>
+                    <div style={subtitleStyle(isLight)}>Chain {item.chainId} • {item.symbol}{item.isCustom ? " • Custom" : " • Preset"}{locked ? " • Protected" : ""}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <button onClick={() => selectNetwork(item)} style={ghostButton(isLight)}>{Number(item.chainId) === Number(network.chainId) ? "Active" : "Select"}</button>
+                  {!locked ? <button onClick={() => startEdit(item)} style={ghostButton(isLight)}>Edit</button> : null}
+                  {!locked ? <button onClick={() => removeNetworkItem(item)} style={dangerButton(isLight)}>Remove</button> : null}
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <button onClick={() => selectNetwork(item)} style={ghostButton(isLight)}>{Number(item.chainId) === Number(network.chainId) ? "Active" : "Select"}</button>
-                {item.isCustom ? <button onClick={() => removeCustomNetwork(item.chainId)} style={dangerButton(isLight)}>Remove</button> : null}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
+      {hiddenPresets.length ? (
+        <section style={cardStyle(isLight)}>
+          <div style={sectionTitleStyle(isLight)}>Restore removed preset networks</div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {hiddenPresets.map((item) => (
+              <div key={`restore-${item.chainId}`} style={rowStyle(isLight)}>
+                <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr)", gap: 12, alignItems: "center" }}>
+                  <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={44} />
+                  <div>
+                    <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#ffffff" }}>{item.name}</div>
+                    <div style={subtitleStyle(isLight)}>Chain {item.chainId} • {item.symbol}</div>
+                  </div>
+                </div>
+                <button onClick={() => restorePreset(item)} style={ghostButton(isLight)}>Restore</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section style={cardStyle(isLight)}>
-        <div style={sectionTitleStyle(isLight)}>Add or edit custom network</div>
+        <div style={sectionTitleStyle(isLight)}>{editingNetworkKey ? "Edit network" : "Add custom network"}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
           <input value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Network name" style={inputStyle(isLight)} />
-          <input value={draft.chainId} onChange={(e) => { setDraft((prev) => ({ ...prev, chainId: e.target.value })); fillFromChainId(e.target.value); }} placeholder="Chain ID" style={inputStyle(isLight)} />
+          <input value={draft.chainId} onChange={(e) => { setDraft((prev) => ({ ...prev, chainId: e.target.value })); if (!editingNetworkKey) fillFromChainId(e.target.value); }} placeholder="Chain ID" style={inputStyle(isLight)} />
           <input value={draft.symbol} onChange={(e) => setDraft((prev) => ({ ...prev, symbol: e.target.value }))} placeholder="Native symbol" style={inputStyle(isLight)} />
           <input value={draft.rpcUrl} onChange={(e) => setDraft((prev) => ({ ...prev, rpcUrl: e.target.value }))} placeholder="RPC URL" style={inputStyle(isLight)} />
           <input value={draft.explorerUrl} onChange={(e) => setDraft((prev) => ({ ...prev, explorerUrl: e.target.value }))} placeholder="Explorer base URL" style={inputStyle(isLight)} />
           <input value={draft.logo} onChange={(e) => setDraft((prev) => ({ ...prev, logo: e.target.value }))} placeholder="Logo path or URL" style={inputStyle(isLight)} />
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-          <button onClick={saveCustom} style={primaryButtonStyle()}>Save custom network</button>
-          <button onClick={() => setDraft({ name: "", chainId: "", symbol: "", rpcUrl: "", explorerUrl: "", logo: "" })} style={ghostButton(isLight)}>Reset form</button>
+          <button onClick={saveCustom} style={primaryButtonStyle()}>{editingNetworkKey ? "Save changes" : "Save custom network"}</button>
+          <button onClick={resetDraft} style={ghostButton(isLight)}>{editingNetworkKey ? "Cancel edit" : "Reset form"}</button>
         </div>
         {message ? <div style={{ marginTop: 12, color: "#3f7cff", fontWeight: 800 }}>{message}</div> : null}
       </section>

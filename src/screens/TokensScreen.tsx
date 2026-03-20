@@ -10,6 +10,7 @@ import { resolveTokenAsset } from "../lib/assets";
 import LogoImage from "../components/LogoImage";
 
 const CUSTOM_TOKENS_KEY = "wallet_custom_tokens";
+const HIDDEN_TOKENS_KEY = "wallet_hidden_default_tokens_v1";
 
 type ViewToken = TokenItem & {
   balance: string;
@@ -26,6 +27,22 @@ function readCustomTokens() {
   }
 }
 
+function readHiddenTokens() {
+  try {
+    const saved = localStorage.getItem(HIDDEN_TOKENS_KEY);
+    if (!saved) return [] as string[];
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+  } catch {
+    return [] as string[];
+  }
+}
+
+function tokenKey(token: Partial<TokenItem>, fallbackNetworkKey?: string) {
+  const networkKey = token.networkKey || fallbackNetworkKey || getStoredNetwork().key;
+  return `${networkKey}:${String(token.address || token.symbol || "").toLowerCase()}`;
+}
+
 export default function TokensScreen({
   theme = "dark",
   lang = "en",
@@ -38,6 +55,7 @@ export default function TokensScreen({
   const isLight = theme === "light";
   const [networkKey, setNetworkKey] = useState(getStoredNetwork().key);
   const [customTokens, setCustomTokens] = useState<ViewToken[]>(readCustomTokens());
+  const [hiddenTokens, setHiddenTokens] = useState<string[]>(readHiddenTokens());
   const [symbol, setSymbol] = useState("");
   const [tokenName, setTokenName] = useState("");
   const [tokenAddress, setTokenAddress] = useState("");
@@ -64,10 +82,20 @@ export default function TokensScreen({
     localStorage.setItem(CUSTOM_TOKENS_KEY, JSON.stringify(customTokens));
   }, [customTokens]);
 
+  useEffect(() => {
+    localStorage.setItem(HIDDEN_TOKENS_KEY, JSON.stringify(hiddenTokens));
+  }, [hiddenTokens]);
+
   const tokens = useMemo(() => {
+    const defaults = getDefaultTokensForNetwork(networkKey)
+      .filter((item) => !hiddenTokens.includes(tokenKey(item, networkKey)))
+      .map((item) => ({ ...item, balance: "0.000000" }));
+
+    const overrides = customTokens.filter((item) => (item.networkKey || networkKey) === networkKey);
+    const overrideKeys = new Set(overrides.map((item) => tokenKey(item, networkKey)));
     const merged = [
-      ...getDefaultTokensForNetwork(networkKey).map((item) => ({ ...item, balance: "0.000000" })),
-      ...customTokens.filter((item) => !item.networkKey || item.networkKey === networkKey),
+      ...defaults.filter((item) => !overrideKeys.has(tokenKey(item, networkKey))),
+      ...overrides,
     ].map((item) => ({
       ...item,
       logo: resolveTokenAsset({ symbol: item.symbol, name: item.subtitle, networkKey: item.networkKey, logo: item.logo }),
@@ -84,9 +112,10 @@ export default function TokensScreen({
       const bBalance = Number(b.balance || 0);
       if (bBalance !== aBalance) return bBalance - aBalance;
       if (!!a.isDefault !== !!b.isDefault) return a.isDefault ? -1 : 1;
+      if (!!a.isNative !== !!b.isNative) return a.isNative ? -1 : 1;
       return a.symbol.localeCompare(b.symbol);
     });
-  }, [customTokens, networkKey, query, balances]);
+  }, [customTokens, networkKey, query, balances, hiddenTokens]);
 
   useEffect(() => {
     let active = true;
@@ -106,7 +135,7 @@ export default function TokensScreen({
       active = false;
       clearInterval(timer);
     };
-  }, [address, networkKey, customTokens]);
+  }, [address, networkKey, customTokens, hiddenTokens]);
 
   useEffect(() => {
     const cleanAddress = tokenAddress.trim();
@@ -116,7 +145,7 @@ export default function TokensScreen({
     }
 
     const exists = [...getDefaultTokensForNetwork(networkKey), ...customTokens].some(
-      (token) => token.address && token.address.toLowerCase() === cleanAddress.toLowerCase() && token.networkKey === networkKey
+      (token) => token.address && token.address.toLowerCase() === cleanAddress.toLowerCase() && (token.networkKey || networkKey) === networkKey
     );
     if (exists && !editingTokenKey) {
       setDetectingToken(false);
@@ -173,17 +202,21 @@ export default function TokensScreen({
     const cleanAddress = tokenAddress.trim();
     const cleanLogo = logo.trim();
     const cleanDecimals = Number(decimals);
-    const uniqueKey = `${networkKey}:${cleanAddress.toLowerCase() || cleanSymbol}`;
+    const formKey = `${networkKey}:${(cleanAddress || cleanSymbol).toLowerCase()}`;
 
     if (!cleanSymbol) return showMessage(t.symbolRequired);
     if (!cleanAddress) return showMessage(t.addressRequired);
     if (!/^0x[a-fA-F0-9]{40}$/.test(cleanAddress)) return showMessage(t.invalidAddress);
     if (!Number.isFinite(cleanDecimals) || cleanDecimals < 0 || cleanDecimals > 36) return showMessage(t.invalidDecimals);
 
-    const exists = [...getDefaultTokensForNetwork(networkKey), ...customTokens].some((token) => {
-      const key = `${token.networkKey || networkKey}:${(token.address || token.symbol).toLowerCase()}`;
+    const defaults = getDefaultTokensForNetwork(networkKey);
+    const nativeConflict = defaults.find((token) => token.isNative && (token.symbol.toUpperCase() === cleanSymbol || token.address?.toLowerCase() === cleanAddress.toLowerCase()));
+    if (nativeConflict) return showMessage(t.nativeProtected);
+
+    const exists = [...defaults, ...customTokens].some((token) => {
+      const key = tokenKey(token, networkKey);
       if (editingTokenKey && key === editingTokenKey) return false;
-      return token.symbol.toUpperCase() === cleanSymbol || (token.address && token.address.toLowerCase() === cleanAddress.toLowerCase() && (token.networkKey || networkKey) === networkKey);
+      return key === formKey || (token.symbol.toUpperCase() === cleanSymbol && (token.networkKey || networkKey) === networkKey);
     });
 
     if (exists) return showMessage(t.tokenExists);
@@ -199,17 +232,25 @@ export default function TokensScreen({
       networkKey,
     };
 
-    setCustomTokens((prev) => editingTokenKey
-      ? prev.map((item) => (`${item.networkKey || networkKey}:${(item.address || item.symbol).toLowerCase()}` === editingTokenKey ? newToken : item))
-      : [...prev, newToken]
-    );
+    setCustomTokens((prev) => {
+      const defaultsForNetwork = getDefaultTokensForNetwork(networkKey);
+      const editingDefault = editingTokenKey && defaultsForNetwork.some((item) => tokenKey(item, networkKey) === editingTokenKey);
+      const withoutEditing = prev.filter((item) => tokenKey(item, networkKey) !== editingTokenKey);
+      return editingDefault ? [...withoutEditing, { ...newToken, isDefault: true }] : editingTokenKey ? [...withoutEditing, newToken] : [...prev, newToken];
+    });
+
+    if (editingTokenKey) {
+      const isDefaultEditing = getDefaultTokensForNetwork(networkKey).some((item) => tokenKey(item, networkKey) === editingTokenKey);
+      if (isDefaultEditing) setHiddenTokens((prev) => Array.from(new Set([...prev, editingTokenKey])));
+    }
 
     resetForm();
     showMessage(editingTokenKey ? t.tokenUpdated : t.tokenAdded);
   }
 
   function editToken(token: ViewToken) {
-    setEditingTokenKey(`${token.networkKey || networkKey}:${(token.address || token.symbol).toLowerCase()}`);
+    if (token.isNative) return showMessage(t.nativeProtected);
+    setEditingTokenKey(tokenKey(token, networkKey));
     setSymbol(token.symbol);
     setTokenName(token.subtitle?.startsWith("custom token") ? "" : token.subtitle || "");
     setTokenAddress(token.address || "");
@@ -218,8 +259,16 @@ export default function TokensScreen({
   }
 
   function removeToken(token: ViewToken) {
-    const key = `${token.networkKey || networkKey}:${(token.address || token.symbol).toLowerCase()}`;
-    setCustomTokens((prev) => prev.filter((item) => `${item.networkKey || networkKey}:${(item.address || item.symbol).toLowerCase()}` !== key));
+    if (token.isNative) return showMessage(t.nativeProtected);
+    const key = tokenKey(token, networkKey);
+    const isDefaultToken = getDefaultTokensForNetwork(networkKey).some((item) => tokenKey(item, networkKey) === key);
+    if (isDefaultToken) {
+      setHiddenTokens((prev) => Array.from(new Set([...prev, key])));
+      setCustomTokens((prev) => prev.filter((item) => tokenKey(item, networkKey) !== key));
+    } else {
+      setCustomTokens((prev) => prev.filter((item) => tokenKey(item, networkKey) !== key));
+    }
+    if (editingTokenKey === key) resetForm();
     showMessage(t.tokenRemoved);
   }
 
@@ -275,7 +324,8 @@ export default function TokensScreen({
         {tokens.length === 0 ? (
           <div style={{ padding: 18, borderRadius: 16, border: `1px dashed ${isLight ? "#d9e2f0" : "#2b3950"}`, color: isLight ? "#5b6578" : "#97a0b3" }}>{t.noTokens}</div>
         ) : tokens.map((token) => {
-          const custom = !token.isDefault;
+          const editable = !token.isNative;
+          const isDefaultToken = getDefaultTokensForNetwork(networkKey).some((item) => tokenKey(item, networkKey) === tokenKey(token, networkKey));
           return (
             <div key={`${token.symbol}-${token.address || token.networkKey || "native"}`} style={{ padding: 14, borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: isLight ? "#ffffff" : "#111722", display: "grid", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -284,7 +334,7 @@ export default function TokensScreen({
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff" }}>{token.symbol}</div>
-                      {custom ? <span style={pillStyle(theme, false)}>Custom</span> : <span style={pillStyle(theme, true)}>Default</span>}
+                      {token.isNative ? <span style={pillStyle(theme, true)}>Native</span> : isDefaultToken ? <span style={pillStyle(theme, true)}>Default</span> : <span style={pillStyle(theme, false)}>Custom</span>}
                     </div>
                     <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis" }}>{token.subtitle}</div>
                     {token.address ? <div style={{ color: isLight ? "#8a94a8" : "#7f8aa3", fontSize: 12 }}>{token.address}</div> : null}
@@ -295,7 +345,7 @@ export default function TokensScreen({
                   <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12 }}>{token.symbol}</div>
                 </div>
               </div>
-              {custom ? (
+              {editable ? (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button onClick={() => editToken(token)} style={secondaryButton(isLight)}>{t.edit}</button>
                   <button onClick={() => removeToken(token)} style={dangerButton}>{t.remove}</button>
@@ -374,7 +424,7 @@ function getText(lang: string) {
     logoOptional: pt ? "Logo URL opcional" : "Optional logo URL",
     uploadLogo: pt ? "Enviar logo" : "Upload logo",
     addToken: pt ? "Adicionar token personalizado" : "Add custom token",
-    editToken: pt ? "Editar token personalizado" : "Edit custom token",
+    editToken: pt ? "Editar token" : "Edit token",
     add: pt ? "Adicionar" : "Add",
     edit: pt ? "Editar" : "Edit",
     remove: pt ? "Remover" : "Remove",
@@ -393,5 +443,6 @@ function getText(lang: string) {
     invalidAddress: pt ? "Endereço inválido." : "Invalid address.",
     invalidDecimals: pt ? "Decimals inválidos." : "Invalid decimals.",
     tokenDetected: pt ? "Token detectado: {symbol}" : "Token detected: {symbol}",
+    nativeProtected: pt ? "Token nativo da rede é protegido." : "Native network token is protected.",
   };
 }

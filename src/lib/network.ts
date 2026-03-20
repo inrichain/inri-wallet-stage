@@ -27,6 +27,7 @@ export type NetworkPreset = {
 
 export const NETWORKS_KEY = "wallet_active_network";
 const CUSTOM_NETWORKS_KEY = "wallet_custom_networks_v1";
+const HIDDEN_NETWORKS_KEY = "wallet_hidden_networks_v1";
 
 export function buildNetworkBadge(name: string, symbol = "ETH", color = "#3f7cff") {
   return resolveNetworkAsset({ name, symbol, color });
@@ -89,6 +90,10 @@ function presetToNetworkItem(preset: NetworkPreset): NetworkItem {
 
 export const DEFAULT_NETWORKS: NetworkItem[] = NETWORK_PRESETS.slice(0, 6).map(presetToNetworkItem);
 
+export function isProtectedNetwork(keyOrChainId?: string | number) {
+  return String(keyOrChainId) === "inri" || Number(keyOrChainId) === 3777;
+}
+
 export function getInriNetwork(): NetworkItem {
   return presetToNetworkItem(NETWORK_PRESETS[0]);
 }
@@ -97,13 +102,35 @@ export function findPresetByChainId(chainId: number) {
   return NETWORK_PRESETS.find((item) => Number(item.chainId) === Number(chainId)) || null;
 }
 
+function findPresetByKey(key?: string) {
+  return NETWORK_PRESETS.find((item) => item.key === key) || null;
+}
+
 export function makeNetworkFromChainId(chainId: number) {
   const preset = findPresetByChainId(chainId);
   return preset ? presetToNetworkItem(preset) : null;
 }
 
+function getHiddenNetworkKeys() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HIDDEN_NETWORKS_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+  } catch {
+    return [] as string[];
+  }
+}
+
+function saveHiddenNetworkKeys(items: string[]) {
+  const unique = Array.from(new Set(items.map((item) => String(item)).filter((item) => item && !isProtectedNetwork(item))));
+  localStorage.setItem(HIDDEN_NETWORKS_KEY, JSON.stringify(unique));
+}
+
+function networkStorageKey(item: { key?: string; chainId?: number }) {
+  return item.key || String(item.chainId || "");
+}
+
 function normalizeStoredNetwork(value: any): NetworkItem {
-  const known = getAllNetworks().find((item) => item.key === value?.key || item.chainId === Number(value?.chainId));
+  const known = getAllNetworks({ includeHidden: true }).find((item) => item.key === value?.key || item.chainId === Number(value?.chainId));
   if (!known) {
     return {
       ...(value as NetworkItem),
@@ -134,7 +161,7 @@ export function getCustomNetworks(): NetworkItem[] {
     return parsed
       .filter((item) => item?.chainId && item?.rpcUrl)
       .map((item) => {
-        const preset = findPresetByChainId(Number(item.chainId));
+        const preset = findPresetByChainId(Number(item.chainId)) || findPresetByKey(item?.key);
         return {
           ...(preset ? presetToNetworkItem(preset) : null),
           ...item,
@@ -159,14 +186,22 @@ export function saveCustomNetworks(items: NetworkItem[]) {
   window.dispatchEvent(new Event("wallet-network-updated"));
 }
 
-export function getAllNetworks(): NetworkItem[] {
+export function getAllNetworks(options?: { includeHidden?: boolean }): NetworkItem[] {
+  const includeHidden = !!options?.includeHidden;
+  const hidden = includeHidden ? [] : getHiddenNetworkKeys();
   const merged = NETWORK_PRESETS.map(presetToNetworkItem);
   for (const custom of getCustomNetworks()) {
-    const index = merged.findIndex((item) => Number(item.chainId) === Number(custom.chainId));
+    const index = merged.findIndex((item) => Number(item.chainId) === Number(custom.chainId) || item.key === custom.key);
     if (index >= 0) merged[index] = { ...merged[index], ...custom, isCustom: true };
     else merged.push(custom);
   }
-  return merged.sort((a, b) => a.name.localeCompare(b.name));
+  return merged
+    .filter((item) => includeHidden || isProtectedNetwork(item.key) || !hidden.includes(networkStorageKey(item)))
+    .sort((a, b) => {
+      if (isProtectedNetwork(a.key)) return -1;
+      if (isProtectedNetwork(b.key)) return 1;
+      return a.name.localeCompare(b.name);
+    });
 }
 
 export function upsertCustomNetwork(item: NetworkItem) {
@@ -176,12 +211,46 @@ export function upsertCustomNetwork(item: NetworkItem) {
   if (index >= 0) all[index] = next;
   else all.push(next);
   saveCustomNetworks(all);
+  const hidden = getHiddenNetworkKeys().filter((key) => key !== networkStorageKey(next) && Number(key) !== Number(next.chainId));
+  saveHiddenNetworkKeys(hidden);
   return next;
 }
 
 export function removeCustomNetwork(keyOrChainId: string | number) {
+  if (isProtectedNetwork(keyOrChainId)) return;
   const all = getCustomNetworks().filter((network) => network.key !== keyOrChainId && Number(network.chainId) !== Number(keyOrChainId));
   saveCustomNetworks(all);
+}
+
+export function hideNetwork(item: NetworkItem) {
+  if (isProtectedNetwork(item.key) || isProtectedNetwork(item.chainId)) return;
+  removeCustomNetwork(item.key || item.chainId);
+  const hidden = getHiddenNetworkKeys();
+  hidden.push(networkStorageKey(item));
+  saveHiddenNetworkKeys(hidden);
+  const active = getStoredNetwork();
+  if (active.key === item.key || Number(active.chainId) === Number(item.chainId)) {
+    saveStoredNetwork(getInriNetwork());
+  }
+  window.dispatchEvent(new Event("wallet-network-updated"));
+}
+
+export function restoreHiddenPresetNetwork(chainId: number) {
+  const preset = findPresetByChainId(chainId);
+  if (!preset) return null;
+  const key = networkStorageKey(preset);
+  const hidden = getHiddenNetworkKeys().filter((item) => item !== key && Number(item) !== Number(chainId));
+  saveHiddenNetworkKeys(hidden);
+  window.dispatchEvent(new Event("wallet-network-updated"));
+  return presetToNetworkItem(preset);
+}
+
+export function getHiddenPresetNetworks(): NetworkItem[] {
+  const hidden = getHiddenNetworkKeys();
+  return NETWORK_PRESETS
+    .filter((preset) => !isProtectedNetwork(preset.key) && hidden.includes(networkStorageKey(preset)))
+    .map(presetToNetworkItem)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function getNetworkByChainId(chainId: number) {
@@ -193,7 +262,11 @@ export function getStoredNetwork(): NetworkItem {
     const raw = localStorage.getItem(NETWORKS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed?.key && parsed?.chainId && parsed?.rpcUrl) return normalizeStoredNetwork(parsed);
+      if (parsed?.key && parsed?.chainId && parsed?.rpcUrl) {
+        const normalized = normalizeStoredNetwork(parsed);
+        const hidden = getHiddenNetworkKeys();
+        if (isProtectedNetwork(normalized.key) || !hidden.includes(networkStorageKey(normalized))) return normalized;
+      }
     }
   } catch {}
   return getInriNetwork();
