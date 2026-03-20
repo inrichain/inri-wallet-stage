@@ -72,125 +72,8 @@ export default function BridgeScreen({
   useEffect(() => {
     const sync = () => setNetwork(getStoredNetwork());
     window.addEventListener("wallet-network-updated", sync as EventListener);
-    return () => window.removeEventListener("wallet-network-updated", sync as EventListener);
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    loadBridgeBalances(address)
-      .then((next) => alive && setBalances(next))
-      .catch(() => alive && setMessage(t.balanceLoadFailed));
-    return () => {
-      alive = false;
-    };
-  }, [address, opsVersion, t.balanceLoadFailed]);
-
-  useEffect(() => {
-    if (!address) return;
-    const tick = async () => {
-      try {
-        const updates = await verifyBridgeOperations(address);
-        if (updates.length) setOpsVersion((v) => v + 1);
-      } catch {
-        // ignore background poll errors
-      }
-    };
-    tick();
-    const id = window.setInterval(tick, 15000);
-    return () => window.clearInterval(id);
-  }, [address]);
-
-  const fromToken = direction === "polygon_to_inri" ? TOKENS.usdt : TOKENS.iusd;
-  const toToken = direction === "polygon_to_inri" ? TOKENS.iusd : TOKENS.usdt;
-  const rawFeeBps = direction === "polygon_to_inri" ? balances.polygonDepositFeeBps : balances.inriFeeBps;
-  const feePercent = ((rawFeeBps || 20) / 100);
-  const amountRaw = useMemo(() => {
-    try {
-      return parseBridgeAmount(amount);
-    } catch {
-      return 0n;
-    }
-  }, [amount]);
-  const quote = useMemo(() => estimateBridgeQuote(direction, amount, feePercent), [direction, amount, feePercent]);
-  const requiredNetworkKey = direction === "polygon_to_inri" ? "polygon" : "inri";
-  const wrongNetwork = network.key !== requiredNetworkKey;
-  const hasEnoughBalance = direction === "polygon_to_inri" ? balances.polygonUsdtBalance >= amountRaw : balances.inriIusdBalance >= amountRaw;
-  const needsApproval = direction === "polygon_to_inri" ? balances.polygonUsdtAllowance < amountRaw : balances.inriIusdAllowance < amountRaw;
-  const canProceed = !!address && !!privateKey && amountRaw > 0n && hasEnoughBalance && !wrongNetwork;
-  const operations = useMemo(() => getBridgeOperations(address).slice(0, 8), [address, opsVersion]);
-
-  async function runVerifyNow() {
-    try {
-      setBusy(true);
-      setMessage(t.checkingStatus);
-      const updates = await verifyBridgeOperations(address);
-      setOpsVersion((v) => v + 1);
-      setMessage(updates.length ? `${updates.length} bridge update(s) found.` : t.noNewUpdates);
-    } catch (err: any) {
-      setMessage(err?.shortMessage || err?.message || t.statusCheckFailed);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function runApprove() {
-    if (!privateKey || amountRaw <= 0n) return;
-    try {
-      setBusy(true);
-      setConfirmIntent(null);
-      setMessage(t.approving);
-      const result = direction === "polygon_to_inri"
-        ? await approvePolygonUsdtTx(privateKey, amountRaw, address)
-        : await approveIusdForBridgeTx(privateKey, amountRaw, address);
-      setLastTxHash(result.hash);
-      setLastTxDirection(direction);
-      setMessage(`${t.approveDone}: ${shortHash(result.hash)}`);
-      setOpsVersion((v) => v + 1);
-    } catch (err: any) {
-      setMessage(err?.shortMessage || err?.message || t.txFailed);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function runBridge() {
-    if (!privateKey || amountRaw <= 0n || !destination) return;
-    try {
-      setBusy(true);
-      setConfirmIntent(null);
-      setMessage(direction === "polygon_to_inri" ? t.depositing : t.burning);
-      const result = direction === "polygon_to_inri"
-        ? await depositPolygonToInriTx({ privateKey, amount: amountRaw, destination, walletAddress: address })
-        : await burnInriToPolygonTx({ privateKey, amount: amountRaw, destination, walletAddress: address });
-      setLastTxHash(result.hash);
-      setLastTxDirection(direction);
-      setMessage(`${t.txSent}: ${shortHash(result.hash)}`);
-      setAmount("");
-      setOpsVersion((v) => v + 1);
-    } catch (err: any) {
-      setMessage(err?.shortMessage || err?.message || t.txFailed);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const contractAddress = direction === "polygon_to_inri" ? POLYGON_LOCKBOX_ADDRESS : INRI_EXECUTOR_ADDRESS;
-  const tokenAddress = direction === "polygon_to_inri" ? POLYGON_USDT_ADDRESS : IUSD_TOKEN_ADDRESS;
-  const statusSubtitle = direction === "polygon_to_inri" ? t.depositSubtitle : t.withdrawSubtitle;
-
-  return (
+    return (
     <div className="wallet-screen-stack wallet-screen-mobile-tight">
-      <ScreenCard theme={theme}>
-        <SectionTitle title={t.bridge} subtitle={t.bridgeReady} theme={theme} />
-        <div className="wallet-action-row" style={{ marginTop: 12 }}>
-          <StatusPill theme={theme} tone={wrongNetwork ? "warning" : "success"}>
-            {wrongNetwork ? `${t.switchTo} ${requiredNetworkKey.toUpperCase()}` : t.liveContracts}
-          </StatusPill>
-          <StatusPill theme={theme} tone="info">{fromToken.symbol} → {toToken.symbol}</StatusPill>
-          <StatusPill theme={theme} tone="warning">{feePercent.toFixed(2)}%</StatusPill>
-        </div>
-      </ScreenCard>
-
       {message ? (
         <ScreenCard theme={theme}>
           <div style={{ display: "grid", gap: 10 }}>
@@ -205,9 +88,72 @@ export default function BridgeScreen({
       ) : null}
 
       <ScreenCard theme={theme}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <LogoImage src={fromToken.logo} alt={fromToken.symbol} kind="token" label={fromToken.symbol} size={44} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: isLight ? "#64748b" : "#94a3b8" }}>{fromToken.network} deposit asset</div>
+                <div style={{ fontSize: 32, lineHeight: 1.05, fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{fromToken.symbol}</div>
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: isLight ? "#2563eb" : "#60a5fa" }}>⇄</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, marginLeft: "auto" }}>
+            <div style={{ minWidth: 0, textAlign: "right" }}>
+              <div style={{ fontSize: 13, color: isLight ? "#64748b" : "#94a3b8" }}>{toToken.network} minted asset</div>
+              <div style={{ fontSize: 32, lineHeight: 1.05, fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{toToken.symbol}</div>
+            </div>
+            <LogoImage src={toToken.logo} alt={toToken.symbol} kind="token" label={toToken.symbol} size={44} />
+          </div>
+        </div>
+      </ScreenCard>
+
+      <ScreenCard theme={theme}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: isLight ? "#64748b" : "#94a3b8", marginBottom: 12 }}>{t.directionLabel}</div>
         <div className="wallet-ui-grid-2 wallet-mobile-single-grid">
           <ModeButton theme={theme} active={direction === "polygon_to_inri"} title={t.depositFlow} subtitle={`${TOKENS.usdt.symbol} → ${TOKENS.iusd.symbol}`} onClick={() => setDirection("polygon_to_inri")} />
           <ModeButton theme={theme} active={direction === "inri_to_polygon"} title={t.withdrawFlow} subtitle={`${TOKENS.iusd.symbol} → ${TOKENS.usdt.symbol}`} onClick={() => setDirection("inri_to_polygon")} />
+        </div>
+      </ScreenCard>
+
+      <ScreenCard theme={theme}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: isLight ? "#64748b" : "#94a3b8", marginBottom: 12 }}>{t.route}</div>
+        <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 20, padding: 16, background: isLight ? "#f8fafc" : "#101826" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <LogoImage src={fromToken.logo} alt={fromToken.symbol} kind="token" label={fromToken.symbol} size={38} />
+              <div>
+                <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{fromToken.symbol}</div>
+                <div className="wallet-ui-subtle">{fromToken.network} deposit asset</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: isLight ? "#2563eb" : "#60a5fa" }}>→</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, marginLeft: "auto" }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{toToken.symbol}</div>
+                <div className="wallet-ui-subtle">{toToken.network} minted asset</div>
+              </div>
+              <LogoImage src={toToken.logo} alt={toToken.symbol} kind="token" label={toToken.symbol} size={38} />
+            </div>
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <Input label={t.amount} value={amount} onChange={setAmount} placeholder="0.00" theme={theme} />
+          </div>
+        </div>
+      </ScreenCard>
+
+      <ScreenCard theme={theme}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: isLight ? "#64748b" : "#94a3b8", marginBottom: 12 }}>{t.transferSummary}</div>
+        <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 18, padding: 16, background: isLight ? "#f8fafc" : "#0b1120" }}>
+          <div style={{ fontSize: 34, lineHeight: 1.1, fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{quote.amountOut} {toToken.symbol}</div>
+        </div>
+        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+          <InfoRow theme={theme} label={t.route} value={`${fromToken.network} → ${toToken.network}`} />
+          <InfoRow theme={theme} label={t.assetFlow} value={`${fromToken.symbol} → ${toToken.symbol}`} />
+          <InfoRow theme={theme} label={t.destination} value={destination} mono />
+          <InfoRow theme={theme} label={t.fee} value={`${feePercent.toFixed(2)}%`} />
+          <InfoRow theme={theme} label={t.status} value={needsApproval ? t.approvalRequired : t.liveContracts} />
         </div>
       </ScreenCard>
 
@@ -219,54 +165,7 @@ export default function BridgeScreen({
       ) : null}
 
       <ScreenCard theme={theme}>
-        <div className="wallet-section-head" style={{ alignItems: "flex-start", gap: 14 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12, color: isLight ? "#64748b" : "#94a3b8", fontWeight: 800, textTransform: "uppercase" }}>{t.route}</div>
-            <div style={{ marginTop: 4, fontWeight: 900, fontSize: 22, color: isLight ? "#0f172a" : "#fff" }}>{fromToken.network} → {toToken.network}</div>
-            <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>{statusSubtitle}</div>
-          </div>
-          <div className="wallet-mini-stat" style={{ alignSelf: "flex-start" }}>
-            <LogoImage src={fromToken.logo} alt={fromToken.symbol} kind="token" label={fromToken.symbol} size={20} />
-            <span>{fromToken.symbol}</span>
-            <span>→</span>
-            <LogoImage src={toToken.logo} alt={toToken.symbol} kind="token" label={toToken.symbol} size={20} />
-            <span>{toToken.symbol}</span>
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
-          <Input label={t.amount} value={amount} onChange={setAmount} placeholder="0.00" theme={theme} />
-          <Input label={t.destination} value={destination} onChange={setDestination} placeholder={address} theme={theme} />
-        </div>
-
-        <div className="wallet-ui-grid-2 wallet-mobile-single-grid" style={{ gap: 12, marginTop: 14 }}>
-          <MetricCard theme={theme} title={t.youPay} value={`${quote.amountIn} ${fromToken.symbol}`} />
-          <MetricCard theme={theme} title={t.youReceive} value={`${quote.amountOut} ${toToken.symbol}`} />
-          <MetricCard theme={theme} title={t.fee} value={`${feePercent.toFixed(2)}%`} meta={`${quote.feeAmount} ${fromToken.symbol}`} />
-          <MetricCard theme={theme} title={t.eta} value={quote.etaLabel} />
-        </div>
-      </ScreenCard>
-
-      <ScreenCard theme={theme}>
-        <SectionTitle title={t.contractsAndTokens} subtitle={t.realRouteSummary} theme={theme} compact />
-        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-          <InfoRow theme={theme} label={t.sourceContract} value={contractAddress} mono />
-          <InfoRow theme={theme} label={t.tokenAddress} value={tokenAddress} mono />
-          <InfoRow theme={theme} label={t.validatorTarget} value={direction === "polygon_to_inri" ? INRI_EXECUTOR_ADDRESS : POLYGON_LOCKBOX_ADDRESS} mono />
-        </div>
-      </ScreenCard>
-
-      <ScreenCard theme={theme}>
-        <SectionTitle title={t.balancesAndAllowances} subtitle={t.autoVerifyNow} theme={theme} compact />
-        <div className="wallet-ui-grid-2 wallet-mobile-single-grid" style={{ marginTop: 12 }}>
-          <MetricCard theme={theme} title="Polygon USDT" value={formatBridgeAmount(balances.polygonUsdtBalance)} meta={`${t.allowance}: ${formatBridgeAmount(balances.polygonUsdtAllowance)}`} />
-          <MetricCard theme={theme} title="INRI iUSD" value={formatBridgeAmount(balances.inriIusdBalance)} meta={`${t.allowance}: ${formatBridgeAmount(balances.inriIusdAllowance)}`} />
-        </div>
-      </ScreenCard>
-
-      <ScreenCard theme={theme}>
-        <SectionTitle title={t.actions} subtitle={needsApproval ? t.approvalRequired : t.readyToBridge} theme={theme} compact />
-        <div className="wallet-action-row" style={{ marginTop: 12 }}>
+        <div className="wallet-action-row">
           {needsApproval ? (
             <ActionButton theme={theme} onClick={() => setConfirmIntent("approve")} disabled={!canProceed || busy}>
               {busy ? t.processing : direction === "polygon_to_inri" ? t.approveUsdt : t.approveIusd}
@@ -279,7 +178,15 @@ export default function BridgeScreen({
             {busy ? t.processing : t.checkStatusNow}
           </ActionButton>
         </div>
-        {!hasEnoughBalance && amountRaw > 0n ? <div className="wallet-ui-subtle" style={{ marginTop: 10, color: isLight ? "#b91c1c" : "#fca5a5" }}>{t.insufficientBalance}</div> : null}
+      </ScreenCard>
+
+      <ScreenCard theme={theme}>
+        <SectionTitle title={t.contractsAndTokens} subtitle={t.realRouteSummary} theme={theme} compact />
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          <InfoRow theme={theme} label={t.sourceContract} value={contractAddress} mono />
+          <InfoRow theme={theme} label={t.tokenAddress} value={tokenAddress} mono />
+          <InfoRow theme={theme} label={t.validatorTarget} value={direction === "polygon_to_inri" ? INRI_EXECUTOR_ADDRESS : POLYGON_LOCKBOX_ADDRESS} mono />
+        </div>
       </ScreenCard>
 
       <ScreenCard theme={theme}>
@@ -332,9 +239,9 @@ export default function BridgeScreen({
 function ModeButton({ theme, active, title, subtitle, onClick }: { theme: "dark" | "light"; active?: boolean; title: string; subtitle: string; onClick: () => void; }) {
   const isLight = theme === "light";
   return (
-    <button onClick={onClick} style={{ border: `1px solid ${active ? "#fde68a" : isLight ? "#dbe2f0" : "#243041"}`, background: active ? (isLight ? "#eff6ff" : "#112040") : (isLight ? "#fff" : "#101826"), borderRadius: 18, padding: 16, textAlign: "left", cursor: "pointer" }}>
-      <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{title}</div>
-      <div style={{ marginTop: 6, fontSize: 13, color: isLight ? "#64748b" : "#94a3b8" }}>{subtitle}</div>
+    <button onClick={onClick} style={{ border: `1px solid ${active ? "#e5e7eb" : isLight ? "#dbe2f0" : "#243041"}`, background: active ? "#4d7cff" : (isLight ? "#fff" : "#101826"), borderRadius: 18, padding: 18, textAlign: "center", cursor: "pointer" }}>
+      <div style={{ fontWeight: 900, color: active ? "#fff" : (isLight ? "#0f172a" : "#fff") }}>{title}</div>
+      <div style={{ marginTop: 6, fontSize: 13, color: active ? "rgba(255,255,255,.88)" : (isLight ? "#64748b" : "#94a3b8") }}>{subtitle}</div>
     </button>
   );
 }
@@ -383,6 +290,11 @@ function getText(lang: string) {
       liveContracts: "Live contracts",
       switchTo: "Switch to",
       route: "Route",
+      directionLabel: "Direction",
+      transferSummary: "Transfer summary",
+      assetFlow: "Asset flow",
+      status: "Status",
+      processing: "Processing...",
       amount: "Amount",
       destination: "Destination wallet",
       youPay: "You pay",
@@ -441,6 +353,11 @@ function getText(lang: string) {
       liveContracts: "Contratos ao vivo",
       switchTo: "Trocar para",
       route: "Rota",
+      directionLabel: "Direção",
+      transferSummary: "Resumo da transferência",
+      assetFlow: "Fluxo do ativo",
+      status: "Status",
+      processing: "Processando...",
       amount: "Valor",
       destination: "Carteira de destino",
       youPay: "Você paga",
@@ -499,6 +416,11 @@ function getText(lang: string) {
       liveContracts: "Contratos en vivo",
       switchTo: "Cambiar a",
       route: "Ruta",
+      directionLabel: "Dirección",
+      transferSummary: "Resumen de la transferencia",
+      assetFlow: "Flujo del activo",
+      status: "Estado",
+      processing: "Procesando...",
       amount: "Monto",
       destination: "Billetera destino",
       youPay: "Pagas",
