@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 const P2P_FAVORITES_KEY = "inri_p2p_favorite_makers";
+const P2P_MAKER_META_KEY = "inri_p2p_maker_meta";
 import ScreenCard from "../components/ScreenCard";
 import SectionTitle from "../components/SectionTitle";
 import EmptyState from "../components/EmptyState";
@@ -27,6 +28,7 @@ import {
   getIusdBalance,
   getInriBalance,
   getP2PStats,
+  loadP2PEvents,
   loadP2PEventsPage,
   loadRecentP2POrders,
   parseInriAmount,
@@ -73,6 +75,7 @@ export default function P2PScreen({
   const [stats, setStats] = useState<{ nextOrderId: number; feeBps: number; treasury: string } | null>(null);
   const [orders, setOrders] = useState<P2POrder[]>([]);
   const [events, setEvents] = useState<P2PEventItem[]>([]);
+  const [allEvents, setAllEvents] = useState<P2PEventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [side, setSide] = useState<"sell" | "buy">("sell");
@@ -105,8 +108,12 @@ export default function P2PScreen({
   const [walletHasMore, setWalletHasMore] = useState(false);
   const [walletEvents, setWalletEvents] = useState<P2PEventItem[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<P2POrder | null>(null);
+  const [selectedMaker, setSelectedMaker] = useState<string | null>(null);
   const [favoriteMakers, setFavoriteMakers] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem(P2P_FAVORITES_KEY) || "[]"); } catch { return []; }
+  });
+  const [makerMeta, setMakerMeta] = useState<Record<string, { note?: string; tags?: string[] }>>(() => {
+    try { return JSON.parse(localStorage.getItem(P2P_MAKER_META_KEY) || "{}"); } catch { return {}; }
   });
 
   const inriAmountRaw = useMemo(() => {
@@ -170,6 +177,35 @@ export default function P2PScreen({
     try { localStorage.setItem(P2P_FAVORITES_KEY, JSON.stringify(favoriteMakers)); } catch {}
   }, [favoriteMakers]);
 
+  useEffect(() => {
+    try { localStorage.setItem(P2P_MAKER_META_KEY, JSON.stringify(makerMeta)); } catch {}
+  }, [makerMeta]);
+
+  function getMakerMeta(maker: string) {
+    return makerMeta[maker.toLowerCase()] || { note: "", tags: [] };
+  }
+
+  function updateMakerNote(maker: string, note: string) {
+    const key = maker.toLowerCase();
+    setMakerMeta((prev) => ({ ...prev, [key]: { ...prev[key], note } }));
+  }
+
+  function updateMakerTags(maker: string, raw: string) {
+    const key = maker.toLowerCase();
+    const tags = raw.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 6);
+    setMakerMeta((prev) => ({ ...prev, [key]: { ...prev[key], tags } }));
+  }
+
+  function computeTraderScore(addressValue: string, role: "buyer" | "seller") {
+    const key = addressValue.toLowerCase();
+    const filled = allEvents.filter((event) => event.kind === "filled" && ((role === "buyer" && String(event.maker || '').toLowerCase() === key) || (role === "seller" && String(event.taker || '').toLowerCase() === key)));
+    const cancelled = allEvents.filter((event) => event.kind === "cancelled" && String(event.maker || '').toLowerCase() === key);
+    const volume = filled.reduce((sum, event) => sum + Number(event.inri || 0), 0);
+    const fills = filled.length;
+    const score = Math.max(0, Math.round(volume * 1.15 + fills * 24 - cancelled.length * 10));
+    return { volume, fills, cancelled: cancelled.length, score };
+  }
+
   function isFavoriteMaker(maker: string) {
     return favoriteMakers.includes(maker.toLowerCase());
   }
@@ -191,32 +227,26 @@ export default function P2PScreen({
   const favoriteOrders = useMemo(() => visibleOrders.filter((item) => isFavoriteMaker(item.maker)), [visibleOrders, favoriteMakers]);
 
   const tradeLeaderboard = useMemo(() => {
-    const buyers = new Map<string, { address: string; fills: number; inri: number }>();
-    const sellers = new Map<string, { address: string; fills: number; inri: number }>();
-    for (const event of events) {
-      if (event.kind !== "filled") continue;
-      const inri = Number(event.inri || 0);
-      if (event.maker) {
-        const makerKey = event.maker.toLowerCase();
-        const curr = buyers.get(makerKey) || { address: event.maker, fills: 0, inri: 0 };
-        curr.fills += 1;
-        curr.inri += inri;
-        buyers.set(makerKey, curr);
-      }
-      if (event.taker) {
-        const takerKey = event.taker.toLowerCase();
-        const curr = sellers.get(takerKey) || { address: event.taker, fills: 0, inri: 0 };
-        curr.fills += 1;
-        curr.inri += inri;
-        sellers.set(takerKey, curr);
-      }
+    const buyers = new Map<string, { address: string; fills: number; inri: number; score: number; cancelled: number }>();
+    const sellers = new Map<string, { address: string; fills: number; inri: number; score: number; cancelled: number }>();
+    const addresses = new Set<string>();
+    for (const event of allEvents) {
+      if (event.maker) addresses.add(String(event.maker).toLowerCase());
+      if (event.taker) addresses.add(String(event.taker).toLowerCase());
     }
-    const sortFn = (a:any,b:any)=> b.inri-a.inri || b.fills-a.fills;
+    for (const key of addresses) {
+      const buyer = computeTraderScore(key, "buyer");
+      const seller = computeTraderScore(key, "seller");
+      const addressText = allEvents.find((event) => String(event.maker || '').toLowerCase() === key)?.maker || allEvents.find((event) => String(event.taker || '').toLowerCase() === key)?.taker || key;
+      if (buyer.fills || buyer.volume) buyers.set(key, { address: String(addressText), fills: buyer.fills, inri: buyer.volume, score: buyer.score, cancelled: buyer.cancelled });
+      if (seller.fills || seller.volume) sellers.set(key, { address: String(addressText), fills: seller.fills, inri: seller.volume, score: seller.score, cancelled: seller.cancelled });
+    }
+    const sortFn = (a:any,b:any)=> b.score-a.score || b.inri-a.inri || b.fills-a.fills;
     return {
       buyers: [...buyers.values()].sort(sortFn).slice(0,5),
       sellers: [...sellers.values()].sort(sortFn).slice(0,5),
     };
-  }, [events]);
+  }, [allEvents]);
 
   function performanceTone(index: number) {
     if (index === 0) return "success" as const;
@@ -231,6 +261,31 @@ export default function P2PScreen({
     if (index === 2) return "Rising";
     return "Active";
   }
+
+  const makerProfiles = useMemo(() => {
+    const byMaker = new Map<string, { address: string; activeOrders: number; totalOrders: number; filledCount: number; cancelledCount: number; recentVolume: number }>();
+    for (const order of orders) {
+      const key = order.maker.toLowerCase();
+      const curr = byMaker.get(key) || { address: order.maker, activeOrders: 0, totalOrders: 0, filledCount: 0, cancelledCount: 0, recentVolume: 0 };
+      curr.totalOrders += 1;
+      if (order.active && !order.expired) curr.activeOrders += 1;
+      byMaker.set(key, curr);
+    }
+    for (const event of allEvents) {
+      const key = String(event.maker || event.taker || '').toLowerCase();
+      if (!key) continue;
+      const curr = byMaker.get(key) || { address: String(event.maker || event.taker), activeOrders: 0, totalOrders: 0, filledCount: 0, cancelledCount: 0, recentVolume: 0 };
+      if (event.kind === 'filled') { curr.filledCount += 1; curr.recentVolume += Number(event.inri || 0); }
+      if (event.kind === 'cancelled' && event.maker && String(event.maker).toLowerCase() === key) curr.cancelledCount += 1;
+      byMaker.set(key, curr);
+    }
+    return byMaker;
+  }, [orders, allEvents]);
+
+  const selectedOrderHistory = useMemo(() => selectedOrder ? allEvents.filter((item) => item.orderId === selectedOrder.id).slice(0, 8) : [], [allEvents, selectedOrder]);
+  const selectedMakerProfile = useMemo(() => selectedMaker ? makerProfiles.get(selectedMaker.toLowerCase()) || null : null, [selectedMaker, makerProfiles]);
+  const selectedMakerOrders = useMemo(() => selectedMaker ? orders.filter((item) => item.maker.toLowerCase() === selectedMaker.toLowerCase()) : [], [selectedMaker, orders]);
+  const selectedMakerHistory = useMemo(() => selectedMaker ? allEvents.filter((item) => String(item.maker || item.taker || '').toLowerCase() === selectedMaker.toLowerCase()).slice(0, 10) : [], [selectedMaker, allEvents]);
 
   async function refreshBalances() {
     if (!address) return;
@@ -249,11 +304,12 @@ export default function P2PScreen({
   async function loadData(nextPage = page, nextEventsPage = eventsPage) {
     setLoading(true);
     try {
-      const [nextStats, ordersResp, nextEventsResp, walletEventsResp] = await Promise.all([
+      const [nextStats, ordersResp, nextEventsResp, walletEventsResp, richEvents] = await Promise.all([
         getP2PStats(),
         loadRecentP2POrders({ limit: 12, page: nextPage }),
         loadP2PEventsPage(nextEventsPage, 10).catch(() => ({ items: [], hasMore: false, page: nextEventsPage })),
         address ? loadP2PEventsPage(walletPage, 10, address).catch(() => ({ items: [], hasMore: false, page: walletPage })) : Promise.resolve({ items: [], hasMore: false, page: walletPage }),
+        loadP2PEvents(240).catch(() => []),
       ]);
       setStats(nextStats);
       setOrders(ordersResp.items);
@@ -262,6 +318,7 @@ export default function P2PScreen({
       setEventsHasMore(Boolean(nextEventsResp.hasMore));
       setWalletEvents(walletEventsResp.items);
       setWalletHasMore(Boolean(walletEventsResp.hasMore));
+      setAllEvents(richEvents);
       await refreshBalances();
     } catch (error: any) {
       showAppToast({ message: error?.message || "Unable to load P2P market", type: "error" });
@@ -536,6 +593,39 @@ export default function P2PScreen({
         </div>
       </ScreenCard>
 
+
+
+      {selectedMaker ? (
+        <ScreenCard theme={theme}>
+          <SectionTitle
+            title={`Maker profile • ${shortenAddress(selectedMaker, 5)}`}
+            subtitle="Dedicated maker view with watchlist notes, tags and recent order flow."
+            theme={theme}
+            compact
+            actions={<div className="wallet-action-row" style={{ gap: 8 }}><ActionButton theme={theme} compact tone={isFavoriteMaker(selectedMaker) ? "warning" : "secondary"} onClick={() => toggleFavoriteMaker(selectedMaker)}>{isFavoriteMaker(selectedMaker) ? "Unfavorite" : "Favorite"}</ActionButton><ActionButton theme={theme} compact tone="ghost" onClick={() => setSelectedMaker(null)}>Close</ActionButton></div>}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginBottom: 12 }}>
+            <StatBox theme={theme} label="Active orders" value={String(selectedMakerProfile?.activeOrders || 0)} sub="live on current page" />
+            <StatBox theme={theme} label="Filled trades" value={String(selectedMakerProfile?.filledCount || 0)} sub="recent contract events" />
+            <StatBox theme={theme} label="Cancelled" value={String(selectedMakerProfile?.cancelledCount || 0)} sub="recent contract events" />
+            <StatBox theme={theme} label="Volume" value={(selectedMakerProfile?.recentVolume || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} sub="INRI recent volume" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
+            <Field theme={theme} label="Private note">
+              <input className="wallet-ui-input" value={getMakerMeta(selectedMaker).note || ""} onChange={(e) => updateMakerNote(selectedMaker, e.target.value)} placeholder="Trusted market maker, good pricing..." />
+            </Field>
+            <Field theme={theme} label="Tags (comma separated)">
+              <input className="wallet-ui-input" value={(getMakerMeta(selectedMaker).tags || []).join(", ")} onChange={(e) => updateMakerTags(selectedMaker, e.target.value)} placeholder="fast fills, whale, iusd" />
+            </Field>
+          </div>
+          {(getMakerMeta(selectedMaker).tags || []).length ? <div className="wallet-action-row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>{(getMakerMeta(selectedMaker).tags || []).map((tag) => <StatusPill key={tag} theme={theme} tone="primary">{tag}</StatusPill>)}</div> : null}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12, marginTop: 14 }}>
+            <InfoPanel theme={theme} title="Open orders" description={selectedMakerOrders.length ? selectedMakerOrders.slice(0,4).map((item) => `#${item.id} • ${item.side} • ${item.priceDisplay} iUSD • ${item.remainingInriDisplay} INRI`).join("\n") : "No visible orders for this maker on the current market page."} />
+            <InfoPanel theme={theme} title="Recent maker activity" description={selectedMakerHistory.length ? selectedMakerHistory.slice(0,5).map((event) => `#${event.orderId} • ${event.kind} • ${event.inri || '0'} INRI`).join("\n") : "No recent events found for this maker in the loaded window."} />
+          </div>
+        </ScreenCard>
+      ) : null}
+
       {view === "create" ? (
         <ScreenCard theme={theme}>
           <SectionTitle title="Create order" subtitle="Sell INRI for iUSD or create a bid that locks iUSD to buy INRI." theme={theme} compact />
@@ -762,7 +852,7 @@ export default function P2PScreen({
                               inputMode="decimal"
                             />
                           </Field>
-                          <ActionButton theme={theme} tone={isFavoriteMaker(order.maker) ? "warning" : "ghost"} compact onClick={() => toggleFavoriteMaker(order.maker)}>{isFavoriteMaker(order.maker) ? "Unfavorite" : "Favorite maker"}</ActionButton>
+                          <ActionButton theme={theme} tone={isFavoriteMaker(order.maker) ? "warning" : "ghost"} compact onClick={() => toggleFavoriteMaker(order.maker)}>{isFavoriteMaker(order.maker) ? "Unfavorite" : "Favorite maker"}</ActionButton><ActionButton theme={theme} tone="ghost" compact onClick={() => setSelectedMaker(order.maker)}>Maker</ActionButton>
                           <ActionButton theme={theme} tone="ghost" compact onClick={() => setSelectedOrder(order)}>Details</ActionButton>
                           <ActionButton theme={theme} tone="primary" compact onClick={() => setPendingAction({ kind: "fill", order })} disabled={busy || wrongNetwork}>Fill fraction</ActionButton>
                         </div>
@@ -843,9 +933,9 @@ export default function P2PScreen({
                     <span>#{index + 1} • {shortenAddress(item.address, 5)}</span>
                     <StatusPill theme={theme} tone={performanceTone(index)}>{performanceLabel(index)}</StatusPill>
                   </div>
-                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent buy volume • score {(item.inri + item.fills * 25).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent buy volume • score {item.score.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {item.cancelled} cancels</div>
                 </div>
-                <a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a>
+                <div className="wallet-action-row" style={{ gap: 8 }}><ActionButton theme={theme} compact tone="ghost" onClick={() => setSelectedMaker(item.address)}>Maker</ActionButton><a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a></div>
               </div>
             ))}
           </div>
@@ -865,9 +955,9 @@ export default function P2PScreen({
                     <span>#{index + 1} • {shortenAddress(item.address, 5)}</span>
                     <StatusPill theme={theme} tone={performanceTone(index)}>{performanceLabel(index)}</StatusPill>
                   </div>
-                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent sell volume • score {(item.inri + item.fills * 25).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent sell volume • score {item.score.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {item.cancelled} cancels</div>
                 </div>
-                <a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a>
+                <div className="wallet-action-row" style={{ gap: 8 }}><ActionButton theme={theme} compact tone="ghost" onClick={() => setSelectedMaker(item.address)}>Maker</ActionButton><a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a></div>
               </div>
             ))}
           </div>
@@ -896,7 +986,10 @@ Locked iUSD: ${selectedOrder.remainingIusdDisplay}
 Estimated total: ${formatIusd((selectedOrder.remainingInri * selectedOrder.priceRaw) / 10n ** 18n)} iUSD
 Deadline: ${selectedOrder.deadline ? new Date(selectedOrder.deadline * 1000).toLocaleString() : "No deadline"}
 Status: ${selectedOrder.active ? (selectedOrder.expired ? "Expired" : "Active") : "Closed"}
-Maker favorite: ${isFavoriteMaker(selectedOrder.maker) ? "Yes" : "No"}` : ""}
+Maker favorite: ${isFavoriteMaker(selectedOrder.maker) ? "Yes" : "No"}
+Maker note: ${getMakerMeta(selectedOrder.maker).note || "—"}
+Recent order history:
+${selectedOrderHistory.length ? selectedOrderHistory.map((event) => `• ${event.kind} • ${event.inri || '0'} INRI • tx ${shortenAddress(event.txHash, 5)}`).join("\n") : "• No recent history in loaded window"}` : ""}
         confirmLabel="Close"
         cancelLabel=""
         tone="primary"
@@ -977,16 +1070,19 @@ function TokenStat({ logo, label, value, theme }: { logo: string; label: string;
 function DepthPanel({ theme, title, rows, emptyText }: { theme: "dark" | "light"; title: string; rows: Array<{ label: string; sub: string; fill: number }>; emptyText: string }) {
   const isLight = theme === "light";
   return (
-    <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 16, padding: 14, background: isLight ? "#f8fbff" : "#0b1120", display: "grid", gap: 10 }}>
-      <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff", fontSize: 15 }}>{title}</div>
+    <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 18, padding: 14, background: isLight ? "#f8fbff" : "#0b1120", display: "grid", gap: 10 }}>
+      <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff", fontSize: 15, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <span>{title}</span>
+        <span className="wallet-ui-subtle">Top 6 levels</span>
+      </div>
       {rows.length === 0 ? <div className="wallet-ui-subtle">{emptyText}</div> : rows.map((row, index) => (
         <div key={`${title}-${index}`} style={{ display: "grid", gap: 6 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
             <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>{row.label}</div>
             <div className="wallet-ui-subtle">{row.sub}</div>
           </div>
-          <div style={{ height: 8, borderRadius: 999, overflow: "hidden", background: isLight ? "#e2e8f0" : "#172033" }}>
-            <div style={{ width: `${Math.max(8, Math.min(100, row.fill))}%`, height: "100%", borderRadius: 999, background: isLight ? "#2563eb" : "#60a5fa", transition: "width 180ms ease" }} />
+          <div style={{ height: 10, borderRadius: 999, overflow: "hidden", background: isLight ? "rgba(37,99,235,0.08)" : "#172033" }}>
+            <div style={{ width: `${Math.max(8, Math.min(100, row.fill))}%`, height: "100%", borderRadius: 999, background: isLight ? "linear-gradient(90deg,#93c5fd,#2563eb)" : "linear-gradient(90deg,#334155,#60a5fa)", transition: "width 180ms ease" }} />
           </div>
         </div>
       ))}
