@@ -72,7 +72,113 @@ export default function BridgeScreen({
   useEffect(() => {
     const sync = () => setNetwork(getStoredNetwork());
     window.addEventListener("wallet-network-updated", sync as EventListener);
-    return (
+    return () => window.removeEventListener("wallet-network-updated", sync as EventListener);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    loadBridgeBalances(address)
+      .then((next) => alive && setBalances(next))
+      .catch(() => alive && setMessage(t.balanceLoadFailed));
+    return () => {
+      alive = false;
+    };
+  }, [address, opsVersion, t.balanceLoadFailed]);
+
+  useEffect(() => {
+    if (!address) return;
+    const tick = async () => {
+      try {
+        const updates = await verifyBridgeOperations(address);
+        if (updates.length) setOpsVersion((v) => v + 1);
+      } catch {
+        // ignore background poll errors
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 15000);
+    return () => window.clearInterval(id);
+  }, [address]);
+
+  const fromToken = direction === "polygon_to_inri" ? TOKENS.usdt : TOKENS.iusd;
+  const toToken = direction === "polygon_to_inri" ? TOKENS.iusd : TOKENS.usdt;
+  const rawFeeBps = direction === "polygon_to_inri" ? balances.polygonDepositFeeBps : balances.inriFeeBps;
+  const feePercent = ((rawFeeBps || 20) / 100);
+  const amountRaw = useMemo(() => {
+    try {
+      return parseBridgeAmount(amount);
+    } catch {
+      return 0n;
+    }
+  }, [amount]);
+  const quote = useMemo(() => estimateBridgeQuote(direction, amount, feePercent), [direction, amount, feePercent]);
+  const requiredNetworkKey = direction === "polygon_to_inri" ? "polygon" : "inri";
+  const wrongNetwork = network.key !== requiredNetworkKey;
+  const hasEnoughBalance = direction === "polygon_to_inri" ? balances.polygonUsdtBalance >= amountRaw : balances.inriIusdBalance >= amountRaw;
+  const needsApproval = direction === "polygon_to_inri" ? balances.polygonUsdtAllowance < amountRaw : balances.inriIusdAllowance < amountRaw;
+  const canProceed = !!address && !!privateKey && amountRaw > 0n && hasEnoughBalance && !wrongNetwork;
+  const operations = useMemo(() => getBridgeOperations(address).slice(0, 8), [address, opsVersion]);
+
+  async function runVerifyNow() {
+    try {
+      setBusy(true);
+      setMessage(t.checkingStatus);
+      const updates = await verifyBridgeOperations(address);
+      setOpsVersion((v) => v + 1);
+      setMessage(updates.length ? `${updates.length} bridge update(s) found.` : t.noNewUpdates);
+    } catch (err: any) {
+      setMessage(err?.shortMessage || err?.message || t.statusCheckFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runApprove() {
+    if (!privateKey || amountRaw <= 0n) return;
+    try {
+      setBusy(true);
+      setConfirmIntent(null);
+      setMessage(t.approving);
+      const result = direction === "polygon_to_inri"
+        ? await approvePolygonUsdtTx(privateKey, amountRaw, address)
+        : await approveIusdForBridgeTx(privateKey, amountRaw, address);
+      setLastTxHash(result.hash);
+      setLastTxDirection(direction);
+      setMessage(`${t.approveDone}: ${shortHash(result.hash)}`);
+      setOpsVersion((v) => v + 1);
+    } catch (err: any) {
+      setMessage(err?.shortMessage || err?.message || t.txFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runBridge() {
+    if (!privateKey || amountRaw <= 0n || !destination) return;
+    try {
+      setBusy(true);
+      setConfirmIntent(null);
+      setMessage(direction === "polygon_to_inri" ? t.depositing : t.burning);
+      const result = direction === "polygon_to_inri"
+        ? await depositPolygonToInriTx({ privateKey, amount: amountRaw, destination, walletAddress: address })
+        : await burnInriToPolygonTx({ privateKey, amount: amountRaw, destination, walletAddress: address });
+      setLastTxHash(result.hash);
+      setLastTxDirection(direction);
+      setMessage(`${t.txSent}: ${shortHash(result.hash)}`);
+      setAmount("");
+      setOpsVersion((v) => v + 1);
+    } catch (err: any) {
+      setMessage(err?.shortMessage || err?.message || t.txFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const contractAddress = direction === "polygon_to_inri" ? POLYGON_LOCKBOX_ADDRESS : INRI_EXECUTOR_ADDRESS;
+  const tokenAddress = direction === "polygon_to_inri" ? POLYGON_USDT_ADDRESS : IUSD_TOKEN_ADDRESS;
+  const statusSubtitle = direction === "polygon_to_inri" ? t.depositSubtitle : t.withdrawSubtitle;
+
+  return (
     <div className="wallet-screen-stack wallet-screen-mobile-tight">
       {message ? (
         <ScreenCard theme={theme}>
