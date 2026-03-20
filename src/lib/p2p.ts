@@ -314,6 +314,7 @@ export type P2PEventItem = {
   orderId: number;
   txHash: string;
   blockNumber: number;
+  timestamp?: number;
   maker?: string;
   taker?: string;
   inri?: string;
@@ -323,6 +324,7 @@ export type P2PEventItem = {
 
 export async function loadP2PEvents(limit = 20): Promise<P2PEventItem[]> {
   const contract = getP2PContract();
+  const provider = getP2PReadProvider();
   const createdFilter = contract.filters.OrderCreated();
   const filledFilter = contract.filters.OrderFilled();
   const cancelledFilter = contract.filters.OrderCancelled();
@@ -332,6 +334,16 @@ export async function loadP2PEvents(limit = 20): Promise<P2PEventItem[]> {
     contract.queryFilter(cancelledFilter, -5000),
   ]);
 
+  const allEvents = [...created, ...filled, ...cancelled];
+  const uniqueBlocks = [...new Set(allEvents.map((event: any) => Number(event.blockNumber || 0)).filter(Boolean))];
+  const blockMap = new Map<number, number>();
+  await Promise.all(uniqueBlocks.slice(0, 400).map(async (blockNumber) => {
+    try {
+      const block = await provider.getBlock(blockNumber);
+      if (block?.timestamp) blockMap.set(blockNumber, Number(block.timestamp));
+    } catch {}
+  }));
+
   const items: P2PEventItem[] = [];
   for (const event of created) {
     const args: any = event.args || [];
@@ -340,6 +352,7 @@ export async function loadP2PEvents(limit = 20): Promise<P2PEventItem[]> {
       orderId: Number(args.orderId ?? args[0] ?? 0),
       txHash: String(event.transactionHash || ''),
       blockNumber: Number(event.blockNumber || 0),
+      timestamp: blockMap.get(Number(event.blockNumber || 0)),
       maker: String(args.maker ?? args[2] ?? ''),
       inri: formatInri(BigInt(args.inriAmount ?? args[4] ?? 0)),
       iusd: formatIusd(BigInt(args.iusdAmount ?? args[5] ?? 0)),
@@ -352,6 +365,7 @@ export async function loadP2PEvents(limit = 20): Promise<P2PEventItem[]> {
       orderId: Number(args.orderId ?? args[0] ?? 0),
       txHash: String(event.transactionHash || ''),
       blockNumber: Number(event.blockNumber || 0),
+      timestamp: blockMap.get(Number(event.blockNumber || 0)),
       maker: String(args.maker ?? args[1] ?? ''),
       taker: String(args.taker ?? args[2] ?? ''),
       inri: formatInri(BigInt(args.inriFilled ?? args[3] ?? 0)),
@@ -366,13 +380,14 @@ export async function loadP2PEvents(limit = 20): Promise<P2PEventItem[]> {
       orderId: Number(args.orderId ?? args[0] ?? 0),
       txHash: String(event.transactionHash || ''),
       blockNumber: Number(event.blockNumber || 0),
+      timestamp: blockMap.get(Number(event.blockNumber || 0)),
       maker: String(args.maker ?? args[1] ?? ''),
       inri: formatInri(BigInt(args.refundInri ?? args[2] ?? 0)),
       iusd: formatIusd(BigInt(args.refundIusd ?? args[3] ?? 0)),
     });
   }
 
-  return items.sort((a,b)=>b.blockNumber-a.blockNumber).slice(0, Math.max(1, Math.min(limit, 50)));
+  return items.sort((a,b)=>(b.timestamp||0)-(a.timestamp||0) || b.blockNumber-a.blockNumber).slice(0, Math.max(1, Math.min(limit, 250)));
 }
 
 

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const P2P_FAVORITES_KEY = "inri_p2p_favorite_makers";
 const P2P_MAKER_META_KEY = "inri_p2p_maker_meta";
+const P2P_SCORE_WINDOW_KEY = "inri_p2p_score_window";
 import ScreenCard from "../components/ScreenCard";
 import SectionTitle from "../components/SectionTitle";
 import EmptyState from "../components/EmptyState";
@@ -52,6 +53,7 @@ type ViewMode = "create" | "market" | "mine";
 type FilterSide = "all" | "sell" | "buy";
 type FilterStatus = "all" | "active" | "closed" | "expired";
 type SortMode = "best" | "price-asc" | "price-desc" | "size-desc" | "newest";
+type ScoreWindow = "7d" | "30d" | "all";
 type PendingAction =
   | { kind: "fill"; order: P2POrder }
   | { kind: "cancel"; order: P2POrder }
@@ -89,6 +91,7 @@ export default function P2PScreen({
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("best");
+  const [scoreWindow, setScoreWindow] = useState<ScoreWindow>(() => (localStorage.getItem(P2P_SCORE_WINDOW_KEY) as ScoreWindow) || "30d");
   const [sideFilter, setSideFilter] = useState<FilterSide>("all");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("all");
   const [searchMaker, setSearchMaker] = useState("");
@@ -181,6 +184,10 @@ export default function P2PScreen({
     try { localStorage.setItem(P2P_MAKER_META_KEY, JSON.stringify(makerMeta)); } catch {}
   }, [makerMeta]);
 
+  useEffect(() => {
+    try { localStorage.setItem(P2P_SCORE_WINDOW_KEY, scoreWindow); } catch {}
+  }, [scoreWindow]);
+
   function getMakerMeta(maker: string) {
     return makerMeta[maker.toLowerCase()] || { note: "", tags: [] };
   }
@@ -196,14 +203,23 @@ export default function P2PScreen({
     setMakerMeta((prev) => ({ ...prev, [key]: { ...prev[key], tags } }));
   }
 
+  const scoreEvents = useMemo(() => {
+    if (scoreWindow === "all") return allEvents;
+    const now = Math.floor(Date.now() / 1000);
+    const seconds = scoreWindow === "7d" ? 7 * 24 * 60 * 60 : 30 * 24 * 60 * 60;
+    return allEvents.filter((event) => !event.timestamp || event.timestamp >= now - seconds);
+  }, [allEvents, scoreWindow]);
+
   function computeTraderScore(addressValue: string, role: "buyer" | "seller") {
     const key = addressValue.toLowerCase();
-    const filled = allEvents.filter((event) => event.kind === "filled" && ((role === "buyer" && String(event.maker || '').toLowerCase() === key) || (role === "seller" && String(event.taker || '').toLowerCase() === key)));
-    const cancelled = allEvents.filter((event) => event.kind === "cancelled" && String(event.maker || '').toLowerCase() === key);
+    const filled = scoreEvents.filter((event) => event.kind === "filled" && ((role === "buyer" && String(event.maker || '').toLowerCase() === key) || (role === "seller" && String(event.taker || '').toLowerCase() === key)));
+    const cancelled = scoreEvents.filter((event) => event.kind === "cancelled" && String(event.maker || '').toLowerCase() === key);
+    const created = scoreEvents.filter((event) => event.kind === "created" && String(event.maker || '').toLowerCase() === key);
     const volume = filled.reduce((sum, event) => sum + Number(event.inri || 0), 0);
     const fills = filled.length;
-    const score = Math.max(0, Math.round(volume * 1.15 + fills * 24 - cancelled.length * 10));
-    return { volume, fills, cancelled: cancelled.length, score };
+    const consistency = created.length ? fills / created.length : fills ? 1 : 0;
+    const score = Math.max(0, Math.round(volume * 1.12 + fills * 28 + consistency * 40 - cancelled.length * 14));
+    return { volume, fills, cancelled: cancelled.length, created: created.length, score, consistency };
   }
 
   function isFavoriteMaker(maker: string) {
@@ -217,36 +233,40 @@ export default function P2PScreen({
 
   const marketDepth = useMemo(() => {
     const active = visibleOrders.filter((item) => item.active && !item.expired);
-    const asks = active.filter((item) => item.side === "sell").sort((a, b) => Number(a.priceRaw - b.priceRaw)).slice(0, 6);
-    const bids = active.filter((item) => item.side === "buy").sort((a, b) => Number(b.priceRaw - a.priceRaw)).slice(0, 6);
-    const maxAsk = asks.reduce((max, item) => item.remainingInri > max ? item.remainingInri : max, 0n);
-    const maxBid = bids.reduce((max, item) => item.remainingInri > max ? item.remainingInri : max, 0n);
-    return { asks, bids, maxAsk, maxBid };
-  }, [visibleOrders]);
+    const asksBase = active.filter((item) => item.side === "sell").sort((a, b) => Number(a.priceRaw - b.priceRaw)).slice(0, 8);
+    const bidsBase = active.filter((item) => item.side === "buy").sort((a, b) => Number(b.priceRaw - a.priceRaw)).slice(0, 8);
+    let askCumulative = 0n;
+    const asks = asksBase.map((item) => { askCumulative += item.remainingInri; return { ...item, cumulative: askCumulative }; });
+    let bidCumulative = 0n;
+    const bids = bidsBase.map((item) => { bidCumulative += item.remainingInri; return { ...item, cumulative: bidCumulative }; });
+    const maxAsk = asks.reduce((max, item) => item.cumulative > max ? item.cumulative : max, 0n);
+    const maxBid = bids.reduce((max, item) => item.cumulative > max ? item.cumulative : max, 0n);
+    return { asks, bids, maxAsk, maxBid, spread: bestSell && bestBuy ? Number(bestSell.priceRaw - bestBuy.priceRaw) / 1e6 : null };
+  }, [visibleOrders, bestSell, bestBuy]);
 
   const favoriteOrders = useMemo(() => visibleOrders.filter((item) => isFavoriteMaker(item.maker)), [visibleOrders, favoriteMakers]);
 
   const tradeLeaderboard = useMemo(() => {
-    const buyers = new Map<string, { address: string; fills: number; inri: number; score: number; cancelled: number }>();
-    const sellers = new Map<string, { address: string; fills: number; inri: number; score: number; cancelled: number }>();
+    const buyers = new Map<string, { address: string; fills: number; inri: number; score: number; cancelled: number; created: number; consistency: number }>();
+    const sellers = new Map<string, { address: string; fills: number; inri: number; score: number; cancelled: number; created: number; consistency: number }>();
     const addresses = new Set<string>();
-    for (const event of allEvents) {
+    for (const event of scoreEvents) {
       if (event.maker) addresses.add(String(event.maker).toLowerCase());
       if (event.taker) addresses.add(String(event.taker).toLowerCase());
     }
     for (const key of addresses) {
       const buyer = computeTraderScore(key, "buyer");
       const seller = computeTraderScore(key, "seller");
-      const addressText = allEvents.find((event) => String(event.maker || '').toLowerCase() === key)?.maker || allEvents.find((event) => String(event.taker || '').toLowerCase() === key)?.taker || key;
-      if (buyer.fills || buyer.volume) buyers.set(key, { address: String(addressText), fills: buyer.fills, inri: buyer.volume, score: buyer.score, cancelled: buyer.cancelled });
-      if (seller.fills || seller.volume) sellers.set(key, { address: String(addressText), fills: seller.fills, inri: seller.volume, score: seller.score, cancelled: seller.cancelled });
+      const addressText = scoreEvents.find((event) => String(event.maker || '').toLowerCase() === key)?.maker || scoreEvents.find((event) => String(event.taker || '').toLowerCase() === key)?.taker || key;
+      if (buyer.fills || buyer.volume) buyers.set(key, { address: String(addressText), fills: buyer.fills, inri: buyer.volume, score: buyer.score, cancelled: buyer.cancelled, created: buyer.created, consistency: buyer.consistency });
+      if (seller.fills || seller.volume) sellers.set(key, { address: String(addressText), fills: seller.fills, inri: seller.volume, score: seller.score, cancelled: seller.cancelled, created: seller.created, consistency: seller.consistency });
     }
     const sortFn = (a:any,b:any)=> b.score-a.score || b.inri-a.inri || b.fills-a.fills;
     return {
       buyers: [...buyers.values()].sort(sortFn).slice(0,5),
       sellers: [...sellers.values()].sort(sortFn).slice(0,5),
     };
-  }, [allEvents]);
+  }, [scoreEvents]);
 
   function performanceTone(index: number) {
     if (index === 0) return "success" as const;
@@ -263,22 +283,27 @@ export default function P2PScreen({
   }
 
   const makerProfiles = useMemo(() => {
-    const byMaker = new Map<string, { address: string; activeOrders: number; totalOrders: number; filledCount: number; cancelledCount: number; recentVolume: number }>();
+    const byMaker = new Map<string, { address: string; activeOrders: number; totalOrders: number; filledCount: number; cancelledCount: number; recentVolume: number; buyOrders: number; sellOrders: number; avgFillInri: number; completedRatio: number }>();
     for (const order of orders) {
       const key = order.maker.toLowerCase();
-      const curr = byMaker.get(key) || { address: order.maker, activeOrders: 0, totalOrders: 0, filledCount: 0, cancelledCount: 0, recentVolume: 0 };
+      const curr = byMaker.get(key) || { address: order.maker, activeOrders: 0, totalOrders: 0, filledCount: 0, cancelledCount: 0, recentVolume: 0, buyOrders: 0, sellOrders: 0, avgFillInri: 0, completedRatio: 0 };
       curr.totalOrders += 1;
+      if (order.side === "buy") curr.buyOrders += 1; else curr.sellOrders += 1;
       if (order.active && !order.expired) curr.activeOrders += 1;
       byMaker.set(key, curr);
     }
     for (const event of allEvents) {
       const key = String(event.maker || event.taker || '').toLowerCase();
       if (!key) continue;
-      const curr = byMaker.get(key) || { address: String(event.maker || event.taker), activeOrders: 0, totalOrders: 0, filledCount: 0, cancelledCount: 0, recentVolume: 0 };
+      const curr = byMaker.get(key) || { address: String(event.maker || event.taker), activeOrders: 0, totalOrders: 0, filledCount: 0, cancelledCount: 0, recentVolume: 0, buyOrders: 0, sellOrders: 0, avgFillInri: 0, completedRatio: 0 };
       if (event.kind === 'filled') { curr.filledCount += 1; curr.recentVolume += Number(event.inri || 0); }
       if (event.kind === 'cancelled' && event.maker && String(event.maker).toLowerCase() === key) curr.cancelledCount += 1;
       byMaker.set(key, curr);
     }
+    byMaker.forEach((curr) => {
+      curr.avgFillInri = curr.filledCount ? curr.recentVolume / curr.filledCount : 0;
+      curr.completedRatio = curr.totalOrders ? curr.filledCount / Math.max(1, curr.totalOrders + curr.cancelledCount) : 0;
+    });
     return byMaker;
   }, [orders, allEvents]);
 
@@ -286,6 +311,30 @@ export default function P2PScreen({
   const selectedMakerProfile = useMemo(() => selectedMaker ? makerProfiles.get(selectedMaker.toLowerCase()) || null : null, [selectedMaker, makerProfiles]);
   const selectedMakerOrders = useMemo(() => selectedMaker ? orders.filter((item) => item.maker.toLowerCase() === selectedMaker.toLowerCase()) : [], [selectedMaker, orders]);
   const selectedMakerHistory = useMemo(() => selectedMaker ? allEvents.filter((item) => String(item.maker || item.taker || '').toLowerCase() === selectedMaker.toLowerCase()).slice(0, 10) : [], [selectedMaker, allEvents]);
+
+  const analytics = useMemo(() => {
+    const activeOrders = orders.filter((item) => item.active && !item.expired);
+    const fills = allEvents.filter((event) => event.kind === "filled");
+    const created = allEvents.filter((event) => event.kind === "created");
+    const byDay = new Map<string, { volume: number; fills: number }>();
+    for (const event of fills) {
+      const key = event.timestamp ? new Date(event.timestamp * 1000).toISOString().slice(0, 10) : `block-${event.blockNumber}`;
+      const curr = byDay.get(key) || { volume: 0, fills: 0 };
+      curr.volume += Number(event.inri || 0);
+      curr.fills += 1;
+      byDay.set(key, curr);
+    }
+    const trend = [...byDay.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1).slice(-7);
+    const maxTrendVolume = trend.reduce((max, [, row]) => Math.max(max, row.volume), 0);
+    return {
+      activeAsks: activeOrders.filter((item) => item.side === "sell").length,
+      activeBids: activeOrders.filter((item) => item.side === "buy").length,
+      fillRate: created.length ? (fills.length / created.length) * 100 : 0,
+      recentVolume: fills.reduce((sum, event) => sum + Number(event.inri || 0), 0),
+      trend,
+      maxTrendVolume,
+    };
+  }, [orders, allEvents]);
 
   async function refreshBalances() {
     if (!address) return;
@@ -577,6 +626,7 @@ export default function P2PScreen({
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
               {bestSell ? <StatBox theme={theme} label="Best ask" value={`${bestSell.priceDisplay} iUSD`} sub={`Order #${bestSell.id} • ${bestSell.remainingInriDisplay} INRI`} /> : null}
               {bestBuy ? <StatBox theme={theme} label="Best bid" value={`${bestBuy.priceDisplay} iUSD`} sub={`Order #${bestBuy.id} • ${bestBuy.remainingInriDisplay} INRI`} /> : null}
+              {marketDepth.spread !== null ? <StatBox theme={theme} label="Spread" value={`${marketDepth.spread.toLocaleString(undefined, { maximumFractionDigits: 6 })} iUSD`} sub="best ask minus best bid" /> : null}
             </div>
           ) : null}
 
@@ -609,6 +659,10 @@ export default function P2PScreen({
             <StatBox theme={theme} label="Filled trades" value={String(selectedMakerProfile?.filledCount || 0)} sub="recent contract events" />
             <StatBox theme={theme} label="Cancelled" value={String(selectedMakerProfile?.cancelledCount || 0)} sub="recent contract events" />
             <StatBox theme={theme} label="Volume" value={(selectedMakerProfile?.recentVolume || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} sub="INRI recent volume" />
+            <StatBox theme={theme} label="Sell orders" value={String(selectedMakerProfile?.sellOrders || 0)} sub="visible tracked orders" />
+            <StatBox theme={theme} label="Buy orders" value={String(selectedMakerProfile?.buyOrders || 0)} sub="visible tracked orders" />
+            <StatBox theme={theme} label="Avg fill" value={(selectedMakerProfile?.avgFillInri || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} sub="INRI per fill" />
+            <StatBox theme={theme} label="Completion" value={`${Math.round((selectedMakerProfile?.completedRatio || 0) * 100)}%`} sub="fills vs cancels/orders" />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
             <Field theme={theme} label="Private note">
@@ -735,8 +789,8 @@ export default function P2PScreen({
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
-            <DepthPanel theme={theme} title="Sell depth" rows={marketDepth.asks.map((item) => ({ label: `${item.priceDisplay} iUSD`, sub: `${item.remainingInriDisplay} INRI`, fill: marketDepth.maxAsk > 0n ? Number((item.remainingInri * 100n) / marketDepth.maxAsk) : 0 }))} emptyText="No active asks" />
-            <DepthPanel theme={theme} title="Buy depth" rows={marketDepth.bids.map((item) => ({ label: `${item.priceDisplay} iUSD`, sub: `${item.remainingInriDisplay} INRI`, fill: marketDepth.maxBid > 0n ? Number((item.remainingInri * 100n) / marketDepth.maxBid) : 0 }))} emptyText="No active bids" />
+            <DepthPanel theme={theme} title="Sell depth" rows={marketDepth.asks.map((item) => ({ label: `${item.priceDisplay} iUSD`, sub: `${item.remainingInriDisplay} INRI • cumulative ${formatInri(item.cumulative)} INRI`, fill: marketDepth.maxAsk > 0n ? Number((item.cumulative * 100n) / marketDepth.maxAsk) : 0 }))} emptyText="No active asks" />
+            <DepthPanel theme={theme} title="Buy depth" rows={marketDepth.bids.map((item) => ({ label: `${item.priceDisplay} iUSD`, sub: `${item.remainingInriDisplay} INRI • cumulative ${formatInri(item.cumulative)} INRI`, fill: marketDepth.maxBid > 0n ? Number((item.cumulative * 100n) / marketDepth.maxBid) : 0 }))} emptyText="No active bids" />
           </div>
 
           {favoriteOrders.length ? (
@@ -880,6 +934,34 @@ export default function P2PScreen({
       ) : null}
 
       <ScreenCard theme={theme}>
+        <SectionTitle title="Market analytics" subtitle="Deeper analytics for market health, recent volume and fill efficiency." theme={theme} compact actions={<div className="wallet-action-row" style={{ gap: 8 }}>
+          <ActionButton theme={theme} compact tone={scoreWindow === "7d" ? "primary" : "ghost"} onClick={() => setScoreWindow("7d")}>7D</ActionButton>
+          <ActionButton theme={theme} compact tone={scoreWindow === "30d" ? "primary" : "ghost"} onClick={() => setScoreWindow("30d")}>30D</ActionButton>
+          <ActionButton theme={theme} compact tone={scoreWindow === "all" ? "primary" : "ghost"} onClick={() => setScoreWindow("all")}>All</ActionButton>
+        </div>} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginBottom: 12 }}>
+          <StatBox theme={theme} label="Active asks" value={String(analytics.activeAsks)} sub="open sell liquidity" />
+          <StatBox theme={theme} label="Active bids" value={String(analytics.activeBids)} sub="open buy liquidity" />
+          <StatBox theme={theme} label="Fill rate" value={`${analytics.fillRate.toFixed(1)}%`} sub="filled vs created events" />
+          <StatBox theme={theme} label="Recent volume" value={analytics.recentVolume.toLocaleString(undefined, { maximumFractionDigits: 2 })} sub={`INRI in ${scoreWindow}`} />
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff" }}>7-day activity trend</div>
+          {analytics.trend.length === 0 ? <EmptyState theme={theme} title="No trend data yet" description="As fills land onchain, daily activity bars will appear here." /> : analytics.trend.map(([day, row]) => (
+            <div key={day} style={{ display: "grid", gap: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>{day}</div>
+                <div className="wallet-ui-subtle">{row.volume.toLocaleString(undefined, { maximumFractionDigits: 2 })} INRI • {row.fills} fills</div>
+              </div>
+              <div style={{ height: 10, borderRadius: 999, overflow: "hidden", background: isLight ? "rgba(37,99,235,0.08)" : "#172033" }}>
+                <div style={{ width: `${analytics.maxTrendVolume ? Math.max(10, Math.min(100, Math.round((row.volume / analytics.maxTrendVolume) * 100))) : 10}%`, height: "100%", borderRadius: 999, background: isLight ? "linear-gradient(90deg,#c4b5fd,#2563eb)" : "linear-gradient(90deg,#4338ca,#60a5fa)" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </ScreenCard>
+
+      <ScreenCard theme={theme}>
         <SectionTitle title="Recent market events" subtitle="Created, filled and cancelled orders read from contract events." theme={theme} compact actions={<div className="wallet-action-row" style={{ gap: 8 }}><ActionButton theme={theme} compact tone="ghost" onClick={() => setEventsPage((p) => Math.max(1, p - 1))} disabled={eventsPage === 1}>Prev</ActionButton><ActionButton theme={theme} compact tone="secondary" onClick={() => setEventsPage((p) => p + 1)} disabled={!eventsHasMore}>Next</ActionButton></div>} />
         {events.length === 0 ? (
           <EmptyState theme={theme} title="No recent events" description="When orders are created or filled, they will show here." />
@@ -921,7 +1003,7 @@ export default function P2PScreen({
       </ScreenCard>
 
       <ScreenCard theme={theme}>
-        <SectionTitle title="Top buyers" subtitle="Recent onchain buy-side volume. This is a trading rank, not a true reputation score." theme={theme} compact />
+        <SectionTitle title="Top buyers" subtitle={`Buy-side performance in ${scoreWindow}. This is a trading score, not a formal reputation.`} theme={theme} compact />
         {tradeLeaderboard.buyers.length === 0 ? (
           <EmptyState theme={theme} title="No buyer ranking yet" description="When buy-side fills happen, top buyers will appear here." />
         ) : (
@@ -933,7 +1015,7 @@ export default function P2PScreen({
                     <span>#{index + 1} • {shortenAddress(item.address, 5)}</span>
                     <StatusPill theme={theme} tone={performanceTone(index)}>{performanceLabel(index)}</StatusPill>
                   </div>
-                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent buy volume • score {item.score.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {item.cancelled} cancels</div>
+                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent buy volume • score {item.score.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {item.cancelled} cancels • {Math.round(item.consistency * 100)}% consistency</div>
                 </div>
                 <div className="wallet-action-row" style={{ gap: 8 }}><ActionButton theme={theme} compact tone="ghost" onClick={() => setSelectedMaker(item.address)}>Maker</ActionButton><a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a></div>
               </div>
@@ -943,7 +1025,7 @@ export default function P2PScreen({
       </ScreenCard>
 
       <ScreenCard theme={theme}>
-        <SectionTitle title="Top sellers" subtitle="Recent onchain sell-side volume. This is a trading rank, not a true reputation score." theme={theme} compact />
+        <SectionTitle title="Top sellers" subtitle={`Sell-side performance in ${scoreWindow}. This is a trading score, not a formal reputation.`} theme={theme} compact />
         {tradeLeaderboard.sellers.length === 0 ? (
           <EmptyState theme={theme} title="No seller ranking yet" description="When sell-side fills happen, top sellers will appear here." />
         ) : (
@@ -955,7 +1037,7 @@ export default function P2PScreen({
                     <span>#{index + 1} • {shortenAddress(item.address, 5)}</span>
                     <StatusPill theme={theme} tone={performanceTone(index)}>{performanceLabel(index)}</StatusPill>
                   </div>
-                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent sell volume • score {item.score.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {item.cancelled} cancels</div>
+                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent sell volume • score {item.score.toLocaleString(undefined, { maximumFractionDigits: 0 })} • {item.cancelled} cancels • {Math.round(item.consistency * 100)}% consistency</div>
                 </div>
                 <div className="wallet-action-row" style={{ gap: 8 }}><ActionButton theme={theme} compact tone="ghost" onClick={() => setSelectedMaker(item.address)}>Maker</ActionButton><a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a></div>
               </div>
@@ -989,7 +1071,7 @@ Status: ${selectedOrder.active ? (selectedOrder.expired ? "Expired" : "Active") 
 Maker favorite: ${isFavoriteMaker(selectedOrder.maker) ? "Yes" : "No"}
 Maker note: ${getMakerMeta(selectedOrder.maker).note || "—"}
 Recent order history:
-${selectedOrderHistory.length ? selectedOrderHistory.map((event) => `• ${event.kind} • ${event.inri || '0'} INRI • tx ${shortenAddress(event.txHash, 5)}`).join("\n") : "• No recent history in loaded window"}` : ""}
+${selectedOrderHistory.length ? selectedOrderHistory.map((event) => `• ${event.kind} • ${event.inri || '0'} INRI • ${event.timestamp ? new Date(event.timestamp * 1000).toLocaleString() : `block ${event.blockNumber}`} • tx ${shortenAddress(event.txHash, 5)}`).join("\n") : "• No recent history in loaded window"}` : ""}
         confirmLabel="Close"
         cancelLabel=""
         tone="primary"
@@ -1073,7 +1155,7 @@ function DepthPanel({ theme, title, rows, emptyText }: { theme: "dark" | "light"
     <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 18, padding: 14, background: isLight ? "#f8fbff" : "#0b1120", display: "grid", gap: 10 }}>
       <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff", fontSize: 15, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <span>{title}</span>
-        <span className="wallet-ui-subtle">Top 6 levels</span>
+        <span className="wallet-ui-subtle">Cumulative depth</span>
       </div>
       {rows.length === 0 ? <div className="wallet-ui-subtle">{emptyText}</div> : rows.map((row, index) => (
         <div key={`${title}-${index}`} style={{ display: "grid", gap: 6 }}>
