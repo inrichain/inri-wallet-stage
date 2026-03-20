@@ -104,7 +104,7 @@ export default function DashboardScreen({
 
   function openWalletConnect() {
     window.dispatchEvent(new CustomEvent("wallet-open-wc", { detail: { source: "dashboard" } }));
-    setTab("settings");
+    setTab("walletconnect");
   }
 
   async function installApp() {

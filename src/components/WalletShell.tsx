@@ -14,6 +14,10 @@ import BridgeScreen from "../screens/BridgeScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import NFTsScreen from "../screens/NFTsScreen";
 import StakingScreen from "../screens/StakingScreen";
+import MoreScreen from "../screens/MoreScreen";
+import NetworksScreen from "../screens/NetworksScreen";
+import WalletConnectScreen from "../screens/WalletConnectScreen";
+import AssetManagerScreen from "../screens/AssetManagerScreen";
 import WcSessionProposalModal from "./WcSessionProposalModal";
 import WcRequestModal from "./WcRequestModal";
 import {
@@ -37,15 +41,19 @@ const THEME_KEY = "wallet_theme";
 
 export type Tab =
   | "dashboard"
+  | "tokens"
+  | "activity"
+  | "more"
   | "send"
   | "receive"
-  | "tokens"
   | "nfts"
-  | "activity"
   | "swap"
   | "bridge"
   | "staking"
-  | "settings";
+  | "settings"
+  | "networks"
+  | "walletconnect"
+  | "assets";
 
 type View = "auth" | "wallet";
 type AuthMode = "unlock" | "create" | "import";
@@ -664,6 +672,18 @@ export default function WalletShell() {
 
       case "staking":
         return <StakingScreen theme={theme} lang={lang} />;
+
+      case "more":
+        return <MoreScreen theme={theme} lang={lang} setTab={setTab as any} />;
+
+      case "networks":
+        return <NetworksScreen theme={theme} lang={lang} />;
+
+      case "walletconnect":
+        return <WalletConnectScreen theme={theme} lang={lang} />;
+
+      case "assets":
+        return <AssetManagerScreen theme={theme} lang={lang} />;
 
       case "settings":
         return (
