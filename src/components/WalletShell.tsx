@@ -672,7 +672,7 @@ export default function WalletShell() {
         return <SwapScreen theme={theme} lang={lang} address={address} />;
 
       case "bridge":
-        return <BridgeScreen theme={theme} lang={lang} address={address} />;
+        return <BridgeScreen theme={theme} lang={lang} address={address} privateKey={privateKey} />;
 
       case "staking":
         return <StakingScreen theme={theme} lang={lang} />;
