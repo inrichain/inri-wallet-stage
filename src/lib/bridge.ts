@@ -1,9 +1,10 @@
 import { ethers } from "ethers";
-import { getProvider, EXPLORER_TX_URL } from "./inri";
+import { EXPLORER_TX_URL, getProvider } from "./inri";
 
 const BRIDGE_ACTIVITY_KEY = "wallet_activity_demo";
-const BRIDGE_OPERATIONS_KEY = "wallet_bridge_operations_v2";
+const BRIDGE_OPERATIONS_KEY = "wallet_bridge_operations_v3";
 const BRIDGE_BURN_NONCE_KEY = "wallet_bridge_burn_nonce_v1";
+const DEFAULT_BRIDGE_FEE_BPS = 20; // 0.20% configured wallet-side fallback
 
 export const POLYGON_LOCKBOX_ADDRESS = "0x7E2e6d4881e1470D541599397b4876b449296071";
 export const INRI_EXECUTOR_ADDRESS = "0x07DE046e96c33a8E575234282e1CccAC56d3d880";
@@ -42,6 +43,9 @@ export type BridgeOperation = {
   etaLabel: string;
   sourceTxHash?: string;
   claimTxHash?: string;
+  depositId?: string;
+  burnNonce?: number;
+  txType?: "approve" | "bridge" | "claim";
   contractAddress?: string;
   claimContractAddress?: string;
   mode: "mock" | "live";
@@ -92,7 +96,7 @@ const ROUTES: Record<BridgeDirection, BridgeRouteDefinition> = {
     toNetworkName: "INRI",
     fromSymbol: "USDT",
     toSymbol: "iUSD",
-    bridgeFeePercent: 0,
+    bridgeFeePercent: DEFAULT_BRIDGE_FEE_BPS / 100,
     estimatedMinutes: 3,
     sourceContractAddress: POLYGON_LOCKBOX_ADDRESS,
     claimContractAddress: INRI_EXECUTOR_ADDRESS,
@@ -107,7 +111,7 @@ const ROUTES: Record<BridgeDirection, BridgeRouteDefinition> = {
     toNetworkName: "Polygon",
     fromSymbol: "iUSD",
     toSymbol: "USDT",
-    bridgeFeePercent: 0,
+    bridgeFeePercent: DEFAULT_BRIDGE_FEE_BPS / 100,
     estimatedMinutes: 8,
     sourceContractAddress: INRI_EXECUTOR_ADDRESS,
     claimContractAddress: POLYGON_LOCKBOX_ADDRESS,
@@ -189,7 +193,7 @@ export function formatBridgeAmount(value: bigint | string | number, digits = 4) 
   }
 }
 
-export function estimateBridgeQuote(direction: BridgeDirection, amountText: string, feePercent = 0): BridgeQuote {
+export function estimateBridgeQuote(direction: BridgeDirection, amountText: string, feePercent = DEFAULT_BRIDGE_FEE_BPS / 100): BridgeQuote {
   const route = getBridgeRoute(direction);
   const amount = Number(amountText || "0");
   const safeAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
@@ -214,11 +218,12 @@ export async function loadBridgeBalances(address: string): Promise<BridgeBalance
       polygonUsdtAllowance: 0n,
       inriIusdBalance: 0n,
       inriIusdAllowance: 0n,
-      polygonDepositFeeBps: 0,
-      polygonReleaseFeeBps: 0,
-      inriFeeBps: 0,
+      polygonDepositFeeBps: DEFAULT_BRIDGE_FEE_BPS,
+      polygonReleaseFeeBps: DEFAULT_BRIDGE_FEE_BPS,
+      inriFeeBps: DEFAULT_BRIDGE_FEE_BPS,
     };
   }
+
   const [polygonUsdt, inriIusd, lockbox, executor] = [
     getPolygonUsdtContract(),
     getIusdBridgeContract(),
@@ -230,9 +235,9 @@ export async function loadBridgeBalances(address: string): Promise<BridgeBalance
     polygonUsdt.allowance(address, POLYGON_LOCKBOX_ADDRESS).catch(() => 0n),
     inriIusd.balanceOf(address).catch(() => 0n),
     inriIusd.allowance(address, INRI_EXECUTOR_ADDRESS).catch(() => 0n),
-    lockbox.depositFeeBps().catch(() => 0),
-    lockbox.releaseFeeBps().catch(() => 0),
-    executor.feeBps().catch(() => 0),
+    lockbox.depositFeeBps().catch(() => DEFAULT_BRIDGE_FEE_BPS),
+    lockbox.releaseFeeBps().catch(() => DEFAULT_BRIDGE_FEE_BPS),
+    executor.feeBps().catch(() => DEFAULT_BRIDGE_FEE_BPS),
   ]);
 
   return {
@@ -240,25 +245,45 @@ export async function loadBridgeBalances(address: string): Promise<BridgeBalance
     polygonUsdtAllowance: BigInt(polygonUsdtAllowance),
     inriIusdBalance: BigInt(inriIusdBalance),
     inriIusdAllowance: BigInt(inriIusdAllowance),
-    polygonDepositFeeBps: Number(depositFeeBps),
-    polygonReleaseFeeBps: Number(releaseFeeBps),
-    inriFeeBps: Number(inriFeeBps),
+    polygonDepositFeeBps: Number(depositFeeBps || DEFAULT_BRIDGE_FEE_BPS),
+    polygonReleaseFeeBps: Number(releaseFeeBps || DEFAULT_BRIDGE_FEE_BPS),
+    inriFeeBps: Number(inriFeeBps || DEFAULT_BRIDGE_FEE_BPS),
   };
 }
 
-export async function approvePolygonUsdtTx(privateKey: string, amount: bigint) {
+export async function approvePolygonUsdtTx(privateKey: string, amount: bigint, walletAddress?: string) {
   const signer = getBridgeSigner(privateKey, "polygon");
   const token = getPolygonUsdtContract(signer);
   const tx = await token.approve(POLYGON_LOCKBOX_ADDRESS, amount);
   const receipt = await tx.wait();
+  saveApprovalActivity({
+    direction: "polygon_to_inri",
+    hash: String(tx.hash),
+    walletAddress: walletAddress || signer.address,
+    tokenSymbol: "USDT",
+    spender: POLYGON_LOCKBOX_ADDRESS,
+    networkKey: "polygon",
+    networkName: "Polygon",
+    amount,
+  });
   return { hash: String(tx.hash), receipt };
 }
 
-export async function approveIusdForBridgeTx(privateKey: string, amount: bigint) {
+export async function approveIusdForBridgeTx(privateKey: string, amount: bigint, walletAddress?: string) {
   const signer = getBridgeSigner(privateKey, "inri");
   const token = getIusdBridgeContract(signer);
   const tx = await token.approve(INRI_EXECUTOR_ADDRESS, amount);
   const receipt = await tx.wait();
+  saveApprovalActivity({
+    direction: "inri_to_polygon",
+    hash: String(tx.hash),
+    walletAddress: walletAddress || signer.address,
+    tokenSymbol: "iUSD",
+    spender: INRI_EXECUTOR_ADDRESS,
+    networkKey: "inri",
+    networkName: "INRI",
+    amount,
+  });
   return { hash: String(tx.hash), receipt };
 }
 
@@ -275,9 +300,9 @@ export async function depositPolygonToInriTx(args: { privateKey: string; amount:
     destination: args.destination,
     walletAddress: args.walletAddress,
     sourceTxHash: String(tx.hash),
-    stageLabel: depositId ? `Deposit confirmed • waiting validator mint` : "Deposit confirmed • waiting validator mint",
+    stageLabel: depositId ? "Deposit confirmed • waiting validator mint" : "Deposit confirmed • waiting validator mint",
     status: "pending",
-    extra: { contractAddress: POLYGON_LOCKBOX_ADDRESS },
+    extra: { contractAddress: POLYGON_LOCKBOX_ADDRESS, depositId, txType: "bridge" },
   });
 
   saveBridgeOperation(operation);
@@ -299,9 +324,9 @@ export async function burnInriToPolygonTx(args: { privateKey: string; amount: bi
     destination: args.destination,
     walletAddress: args.walletAddress,
     sourceTxHash: String(tx.hash),
-    stageLabel: `Burn confirmed • waiting validator release`,
+    stageLabel: "Burn confirmed • waiting validator release",
     status: "pending",
-    extra: { contractAddress: INRI_EXECUTOR_ADDRESS },
+    extra: { contractAddress: INRI_EXECUTOR_ADDRESS, burnNonce: Number(nonce), txType: "bridge" },
   });
 
   saveBridgeOperation(operation);
@@ -314,19 +339,96 @@ export function getBridgeOperations(address?: string): BridgeOperation[] {
     const raw = JSON.parse(localStorage.getItem(BRIDGE_OPERATIONS_KEY) || "[]");
     const list = Array.isArray(raw) ? raw : [];
     const filtered = address
-      ? list.filter(
-          (item: BridgeOperation) =>
-            item.walletAddress?.toLowerCase() === address.toLowerCase() ||
-            item.destination?.toLowerCase() === address.toLowerCase()
-        )
+      ? list.filter((item: BridgeOperation) => item.walletAddress?.toLowerCase() === address.toLowerCase() || item.destination?.toLowerCase() === address.toLowerCase())
       : list;
-    return filtered.sort(
-      (a: BridgeOperation, b: BridgeOperation) =>
-        new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
-    );
+    return filtered.sort((a: BridgeOperation, b: BridgeOperation) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
   } catch {
     return [];
   }
+}
+
+export function updateBridgeOperation(id: string, patch: Partial<BridgeOperation>) {
+  const current = getBridgeOperations();
+  const next = current.map((item) => (item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item));
+  localStorage.setItem(BRIDGE_OPERATIONS_KEY, JSON.stringify(next));
+}
+
+export async function verifyBridgeOperations(address?: string) {
+  const operations = getBridgeOperations(address).filter((item) => item.status === "pending" || item.status === "ready_to_claim");
+  if (!operations.length) return [] as BridgeOperation[];
+
+  const updates: BridgeOperation[] = [];
+  const executorProvider = getInriBridgeProvider();
+  const lockboxProvider = getPolygonBridgeProvider();
+  const lockboxIface = new ethers.Interface(LOCKBOX_ABI);
+  const executorIface = new ethers.Interface(EXECUTOR_ABI);
+
+  for (const item of operations) {
+    try {
+      if (item.direction === "polygon_to_inri" && item.depositId) {
+        const receipt = item.sourceTxHash ? await lockboxProvider.getTransactionReceipt(item.sourceTxHash).catch(() => null) : null;
+        const fromBlock = receipt?.blockNumber ? Math.max(0, Number(receipt.blockNumber) - 5) : 0;
+        const logs = await executorProvider.getLogs({
+          address: INRI_EXECUTOR_ADDRESS,
+          fromBlock,
+          toBlock: "latest",
+          topics: [ethers.id("MintFinalized(address,uint256,bytes32,uint256)"), null, item.depositId],
+        }).catch(() => []);
+        const hit = logs[logs.length - 1];
+        if (hit) {
+          updateBridgeOperation(item.id, {
+            status: "confirmed",
+            stageLabel: "Mint finalized on INRI",
+            claimTxHash: hit.transactionHash,
+            txType: "claim",
+          });
+          if (!item.claimTxHash) {
+            saveBridgeActivity({ ...item, claimTxHash: hit.transactionHash, stageLabel: "Mint finalized on INRI" }, hit.transactionHash, "confirmed", true);
+          }
+          updates.push({ ...item, status: "confirmed", stageLabel: "Mint finalized on INRI", claimTxHash: hit.transactionHash });
+          continue;
+        }
+      }
+
+      if (item.direction === "inri_to_polygon" && item.burnNonce != null) {
+        const receipt = item.sourceTxHash ? await executorProvider.getTransactionReceipt(item.sourceTxHash).catch(() => null) : null;
+        const fromBlock = receipt?.blockNumber ? Math.max(0, Number(receipt.blockNumber) - 5) : 0;
+        const logs = await lockboxProvider.getLogs({
+          address: POLYGON_LOCKBOX_ADDRESS,
+          fromBlock,
+          toBlock: "latest",
+          topics: [ethers.id("Released(address,uint256,uint256)"), ethers.zeroPadValue(item.destination, 32)],
+        }).catch(() => []);
+        let matchedHash = "";
+        for (const log of logs as any[]) {
+          try {
+            const parsed = lockboxIface.parseLog(log);
+            if (parsed?.name === "Released" && Number(parsed.args?.nonce) === Number(item.burnNonce)) {
+              matchedHash = log.transactionHash;
+              break;
+            }
+          } catch {}
+        }
+        if (matchedHash) {
+          updateBridgeOperation(item.id, {
+            status: "confirmed",
+            stageLabel: "Release finalized on Polygon",
+            claimTxHash: matchedHash,
+            txType: "claim",
+          });
+          if (!item.claimTxHash) {
+            saveBridgeActivity({ ...item, claimTxHash: matchedHash, stageLabel: "Release finalized on Polygon" }, matchedHash, "confirmed", true);
+          }
+          updates.push({ ...item, status: "confirmed", stageLabel: "Release finalized on Polygon", claimTxHash: matchedHash });
+          continue;
+        }
+      }
+    } catch {
+      // keep operation pending
+    }
+  }
+
+  return updates;
 }
 
 function createOperation(input: {
@@ -340,8 +442,9 @@ function createOperation(input: {
   extra?: Partial<BridgeOperation>;
 }) {
   const route = getBridgeRoute(input.direction);
+  const feePercent = route.bridgeFeePercent || DEFAULT_BRIDGE_FEE_BPS / 100;
   const amountText = ethers.formatUnits(input.amount, 6);
-  const quote = estimateBridgeQuote(input.direction, amountText, 0);
+  const quote = estimateBridgeQuote(input.direction, amountText, feePercent);
   const now = new Date().toISOString();
 
   return {
@@ -355,7 +458,7 @@ function createOperation(input: {
     toSymbol: route.toSymbol,
     amountIn: quote.amountIn,
     amountOut: quote.amountOut,
-    feePercent: 0,
+    feePercent,
     destination: input.destination,
     walletAddress: input.walletAddress,
     createdAt: now,
@@ -375,6 +478,45 @@ function saveBridgeOperation(operation: BridgeOperation) {
   const current = getBridgeOperations();
   const next = [operation, ...current.filter((item) => item.id !== operation.id)].slice(0, 100);
   localStorage.setItem(BRIDGE_OPERATIONS_KEY, JSON.stringify(next));
+}
+
+function saveApprovalActivity(args: {
+  direction: BridgeDirection;
+  hash: string;
+  walletAddress: string;
+  tokenSymbol: string;
+  spender: string;
+  networkKey: "polygon" | "inri";
+  networkName: string;
+  amount: bigint;
+}) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(BRIDGE_ACTIVITY_KEY) || "[]");
+    const current = Array.isArray(raw) ? raw : [];
+    const activity = {
+      hash: args.hash,
+      type: "approve",
+      symbol: args.tokenSymbol,
+      amount: ethers.formatUnits(args.amount, 6),
+      to: args.spender,
+      from: args.walletAddress,
+      createdAt: new Date().toISOString(),
+      status: "confirmed",
+      networkKey: args.networkKey,
+      networkName: args.networkName,
+      chainId: args.networkKey,
+      gasUsed: "-",
+      gasPriceGwei: "-",
+      feeNative: "-",
+      priority: "normal",
+      method: "approve",
+      dappName: "INRI Bridge",
+      bridgeDirection: args.direction === "polygon_to_inri" ? "Polygon → INRI" : "INRI → Polygon",
+      bridgeStatusLabel: `Approve ${args.tokenSymbol} confirmed`,
+      mode: "live",
+    };
+    localStorage.setItem(BRIDGE_ACTIVITY_KEY, JSON.stringify([activity, ...current].slice(0, 300)));
+  } catch {}
 }
 
 function saveBridgeActivity(
@@ -419,9 +561,7 @@ function readDepositIdFromReceipt(receipt: any): string | null {
     for (const log of receipt?.logs || []) {
       try {
         const parsed = iface.parseLog(log);
-        if (parsed?.name === "Deposited") {
-          return String(parsed.args?.depositId || "");
-        }
+        if (parsed?.name === "Deposited") return String(parsed.args?.depositId || "");
       } catch {}
     }
   } catch {}

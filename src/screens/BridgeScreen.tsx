@@ -1,49 +1,38 @@
 import React, { useEffect, useMemo, useState } from "react";
+import ActionButton from "../components/ActionButton";
+import ConfirmModal from "../components/ConfirmModal";
+import EmptyState from "../components/EmptyState";
+import LogoImage from "../components/LogoImage";
 import ScreenCard from "../components/ScreenCard";
 import SectionTitle from "../components/SectionTitle";
-import ActionButton from "../components/ActionButton";
-import EmptyState from "../components/EmptyState";
 import StatusPill from "../components/StatusPill";
 import {
   approveIusdForBridgeTx,
   approvePolygonUsdtTx,
   bridgeTxUrl,
-  depositPolygonToInriTx,
   burnInriToPolygonTx,
+  depositPolygonToInriTx,
   estimateBridgeQuote,
   formatBridgeAmount,
   getBridgeOperations,
-  getBridgeRoute,
   IUSD_TOKEN_ADDRESS,
   INRI_EXECUTOR_ADDRESS,
   loadBridgeBalances,
   parseBridgeAmount,
   POLYGON_LOCKBOX_ADDRESS,
   POLYGON_USDT_ADDRESS,
+  verifyBridgeOperations,
   type BridgeDirection,
 } from "../lib/bridge";
 import { getStoredNetwork } from "../lib/network";
-import LogoImage from "../components/LogoImage";
-import ConfirmModal from "../components/ConfirmModal";
 
 const BASE = import.meta.env.BASE_URL || "/";
-
 const TOKENS = {
-  usdt: {
-    symbol: "USDT",
-    subtitle: "Polygon deposit asset",
-    logo: BASE + "token-usdt.png",
-    network: "Polygon",
-    networkLogo: BASE + "network-polygon.png",
-  },
-  iusd: {
-    symbol: "iUSD",
-    subtitle: "INRI minted asset",
-    logo: BASE + "token-iusd.png",
-    network: "INRI",
-    networkLogo: BASE + "network-inri.png",
-  },
+  usdt: { symbol: "USDT", logo: `${BASE}token-usdt.png`, network: "Polygon" },
+  iusd: { symbol: "iUSD", logo: `${BASE}token-iusd.png`, network: "INRI" },
 };
+
+type ConfirmIntent = null | "approve" | "bridge";
 
 export default function BridgeScreen({
   theme = "dark",
@@ -56,48 +45,58 @@ export default function BridgeScreen({
   address: string;
   privateKey: string;
 }) {
-  const isLight = theme === "light";
   const t = getText(lang);
+  const isLight = theme === "light";
   const network = getStoredNetwork();
   const [direction, setDirection] = useState<BridgeDirection>("polygon_to_inri");
   const [amount, setAmount] = useState("");
   const [destination, setDestination] = useState(address);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [lastTxHash, setLastTxHash] = useState("");
+  const [lastTxDirection, setLastTxDirection] = useState<BridgeDirection>("polygon_to_inri");
+  const [opsVersion, setOpsVersion] = useState(0);
+  const [confirmIntent, setConfirmIntent] = useState<ConfirmIntent>(null);
   const [balances, setBalances] = useState({
     polygonUsdtBalance: 0n,
     polygonUsdtAllowance: 0n,
     inriIusdBalance: 0n,
     inriIusdAllowance: 0n,
-    polygonDepositFeeBps: 0,
-    polygonReleaseFeeBps: 0,
-    inriFeeBps: 0,
+    polygonDepositFeeBps: 20,
+    polygonReleaseFeeBps: 20,
+    inriFeeBps: 20,
   });
-  const [opsVersion, setOpsVersion] = useState(0);
-  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  useEffect(() => {
-    setDestination(address);
-  }, [address]);
+  useEffect(() => setDestination(address), [address]);
 
   useEffect(() => {
     let alive = true;
     loadBridgeBalances(address)
-      .then((next) => {
-        if (alive) setBalances(next);
-      })
-      .catch(() => {
-        if (alive) setMessage(t.balanceLoadFailed);
-      });
+      .then((next) => alive && setBalances(next))
+      .catch(() => alive && setMessage(t.balanceLoadFailed));
     return () => {
       alive = false;
     };
   }, [address, opsVersion, t.balanceLoadFailed]);
 
+  useEffect(() => {
+    if (!address) return;
+    const tick = async () => {
+      try {
+        const updates = await verifyBridgeOperations(address);
+        if (updates.length) setOpsVersion((v) => v + 1);
+      } catch {
+        // ignore background poll errors
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 15000);
+    return () => window.clearInterval(id);
+  }, [address]);
+
   const fromToken = direction === "polygon_to_inri" ? TOKENS.usdt : TOKENS.iusd;
   const toToken = direction === "polygon_to_inri" ? TOKENS.iusd : TOKENS.usdt;
-  const feePercent = direction === "polygon_to_inri" ? balances.polygonDepositFeeBps / 100 : balances.inriFeeBps / 100;
-  const quote = useMemo(() => estimateBridgeQuote(direction, amount, feePercent), [direction, amount, feePercent]);
+  const feePercent = (direction === "polygon_to_inri" ? balances.polygonDepositFeeBps : balances.inriFeeBps) / 100;
   const amountRaw = useMemo(() => {
     try {
       return parseBridgeAmount(amount);
@@ -105,27 +104,25 @@ export default function BridgeScreen({
       return 0n;
     }
   }, [amount]);
-
-  const hasEnoughBalance = direction === "polygon_to_inri"
-    ? amountRaw > 0n && balances.polygonUsdtBalance >= amountRaw
-    : amountRaw > 0n && balances.inriIusdBalance >= amountRaw;
-
-  const needsApproval = direction === "polygon_to_inri"
-    ? amountRaw > 0n && balances.polygonUsdtAllowance < amountRaw
-    : amountRaw > 0n && balances.inriIusdAllowance < amountRaw;
-
+  const quote = useMemo(() => estimateBridgeQuote(direction, amount, feePercent), [direction, amount, feePercent]);
   const requiredNetworkKey = direction === "polygon_to_inri" ? "polygon" : "inri";
   const wrongNetwork = network.key !== requiredNetworkKey;
-  const operations = useMemo(() => getBridgeOperations(address).slice(0, 6), [address, opsVersion]);
+  const hasEnoughBalance = direction === "polygon_to_inri" ? balances.polygonUsdtBalance >= amountRaw : balances.inriIusdBalance >= amountRaw;
+  const needsApproval = direction === "polygon_to_inri" ? balances.polygonUsdtAllowance < amountRaw : balances.inriIusdAllowance < amountRaw;
+  const canProceed = !!address && !!privateKey && amountRaw > 0n && hasEnoughBalance && !wrongNetwork;
+  const operations = useMemo(() => getBridgeOperations(address).slice(0, 8), [address, opsVersion]);
 
-  async function onApprove() {
+  async function runApprove() {
     if (!privateKey || amountRaw <= 0n) return;
     try {
       setBusy(true);
+      setConfirmIntent(null);
       setMessage(t.approving);
       const result = direction === "polygon_to_inri"
-        ? await approvePolygonUsdtTx(privateKey, amountRaw)
-        : await approveIusdForBridgeTx(privateKey, amountRaw);
+        ? await approvePolygonUsdtTx(privateKey, amountRaw, address)
+        : await approveIusdForBridgeTx(privateKey, amountRaw, address);
+      setLastTxHash(result.hash);
+      setLastTxDirection(direction);
       setMessage(`${t.approveDone}: ${shortHash(result.hash)}`);
       setOpsVersion((v) => v + 1);
     } catch (err: any) {
@@ -135,15 +132,17 @@ export default function BridgeScreen({
     }
   }
 
-  async function onBridge() {
+  async function runBridge() {
     if (!privateKey || amountRaw <= 0n || !destination) return;
     try {
       setBusy(true);
-      setConfirmOpen(false);
+      setConfirmIntent(null);
       setMessage(direction === "polygon_to_inri" ? t.depositing : t.burning);
       const result = direction === "polygon_to_inri"
         ? await depositPolygonToInriTx({ privateKey, amount: amountRaw, destination, walletAddress: address })
         : await burnInriToPolygonTx({ privateKey, amount: amountRaw, destination, walletAddress: address });
+      setLastTxHash(result.hash);
+      setLastTxDirection(direction);
       setMessage(`${t.txSent}: ${shortHash(result.hash)}`);
       setAmount("");
       setOpsVersion((v) => v + 1);
@@ -154,7 +153,9 @@ export default function BridgeScreen({
     }
   }
 
-  const canProceed = !!address && !!privateKey && amountRaw > 0n && hasEnoughBalance && !wrongNetwork;
+  const contractAddress = direction === "polygon_to_inri" ? POLYGON_LOCKBOX_ADDRESS : INRI_EXECUTOR_ADDRESS;
+  const tokenAddress = direction === "polygon_to_inri" ? POLYGON_USDT_ADDRESS : IUSD_TOKEN_ADDRESS;
+  const statusSubtitle = direction === "polygon_to_inri" ? t.depositSubtitle : t.withdrawSubtitle;
 
   return (
     <div className="wallet-screen-stack wallet-screen-mobile-tight">
@@ -170,9 +171,23 @@ export default function BridgeScreen({
 
       {message ? (
         <ScreenCard theme={theme}>
-          <div style={{ color: isLight ? "#0f172a" : "#e2e8f0", fontWeight: 700, wordBreak: "break-word" }}>{message}</div>
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ color: isLight ? "#0f172a" : "#e2e8f0", fontWeight: 700, wordBreak: "break-word" }}>{message}</div>
+            {lastTxHash ? (
+              <a href={bridgeTxUrl(lastTxDirection, lastTxHash)} target="_blank" rel="noreferrer" className="wallet-link-chip">
+                {t.openExplorer} {shortHash(lastTxHash)}
+              </a>
+            ) : null}
+          </div>
         </ScreenCard>
       ) : null}
+
+      <ScreenCard theme={theme}>
+        <div className="wallet-ui-grid-2 wallet-mobile-single-grid">
+          <ModeButton theme={theme} active={direction === "polygon_to_inri"} title={t.depositFlow} subtitle={`${TOKENS.usdt.symbol} → ${TOKENS.iusd.symbol}`} onClick={() => setDirection("polygon_to_inri")} />
+          <ModeButton theme={theme} active={direction === "inri_to_polygon"} title={t.withdrawFlow} subtitle={`${TOKENS.iusd.symbol} → ${TOKENS.usdt.symbol}`} onClick={() => setDirection("inri_to_polygon")} />
+        </div>
+      </ScreenCard>
 
       {wrongNetwork ? (
         <ScreenCard theme={theme}>
@@ -182,17 +197,11 @@ export default function BridgeScreen({
       ) : null}
 
       <ScreenCard theme={theme}>
-        <div className="wallet-ui-grid-2 wallet-mobile-single-grid">
-          <ActionModeButton theme={theme} active={direction === "polygon_to_inri"} onClick={() => setDirection("polygon_to_inri")} title={t.depositFlow} subtitle={`${TOKENS.usdt.symbol} → ${TOKENS.iusd.symbol}`} />
-          <ActionModeButton theme={theme} active={direction === "inri_to_polygon"} onClick={() => setDirection("inri_to_polygon")} title={t.withdrawFlow} subtitle={`${TOKENS.iusd.symbol} → ${TOKENS.usdt.symbol}`} />
-        </div>
-      </ScreenCard>
-
-      <ScreenCard theme={theme}>
         <div className="wallet-section-head">
           <div>
-            <div style={{ fontSize: 13, color: isLight ? "#64748b" : "#94a3b8", fontWeight: 800, textTransform: "uppercase" }}>{t.route}</div>
-            <div style={{ fontWeight: 900, fontSize: 20, color: isLight ? "#0f172a" : "#fff" }}>{fromToken.network} → {toToken.network}</div>
+            <div style={{ fontSize: 12, color: isLight ? "#64748b" : "#94a3b8", fontWeight: 800, textTransform: "uppercase" }}>{t.route}</div>
+            <div style={{ marginTop: 4, fontWeight: 900, fontSize: 22, color: isLight ? "#0f172a" : "#fff" }}>{fromToken.network} → {toToken.network}</div>
+            <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>{statusSubtitle}</div>
           </div>
           <div className="wallet-mini-stat">
             <LogoImage src={fromToken.logo} alt={fromToken.symbol} kind="token" label={fromToken.symbol} size={20} />
@@ -203,26 +212,33 @@ export default function BridgeScreen({
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+        <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
           <Input label={t.amount} value={amount} onChange={setAmount} placeholder="0.00" theme={theme} />
           <Input label={t.destination} value={destination} onChange={setDestination} placeholder={address} theme={theme} />
         </div>
 
-        <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-          <InfoRow theme={theme} label={t.youPay} value={`${quote.amountIn} ${fromToken.symbol}`} />
-          <InfoRow theme={theme} label={t.youReceive} value={`${quote.amountOut} ${toToken.symbol}`} />
-          <InfoRow theme={theme} label={t.fee} value={`${feePercent.toFixed(2)}%`} />
-          <InfoRow theme={theme} label={t.eta} value={quote.etaLabel} />
-          <InfoRow theme={theme} label={t.sourceContract} value={direction === "polygon_to_inri" ? POLYGON_LOCKBOX_ADDRESS : INRI_EXECUTOR_ADDRESS} mono />
-          <InfoRow theme={theme} label={t.tokenAddress} value={direction === "polygon_to_inri" ? POLYGON_USDT_ADDRESS : IUSD_TOKEN_ADDRESS} mono />
+        <div className="wallet-ui-grid-2 wallet-mobile-single-grid" style={{ gap: 12, marginTop: 14 }}>
+          <MetricCard theme={theme} title={t.youPay} value={`${quote.amountIn} ${fromToken.symbol}`} />
+          <MetricCard theme={theme} title={t.youReceive} value={`${quote.amountOut} ${toToken.symbol}`} />
+          <MetricCard theme={theme} title={t.fee} value={`${feePercent.toFixed(2)}%`} meta={`${quote.feeAmount} ${fromToken.symbol}`} />
+          <MetricCard theme={theme} title={t.eta} value={quote.etaLabel} />
         </div>
       </ScreenCard>
 
       <ScreenCard theme={theme}>
-        <SectionTitle title={t.balancesAndAllowances} subtitle={t.autoVerifyLater} theme={theme} compact />
+        <SectionTitle title={t.contractsAndTokens} subtitle={t.realRouteSummary} theme={theme} compact />
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          <InfoRow theme={theme} label={t.sourceContract} value={contractAddress} mono />
+          <InfoRow theme={theme} label={t.tokenAddress} value={tokenAddress} mono />
+          <InfoRow theme={theme} label={t.validatorTarget} value={direction === "polygon_to_inri" ? INRI_EXECUTOR_ADDRESS : POLYGON_LOCKBOX_ADDRESS} mono />
+        </div>
+      </ScreenCard>
+
+      <ScreenCard theme={theme}>
+        <SectionTitle title={t.balancesAndAllowances} subtitle={t.autoVerifyNow} theme={theme} compact />
         <div className="wallet-ui-grid-2 wallet-mobile-single-grid" style={{ marginTop: 12 }}>
-          <StatBox theme={theme} title="Polygon USDT" value={formatBridgeAmount(balances.polygonUsdtBalance)} meta={`${t.allowance}: ${formatBridgeAmount(balances.polygonUsdtAllowance)}`} />
-          <StatBox theme={theme} title="INRI iUSD" value={formatBridgeAmount(balances.inriIusdBalance)} meta={`${t.allowance}: ${formatBridgeAmount(balances.inriIusdAllowance)}`} />
+          <MetricCard theme={theme} title="Polygon USDT" value={formatBridgeAmount(balances.polygonUsdtBalance)} meta={`${t.allowance}: ${formatBridgeAmount(balances.polygonUsdtAllowance)}`} />
+          <MetricCard theme={theme} title="INRI iUSD" value={formatBridgeAmount(balances.inriIusdBalance)} meta={`${t.allowance}: ${formatBridgeAmount(balances.inriIusdAllowance)}`} />
         </div>
       </ScreenCard>
 
@@ -230,11 +246,11 @@ export default function BridgeScreen({
         <SectionTitle title={t.actions} subtitle={needsApproval ? t.approvalRequired : t.readyToBridge} theme={theme} compact />
         <div className="wallet-action-row" style={{ marginTop: 12 }}>
           {needsApproval ? (
-            <ActionButton theme={theme} onClick={onApprove} disabled={!canProceed || busy}>
+            <ActionButton theme={theme} onClick={() => setConfirmIntent("approve")} disabled={!canProceed || busy}>
               {busy ? t.processing : direction === "polygon_to_inri" ? t.approveUsdt : t.approveIusd}
             </ActionButton>
           ) : null}
-          <ActionButton theme={theme} onClick={() => setConfirmOpen(true)} disabled={!canProceed || needsApproval || busy} tone="primary">
+          <ActionButton theme={theme} onClick={() => setConfirmIntent("bridge")} disabled={!canProceed || needsApproval || busy} tone="primary">
             {busy ? t.processing : direction === "polygon_to_inri" ? t.depositNow : t.burnNow}
           </ActionButton>
         </div>
@@ -244,7 +260,7 @@ export default function BridgeScreen({
       <ScreenCard theme={theme}>
         <SectionTitle title={t.recentBridgeOps} subtitle={t.pendingUntilAutomation} theme={theme} compact />
         {operations.length === 0 ? (
-          <EmptyState theme={theme} title={t.noBridgeOps} description={t.autoVerifyLater} />
+          <EmptyState theme={theme} title={t.noBridgeOps} description={t.autoVerifyNow} />
         ) : (
           <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
             {operations.map((item) => (
@@ -258,13 +274,14 @@ export default function BridgeScreen({
                 </div>
                 <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                   <InfoRow theme={theme} label={t.amount} value={`${item.amountIn} ${item.fromSymbol}`} />
+                  <InfoRow theme={theme} label={t.youReceive} value={`${item.amountOut} ${item.toSymbol}`} />
                   <InfoRow theme={theme} label={t.destination} value={item.destination} mono />
+                  <InfoRow theme={theme} label={t.fee} value={`${item.feePercent.toFixed(2)}%`} />
                 </div>
-                {item.sourceTxHash ? (
-                  <div className="wallet-action-row" style={{ marginTop: 12 }}>
-                    <a href={bridgeTxUrl(item.direction, item.sourceTxHash)} target="_blank" rel="noreferrer" className="wallet-link-chip">{t.openTx}</a>
-                  </div>
-                ) : null}
+                <div className="wallet-action-row" style={{ marginTop: 12 }}>
+                  {item.sourceTxHash ? <a href={bridgeTxUrl(item.direction, item.sourceTxHash)} target="_blank" rel="noreferrer" className="wallet-link-chip">{t.openTx}</a> : null}
+                  {item.claimTxHash ? <a href={bridgeTxUrl(item.direction === "polygon_to_inri" ? "inri_to_polygon" : "polygon_to_inri", item.claimTxHash)} target="_blank" rel="noreferrer" className="wallet-link-chip">{t.openSettlementTx}</a> : null}
+                </div>
               </div>
             ))}
           </div>
@@ -272,23 +289,25 @@ export default function BridgeScreen({
       </ScreenCard>
 
       <ConfirmModal
-        open={confirmOpen}
+        open={confirmIntent !== null}
         theme={theme}
-        title={direction === "polygon_to_inri" ? t.confirmDeposit : t.confirmBurn}
-        description={`${quote.amountIn} ${fromToken.symbol} → ${quote.amountOut} ${toToken.symbol}`}
-        confirmLabel={direction === "polygon_to_inri" ? t.depositNow : t.burnNow}
+        title={confirmIntent === "approve" ? t.confirmApprove : direction === "polygon_to_inri" ? t.confirmDeposit : t.confirmBurn}
+        description={confirmIntent === "approve"
+          ? `${t.approveAmount}: ${quote.amountIn} ${fromToken.symbol}`
+          : `${quote.amountIn} ${fromToken.symbol} → ${quote.amountOut} ${toToken.symbol} • ${feePercent.toFixed(2)}%`}
+        confirmLabel={confirmIntent === "approve" ? t.confirmApproveButton : direction === "polygon_to_inri" ? t.depositNow : t.burnNow}
         cancelLabel={t.cancel}
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={onBridge}
+        onCancel={() => setConfirmIntent(null)}
+        onConfirm={confirmIntent === "approve" ? runApprove : runBridge}
       />
     </div>
   );
 }
 
-function ActionModeButton({ theme, active, onClick, title, subtitle }: { theme: "dark" | "light"; active?: boolean; onClick: () => void; title: string; subtitle: string; }) {
+function ModeButton({ theme, active, title, subtitle, onClick }: { theme: "dark" | "light"; active?: boolean; title: string; subtitle: string; onClick: () => void; }) {
   const isLight = theme === "light";
   return (
-    <button onClick={onClick} style={{ border: `1px solid ${active ? "#3b82f6" : isLight ? "#dbe2f0" : "#243041"}`, background: active ? (isLight ? "#eff6ff" : "#0f1d36") : (isLight ? "#fff" : "#101826"), borderRadius: 16, padding: 14, textAlign: "left", cursor: "pointer" }}>
+    <button onClick={onClick} style={{ border: `1px solid ${active ? "#fde68a" : isLight ? "#dbe2f0" : "#243041"}`, background: active ? (isLight ? "#eff6ff" : "#112040") : (isLight ? "#fff" : "#101826"), borderRadius: 18, padding: 16, textAlign: "left", cursor: "pointer" }}>
       <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{title}</div>
       <div style={{ marginTop: 6, fontSize: 13, color: isLight ? "#64748b" : "#94a3b8" }}>{subtitle}</div>
     </button>
@@ -305,23 +324,23 @@ function Input({ label, value, onChange, placeholder, theme }: { label: string; 
   );
 }
 
+function MetricCard({ theme, title, value, meta }: { theme: "dark" | "light"; title: string; value: string; meta?: string; }) {
+  const isLight = theme === "light";
+  return (
+    <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 16, padding: 14, background: isLight ? "#f8fafc" : "#0b1120" }}>
+      <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", color: isLight ? "#64748b" : "#94a3b8" }}>{title}</div>
+      <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{value}</div>
+      {meta ? <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>{meta}</div> : null}
+    </div>
+  );
+}
+
 function InfoRow({ theme, label, value, mono = false }: { theme: "dark" | "light"; label: string; value: string; mono?: boolean; }) {
   const isLight = theme === "light";
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 14, padding: "12px 14px", background: isLight ? "#f8fafc" : "#0b1120" }}>
       <div style={{ fontSize: 12, color: isLight ? "#64748b" : "#94a3b8", fontWeight: 800, textTransform: "uppercase" }}>{label}</div>
       <div style={{ color: isLight ? "#0f172a" : "#e2e8f0", fontWeight: 700, wordBreak: "break-all", textAlign: "right", fontFamily: mono ? "ui-monospace, SFMono-Regular, Menlo, monospace" : "inherit" }}>{value}</div>
-    </div>
-  );
-}
-
-function StatBox({ theme, title, value, meta }: { theme: "dark" | "light"; title: string; value: string; meta: string; }) {
-  const isLight = theme === "light";
-  return (
-    <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 16, padding: 14, background: isLight ? "#f8fafc" : "#0b1120" }}>
-      <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", color: isLight ? "#64748b" : "#94a3b8" }}>{title}</div>
-      <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{value}</div>
-      <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>{meta}</div>
     </div>
   );
 }
@@ -335,7 +354,7 @@ function getText(lang: string) {
   const map: Record<string, any> = {
     en: {
       bridge: "Bridge",
-      bridgeReady: "Live contracts connected. Automatic validator verification can come next.",
+      bridgeReady: "Contracts are connected. Approvals, bridge history and tx links are visible here.",
       liveContracts: "Live contracts",
       switchTo: "Switch to",
       route: "Route",
@@ -347,8 +366,11 @@ function getText(lang: string) {
       eta: "Estimated time",
       sourceContract: "Source contract",
       tokenAddress: "Token address",
+      validatorTarget: "Settlement contract",
+      contractsAndTokens: "Contracts and tokens",
+      realRouteSummary: "Real route summary with contract and token addresses.",
       balancesAndAllowances: "Balances and allowances",
-      autoVerifyLater: "Deposit and burn are live. Validator mint/release tracking can be added next.",
+      autoVerifyNow: "Background verification now checks whether mint/release was finalized.",
       allowance: "Allowance",
       actions: "Actions",
       approvalRequired: "Approval required before the bridge transaction.",
@@ -358,7 +380,7 @@ function getText(lang: string) {
       depositNow: "Deposit to bridge",
       burnNow: "Burn for release",
       recentBridgeOps: "Recent bridge operations",
-      pendingUntilAutomation: "Operations stay pending here until automatic validator verification is added.",
+      pendingUntilAutomation: "Pending items update automatically when the opposite side finalizes.",
       noBridgeOps: "No bridge operations yet",
       approving: "Submitting approval…",
       approveDone: "Approval confirmed",
@@ -369,17 +391,24 @@ function getText(lang: string) {
       insufficientBalance: "Insufficient balance for this bridge operation.",
       confirmDeposit: "Confirm Polygon → INRI deposit",
       confirmBurn: "Confirm INRI → Polygon burn",
+      confirmApprove: "Confirm approval",
+      confirmApproveButton: "Approve now",
+      approveAmount: "Approve amount",
       cancel: "Cancel",
-      openTx: "Open tx",
+      openTx: "Open source tx",
+      openExplorer: "Open in explorer",
+      openSettlementTx: "Open settlement tx",
       depositFlow: "Polygon USDT → INRI iUSD",
       withdrawFlow: "INRI iUSD → Polygon USDT",
+      depositSubtitle: "Approve USDT on Polygon, deposit to Lockbox, then wait for validator mint on INRI.",
+      withdrawSubtitle: "Approve iUSD on INRI, burn in executor, then wait for release on Polygon.",
       networkWarning: (key: string) => `Use the ${key.toUpperCase()} network for this direction.`,
       currentNetwork: (name: string) => `Current network: ${name}`,
       balanceLoadFailed: "Could not refresh bridge balances right now.",
     },
     pt: {
       bridge: "Bridge",
-      bridgeReady: "Contratos reais conectados. A verificação automática dos validadores pode entrar depois.",
+      bridgeReady: "Os contratos estão conectados. Aprovações, histórico e links de tx aparecem aqui.",
       liveContracts: "Contratos ao vivo",
       switchTo: "Trocar para",
       route: "Rota",
@@ -391,8 +420,11 @@ function getText(lang: string) {
       eta: "Tempo estimado",
       sourceContract: "Contrato de origem",
       tokenAddress: "Endereço do token",
+      validatorTarget: "Contrato de liquidação",
+      contractsAndTokens: "Contratos e tokens",
+      realRouteSummary: "Resumo real da rota com endereços dos contratos e tokens.",
       balancesAndAllowances: "Saldos e aprovações",
-      autoVerifyLater: "Depósito e burn já estão ao vivo. O rastreio automático de mint/release pode entrar depois.",
+      autoVerifyNow: "A verificação em segundo plano agora checa se o mint/release foi finalizado.",
       allowance: "Allowance",
       actions: "Ações",
       approvalRequired: "É preciso aprovar antes da transação do bridge.",
@@ -402,7 +434,7 @@ function getText(lang: string) {
       depositNow: "Depositar no bridge",
       burnNow: "Queimar para release",
       recentBridgeOps: "Operações recentes do bridge",
-      pendingUntilAutomation: "As operações ficam pendentes aqui até a verificação automática dos validadores ser adicionada.",
+      pendingUntilAutomation: "Itens pendentes atualizam automaticamente quando o outro lado finaliza.",
       noBridgeOps: "Ainda não há operações do bridge",
       approving: "Enviando aprovação…",
       approveDone: "Aprovação confirmada",
@@ -413,13 +445,74 @@ function getText(lang: string) {
       insufficientBalance: "Saldo insuficiente para esta operação do bridge.",
       confirmDeposit: "Confirmar depósito Polygon → INRI",
       confirmBurn: "Confirmar burn INRI → Polygon",
+      confirmApprove: "Confirmar aprovação",
+      confirmApproveButton: "Aprovar agora",
+      approveAmount: "Valor da aprovação",
       cancel: "Cancelar",
-      openTx: "Abrir tx",
+      openTx: "Abrir tx de origem",
+      openExplorer: "Abrir no explorer",
+      openSettlementTx: "Abrir tx de liquidação",
       depositFlow: "Polygon USDT → INRI iUSD",
       withdrawFlow: "INRI iUSD → Polygon USDT",
+      depositSubtitle: "Aprove USDT na Polygon, deposite no Lockbox e aguarde o mint dos validadores na INRI.",
+      withdrawSubtitle: "Aprove iUSD na INRI, faça o burn no executor e aguarde o release na Polygon.",
       networkWarning: (key: string) => `Use a rede ${key.toUpperCase()} para essa direção.`,
       currentNetwork: (name: string) => `Rede atual: ${name}`,
       balanceLoadFailed: "Não foi possível atualizar os saldos do bridge agora.",
+    },
+    es: {
+      bridge: "Bridge",
+      bridgeReady: "Los contratos están conectados. Aprobaciones, historial y enlaces de tx aparecen aquí.",
+      liveContracts: "Contratos en vivo",
+      switchTo: "Cambiar a",
+      route: "Ruta",
+      amount: "Monto",
+      destination: "Billetera destino",
+      youPay: "Pagas",
+      youReceive: "Recibes",
+      fee: "Fee del bridge",
+      eta: "Tiempo estimado",
+      sourceContract: "Contrato de origen",
+      tokenAddress: "Dirección del token",
+      validatorTarget: "Contrato de liquidación",
+      contractsAndTokens: "Contratos y tokens",
+      realRouteSummary: "Resumen real de la ruta con direcciones de contratos y tokens.",
+      balancesAndAllowances: "Saldos y aprobaciones",
+      autoVerifyNow: "La verificación en segundo plano ahora revisa si el mint/release fue finalizado.",
+      allowance: "Allowance",
+      actions: "Acciones",
+      approvalRequired: "Se requiere aprobación antes de la transacción del bridge.",
+      readyToBridge: "Ya puedes enviar la transacción del bridge.",
+      approveUsdt: "Aprobar USDT",
+      approveIusd: "Aprobar iUSD",
+      depositNow: "Depositar al bridge",
+      burnNow: "Quemar para release",
+      recentBridgeOps: "Operaciones recientes del bridge",
+      pendingUntilAutomation: "Los elementos pendientes se actualizan automáticamente cuando el otro lado finaliza.",
+      noBridgeOps: "Aún no hay operaciones del bridge",
+      approving: "Enviando aprobación…",
+      approveDone: "Aprobación confirmada",
+      txSent: "Transacción confirmada",
+      txFailed: "Falló la transacción del bridge",
+      depositing: "Enviando depósito en Polygon…",
+      burning: "Enviando burn en INRI…",
+      insufficientBalance: "Saldo insuficiente para esta operación del bridge.",
+      confirmDeposit: "Confirmar depósito Polygon → INRI",
+      confirmBurn: "Confirmar burn INRI → Polygon",
+      confirmApprove: "Confirmar aprobación",
+      confirmApproveButton: "Aprobar ahora",
+      approveAmount: "Monto a aprobar",
+      cancel: "Cancelar",
+      openTx: "Abrir tx origen",
+      openExplorer: "Abrir en explorer",
+      openSettlementTx: "Abrir tx liquidación",
+      depositFlow: "Polygon USDT → INRI iUSD",
+      withdrawFlow: "INRI iUSD → Polygon USDT",
+      depositSubtitle: "Aprueba USDT en Polygon, deposita en Lockbox y espera el mint de validadores en INRI.",
+      withdrawSubtitle: "Aprueba iUSD en INRI, quema en el executor y espera el release en Polygon.",
+      networkWarning: (key: string) => `Usa la red ${key.toUpperCase()} para esta dirección.`,
+      currentNetwork: (name: string) => `Red actual: ${name}`,
+      balanceLoadFailed: "No se pudieron actualizar los saldos del bridge ahora.",
     },
   };
   return map[lang] || map.en;
