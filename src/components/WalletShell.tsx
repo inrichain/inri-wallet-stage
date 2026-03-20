@@ -690,7 +690,7 @@ export default function WalletShell() {
         return <AssetManagerScreen theme={theme} lang={lang} />;
 
       case "p2p":
-        return <P2PScreen theme={theme} lang={lang} setTab={setTab as any} />;
+        return <P2PScreen theme={theme} lang={lang} setTab={setTab as any} address={address} privateKey={privateKey} />;
 
       case "settings":
         return (
