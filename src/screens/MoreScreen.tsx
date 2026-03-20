@@ -1,5 +1,5 @@
 import React from "react";
-import type { Tab } from "../components/BottomNav";
+import type { Tab } from "../lib/navigation";
 
 const groups = [
   {

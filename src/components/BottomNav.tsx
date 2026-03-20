@@ -1,35 +1,6 @@
 import React from "react";
 import { tr } from "../i18n/translations";
-
-export type Tab =
-  | "dashboard"
-  | "tokens"
-  | "activity"
-  | "more"
-  | "send"
-  | "receive"
-  | "nfts"
-  | "swap"
-  | "bridge"
-  | "staking"
-  | "settings"
-  | "networks"
-  | "walletconnect"
-  | "assets";
-
-const MORE_TABS: Tab[] = [
-  "more",
-  "send",
-  "receive",
-  "nfts",
-  "swap",
-  "bridge",
-  "staking",
-  "settings",
-  "networks",
-  "walletconnect",
-  "assets",
-];
+import { MORE_TABS, type Tab } from "../lib/navigation";
 
 export default function BottomNav({
   tab,

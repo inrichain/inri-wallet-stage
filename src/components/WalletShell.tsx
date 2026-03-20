@@ -4,6 +4,8 @@ import { initWalletConnect } from "../lib/walletconnect";
 import { tr, trf } from "../i18n/translations";
 import Header from "./Header";
 import BottomNav from "./BottomNav";
+import AuthPanel, { type AuthMode } from "./AuthPanel";
+import ReauthModal from "./ReauthModal";
 import DashboardScreen from "../screens/DashboardScreen";
 import SendScreen from "../screens/SendScreen";
 import ReceiveScreen from "../screens/ReceiveScreen";
@@ -29,11 +31,12 @@ import {
 } from "../lib/walletconnect";
 import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
-import { isValidSeedPhrase, normalizeSeed, shortAddress } from "../lib/inri";
+import { isValidSeedPhrase, normalizeSeed } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
 import { installDesktopEthereumProvider } from "../lib/desktopProvider";
 import { getInriNetwork, getStoredNetwork, saveStoredNetwork } from "../lib/network";
 import type { AppToastPayload, AppToastType } from "../lib/ui";
+import type { Tab } from "../lib/navigation";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const VAULTS_KEY = "inri_wallet_vaults_v2";
@@ -41,24 +44,7 @@ const CURRENT_WALLET_KEY = "inri_wallet_current_id";
 const LANG_KEY = "wallet_lang";
 const THEME_KEY = "wallet_theme";
 
-export type Tab =
-  | "dashboard"
-  | "tokens"
-  | "activity"
-  | "more"
-  | "send"
-  | "receive"
-  | "nfts"
-  | "swap"
-  | "bridge"
-  | "staking"
-  | "settings"
-  | "networks"
-  | "walletconnect"
-  | "assets";
-
 type View = "auth" | "wallet";
-type AuthMode = "unlock" | "create" | "import";
 
 type WalletVault = {
   id: string;
@@ -720,264 +706,64 @@ export default function WalletShell() {
 
   if (view === "auth") {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background:
-            theme === "light"
-              ? "linear-gradient(180deg,#eef3fb 0%, #f7f9fd 100%)"
-              : "radial-gradient(circle at top, rgba(63,124,255,.12) 0%, rgba(11,11,15,1) 38%, rgba(6,7,11,1) 100%)",
-          color: theme === "light" ? "#10131a" : "#ffffff",
-          padding: 20,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          boxSizing: "border-box",
+      <AuthPanel
+        theme={theme}
+        baseUrl={BASE}
+        mode={authMode}
+        setMode={setAuthMode}
+        texts={{
+          authSubtitle: t.authSubtitle,
+          unlock: t.unlock,
+          create: t.create,
+          import: t.import,
+          password: t.password,
+          passwordCreate: t.passwordCreate,
+          walletName: t.walletName,
+          generatedSeed: t.generatedSeed,
+          generateSeed: t.generateSeed,
+          createWallet: t.createWallet,
+          importWallet: t.importWallet,
+          pasteSeed: t.pasteSeed,
+          noWalletsYet: t.noWalletsYet,
+          processing: t.processing,
+          seedBackupConfirm: t.seedBackupConfirm,
         }}
-      >
-        <div style={{ width: "min(460px, 100%)" }}>
-          <div style={{ textAlign: "center", marginBottom: 28 }}>
-            <img
-              src={BASE + "token-inri.png"}
-              alt="INRI"
-              style={{
-                width: 154,
-                height: 154,
-                objectFit: "contain",
-                margin: "0 auto 18px",
-                display: "block",
-                filter:
-                  theme === "light"
-                    ? "drop-shadow(0 16px 40px rgba(63,124,255,.20))"
-                    : "drop-shadow(0 18px 44px rgba(63,124,255,.38))",
-              }}
-            />
-
-            <div
-              style={{
-                fontSize: 46,
-                fontWeight: 900,
-                lineHeight: 1,
-                marginBottom: 12,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              INRI Wallet
-            </div>
-
-            <div
-              style={{
-                color: theme === "light" ? "#5b6578" : "#97a0b3",
-                fontSize: 15,
-              }}
-            >
-              {t.authSubtitle}
-            </div>
-          </div>
-
-          <div
-            style={{
-              border: `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
-              borderRadius: 30,
-              background:
-                theme === "light"
-                  ? "rgba(255,255,255,.94)"
-                  : "rgba(18,22,33,.92)",
-              padding: 18,
-              boxShadow:
-                theme === "light"
-                  ? "0 18px 40px rgba(20,30,60,.08)"
-                  : "0 18px 40px rgba(0,0,0,.28)",
-              backdropFilter: "blur(16px)",
-              boxSizing: "border-box",
-            }}
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3,1fr)",
-                gap: 8,
-                marginBottom: 16,
-              }}
-            >
-              <button
-                onClick={() => setAuthMode("unlock")}
-                style={tabButtonStyle(authMode === "unlock", theme)}
-              >
-                {t.unlock}
-              </button>
-
-              <button
-                onClick={() => setAuthMode("create")}
-                style={tabButtonStyle(authMode === "create", theme)}
-              >
-                {t.create}
-              </button>
-
-              <button
-                onClick={() => setAuthMode("import")}
-                style={tabButtonStyle(authMode === "import", theme)}
-              >
-                {t.import}
-              </button>
-            </div>
-
-            {authMode === "unlock" ? (
-              <div style={{ display: "grid", gap: 12 }}>
-                <select
-                  value={selectedWalletId}
-                  onChange={(e) => setSelectedWalletId(e.target.value)}
-                  style={inputStyle(theme)}
-                >
-                  {wallets.length === 0 ? (
-                    <option value="">{t.noWalletsYet}</option>
-                  ) : (
-                    wallets.map((wallet) => (
-                      <option key={wallet.id} value={wallet.id}>
-                        {wallet.name} — {shortAddress(wallet.address)}
-                      </option>
-                    ))
-                  )}
-                </select>
-
-                <input
-                  type="password"
-                  value={unlockPassword}
-                  onChange={(e) => setUnlockPassword(e.target.value)}
-                  placeholder={t.password}
-                  style={inputStyle(theme)}
-                />
-
-                <button
-                  onClick={unlockWallet}
-                  style={mainButtonStyle()}
-                  disabled={loading || wallets.length === 0}
-                >
-                  {loading ? t.processing : t.unlock}
-                </button>
-              </div>
-            ) : null}
-
-            {authMode === "create" ? (
-              <div style={{ display: "grid", gap: 12 }}>
-                <input
-                  value={createName}
-                  onChange={(e) => setCreateName(e.target.value)}
-                  placeholder={t.walletName}
-                  style={inputStyle(theme)}
-                />
-
-                <textarea
-                  value={generatedSeed}
-                  readOnly
-                  placeholder={t.generatedSeed}
-                  style={textareaStyle(theme)}
-                />
-
-                <button onClick={generateSeedPhrase} style={secondaryButtonStyle(theme)}>
-                  {t.generateSeed}
-                </button>
-
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    fontSize: 13,
-                    color: theme === "light" ? "#42506a" : "#a7b0c4",
-                    lineHeight: 1.45,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={confirmSeedSaved}
-                    onChange={(e) => setConfirmSeedSaved(e.target.checked)}
-                    style={{ marginTop: 2 }}
-                  />
-                  <span>{t.seedBackupConfirm}</span>
-                </label>
-
-                <input
-                  type="password"
-                  value={createPassword}
-                  onChange={(e) => setCreatePassword(e.target.value)}
-                  placeholder={t.passwordCreate}
-                  style={inputStyle(theme)}
-                />
-
-                <button
-                  onClick={createWallet}
-                  style={mainButtonStyle()}
-                  disabled={loading}
-                >
-                  {loading ? t.processing : t.createWallet}
-                </button>
-              </div>
-            ) : null}
-
-            {authMode === "import" ? (
-              <div style={{ display: "grid", gap: 12 }}>
-                <input
-                  value={importName}
-                  onChange={(e) => setImportName(e.target.value)}
-                  placeholder={t.walletName}
-                  style={inputStyle(theme)}
-                />
-
-                <textarea
-                  value={importSeed}
-                  onChange={(e) => setImportSeed(e.target.value)}
-                  placeholder={t.pasteSeed}
-                  style={textareaStyle(theme)}
-                />
-
-                <input
-                  type="password"
-                  value={importPassword}
-                  onChange={(e) => setImportPassword(e.target.value)}
-                  placeholder={t.passwordCreate}
-                  style={inputStyle(theme)}
-                />
-
-                <button
-                  onClick={importWallet}
-                  style={mainButtonStyle()}
-                  disabled={loading}
-                >
-                  {loading ? t.processing : t.importWallet}
-                </button>
-              </div>
-            ) : null}
-
-            {message ? (
-              <div
-                style={{
-                  marginTop: 14,
-                  textAlign: "center",
-                  color: "#3f7cff",
-                  fontWeight: 700,
-                  fontSize: 13,
-                }}
-              >
-                {message}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
+        wallets={wallets}
+        selectedWalletId={selectedWalletId}
+        setSelectedWalletId={setSelectedWalletId}
+        unlockPassword={unlockPassword}
+        setUnlockPassword={setUnlockPassword}
+        createName={createName}
+        setCreateName={setCreateName}
+        createPassword={createPassword}
+        setCreatePassword={setCreatePassword}
+        generatedSeed={generatedSeed}
+        confirmSeedSaved={confirmSeedSaved}
+        setConfirmSeedSaved={setConfirmSeedSaved}
+        importName={importName}
+        setImportName={setImportName}
+        importPassword={importPassword}
+        setImportPassword={setImportPassword}
+        importSeed={importSeed}
+        setImportSeed={setImportSeed}
+        loading={loading}
+        message={message}
+        onGenerateSeed={generateSeedPhrase}
+        onUnlock={unlockWallet}
+        onCreate={createWallet}
+        onImport={importWallet}
+      />
     );
   }
 
   return (
     <div
+      className="wallet-page-shell"
       style={{
-        minHeight: "100vh",
-        paddingBottom: "132px",
         background:
           theme === "light"
             ? "linear-gradient(180deg,#eef3fb 0%, #f7f9fd 100%)"
             : "linear-gradient(180deg,#0b0b0f 0%, #101625 100%)",
-        boxSizing: "border-box",
       }}
     >
       <Header
@@ -987,16 +773,8 @@ export default function WalletShell() {
         lang={lang}
       />
 
-      <main
-        style={{
-          padding: "16px",
-          maxWidth: 980,
-          margin: "0 auto",
-          boxSizing: "border-box",
-          width: "100%",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <main className="wallet-main-shell">
+        <div className="wallet-top-actions">
           <button onClick={lockWallet} style={secondaryButtonStyle(theme)}>
             {t.lock}
           </button>
@@ -1028,177 +806,38 @@ export default function WalletShell() {
 
       <ToastViewport toasts={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))} />
 
-      {reauthOpen ? (
-        <div style={overlayStyle()}>
-          <div style={reauthCardStyle(theme === "light")}>
-            <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>
-              {tr(lang, "security_confirm_title")}
-            </div>
-            <div
-              style={{
-                color: theme === "light" ? "#5b6578" : "#97a0b3",
-                lineHeight: 1.55,
-                marginBottom: 14,
-              }}
-            >
-              {tr(lang, "security_confirm_hint")}
-            </div>
-            <input
-              type="password"
-              value={reauthPassword}
-              onChange={(e) => setReauthPassword(e.target.value)}
-              placeholder={tr(lang, "security_wallet_password")}
-              style={authInputStyle(theme)}
-            />
-            {reauthError ? (
-              <div style={{ marginTop: 10, color: "#ff7b7b", fontSize: 13, fontWeight: 700 }}>
-                {reauthError}
-              </div>
-            ) : null}
-            <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-              <button onClick={confirmSensitiveAction} style={primaryActionStyle()}>
-                {tr(lang, "security_confirm")}
-              </button>
-              <button
-                onClick={() => {
-                  pendingSensitiveActionRef.current = null;
-                  setWcApproving(false);
-                  setReauthOpen(false);
-                  setReauthPassword("");
-                  setReauthError("");
-                }}
-                style={secondaryActionStyle(theme === "light")}
-              >
-                {tr(lang, "security_cancel")}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ReauthModal
+        open={reauthOpen}
+        theme={theme}
+        title={tr(lang, "security_confirm_title")}
+        hint={tr(lang, "security_confirm_hint")}
+        passwordPlaceholder={tr(lang, "security_wallet_password")}
+        confirmLabel={tr(lang, "security_confirm")}
+        cancelLabel={tr(lang, "security_cancel")}
+        value={reauthPassword}
+        onChange={setReauthPassword}
+        onConfirm={confirmSensitiveAction}
+        onCancel={() => {
+          pendingSensitiveActionRef.current = null;
+          setWcApproving(false);
+          setReauthOpen(false);
+          setReauthPassword("");
+          setReauthError("");
+        }}
+        error={reauthError}
+      />
     </div>
   );
 }
 
-function overlayStyle(): React.CSSProperties {
-  return {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(3,6,14,.72)",
-    display: "grid",
-    placeItems: "center",
-    padding: 20,
-    zIndex: 20000,
-  };
-}
 
-function reauthCardStyle(isLight: boolean): React.CSSProperties {
-  return {
-    width: "min(420px, 100%)",
-    borderRadius: 24,
-    padding: 20,
-    background: isLight ? "#ffffff" : "#111826",
-    border: `1px solid ${isLight ? "#dbe2f0" : "#263247"}`,
-    boxShadow: "0 20px 50px rgba(0,0,0,.32)",
-    color: isLight ? "#10131a" : "#ffffff",
-  };
-}
 
-function authInputStyle(theme: "dark" | "light"): React.CSSProperties {
-  const isLight = theme === "light";
-  return {
-    width: "100%",
-    padding: 12,
-    borderRadius: 14,
-    border: `1px solid ${isLight ? "#dbe2f0" : "#263247"}`,
-    background: isLight ? "#f6f8fc" : "#0b1120",
-    color: isLight ? "#10131a" : "#ffffff",
-    boxSizing: "border-box",
-    outline: "none",
-  };
-}
 
-function primaryActionStyle(): React.CSSProperties {
-  return {
-    padding: "12px 16px",
-    borderRadius: 14,
-    border: "none",
-    background: "#3f7cff",
-    color: "#fff",
-    cursor: "pointer",
-    fontWeight: 800,
-  };
-}
 
-function secondaryActionStyle(isLight: boolean): React.CSSProperties {
-  return {
-    padding: "12px 16px",
-    borderRadius: 14,
-    border: `1px solid ${isLight ? "#dbe2f0" : "#263247"}`,
-    background: isLight ? "#ffffff" : "#182235",
-    color: isLight ? "#10131a" : "#ffffff",
-    cursor: "pointer",
-    fontWeight: 700,
-  };
-}
 
-function tabButtonStyle(
-  active: boolean,
-  theme: "dark" | "light"
-): React.CSSProperties {
-  return {
-    padding: "10px 12px",
-    borderRadius: 14,
-    border: active
-      ? "1px solid #4d7ef2"
-      : `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
-    background: active ? "#3f7cff" : theme === "light" ? "#f3f6fc" : "#141927",
-    color: active ? "#fff" : theme === "light" ? "#10131a" : "#ffffff",
-    cursor: "pointer",
-    fontWeight: 800,
-  };
-}
 
-function inputStyle(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: 13,
-    borderRadius: 14,
-    border: `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
-    background: theme === "light" ? "#f6f8fc" : "#0d111b",
-    color: theme === "light" ? "#10131a" : "#ffffff",
-    outline: "none",
-    boxSizing: "border-box",
-  };
-}
 
-function textareaStyle(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    width: "100%",
-    minHeight: 110,
-    padding: 13,
-    borderRadius: 14,
-    border: `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
-    background: theme === "light" ? "#f6f8fc" : "#0d111b",
-    color: theme === "light" ? "#10131a" : "#ffffff",
-    outline: "none",
-    resize: "vertical",
-    boxSizing: "border-box",
-  };
-}
 
-function mainButtonStyle(): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "14px 16px",
-    borderRadius: 14,
-    border: "none",
-    background: "#3f7cff",
-    color: "#fff",
-    cursor: "pointer",
-    fontWeight: 800,
-    fontSize: 16,
-  };
-}
 
 function secondaryButtonStyle(theme: "dark" | "light"): React.CSSProperties {
   return {
