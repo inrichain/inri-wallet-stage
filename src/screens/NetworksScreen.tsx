@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import LogoImage from "../components/LogoImage";
 import ConfirmModal from "../components/ConfirmModal";
+import ScreenCard from "../components/ScreenCard";
+import SectionTitle from "../components/SectionTitle";
+import ActionButton from "../components/ActionButton";
+import EmptyState from "../components/EmptyState";
+import StatusPill from "../components/StatusPill";
 import { showAppToast } from "../lib/ui";
 import {
   findPresetByChainId,
@@ -47,11 +52,9 @@ export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "l
   }, [query, network.chainId]);
 
   const hiddenPresets = useMemo(() => getHiddenPresetNetworks(), [network.chainId, query]);
+  const inputClass = `wallet-ui-input ${isLight ? "light" : ""}`.trim();
 
-  function resetDraft() {
-    setDraft(emptyDraft);
-    setEditingNetworkKey("");
-  }
+  function resetDraft() { setDraft(emptyDraft); setEditingNetworkKey(""); }
 
   function selectNetwork(item: NetworkItem) {
     saveStoredNetwork(item);
@@ -70,18 +73,12 @@ export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "l
     setTestingRpc(true);
     setRpcStatus({ type: "info", text: "Testing RPC..." });
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
-      });
+      const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }) });
       const json = await response.json();
       const hex = String(json?.result || "");
       const got = hex ? Number.parseInt(hex, 16) : NaN;
       if (!Number.isFinite(got)) throw new Error("Invalid response");
-      const text = got === expectedChainId
-        ? `RPC is valid for chain ${got}`
-        : `RPC responded with chain ${got}. Expected ${expectedChainId}.`;
+      const text = got === expectedChainId ? `RPC is valid for chain ${got}` : `RPC responded with chain ${got}. Expected ${expectedChainId}.`;
       const type = got === expectedChainId ? "success" : "warning";
       setRpcStatus({ type, text });
       showAppToast({ type, message: text });
@@ -185,9 +182,7 @@ export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "l
     const isActive = Number(item.chainId) === Number(network.chainId);
     setConfirm({
       title: `Remove ${item.name}?`,
-      description: isActive
-        ? `${item.name} is the active network right now. The wallet will fall back to INRI after removal.`
-        : `This will remove ${item.name} from the wallet list. Preset networks can be restored later.` ,
+      description: isActive ? `${item.name} is the active network right now. The wallet will fall back to INRI after removal.` : `This will remove ${item.name} from the wallet list. Preset networks can be restored later.`,
       confirmLabel: "Remove network",
       tone: "danger",
       action: () => {
@@ -204,126 +199,104 @@ export default function NetworksScreen({ theme = "dark" }: { theme?: "dark" | "l
     });
   }
 
-  function restorePreset(item: NetworkItem) {
-    restoreHiddenPresetNetwork(item.chainId);
-    showAppToast({ type: "success", message: `${item.name} restored` });
-  }
-
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <section style={cardStyle(isLight)}>
-        <div style={titleStyle(isLight)}>Networks</div>
-        <div style={subtitleStyle(isLight)}>Edit or remove custom and preset networks, keep INRI protected, validate explorer links and test RPC before saving.</div>
-      </section>
+      <ScreenCard theme={theme}>
+        <SectionTitle theme={theme} title="Networks" subtitle="Edit or remove custom and preset networks, keep INRI protected, validate explorer links and test RPC before saving." />
+      </ScreenCard>
 
-      <section style={cardStyle(isLight)}>
-        <div style={sectionTitleStyle(isLight)}>Active network</div>
+      <ScreenCard theme={theme}>
+        <SectionTitle theme={theme} title="Active network" compact subtitle="Quickly review and update the current endpoint without leaving the wallet." actions={<StatusPill theme={theme} tone="primary">Chain {network.chainId}</StatusPill>} />
         <div className="wallet-responsive-2col" style={{ gap: 14, alignItems: "center" }}>
           <div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 14, alignItems: "center" }}>
             <LogoImage src={network.logo} alt={network.name} kind="network" label={network.name} symbol={network.symbol} size={56} />
             <div>
               <div style={{ fontWeight: 900, fontSize: 18, color: isLight ? "#10131a" : "#ffffff" }}>{network.name}</div>
-              <div style={subtitleStyle(isLight)}>Chain {network.chainId} • {network.symbol}</div>
+              <div className="wallet-ui-subtle">Chain {network.chainId} • {network.symbol}</div>
             </div>
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            <input value={customRpc} onChange={(e) => setCustomRpc(e.target.value)} placeholder="RPC URL" style={inputStyle(isLight)} />
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={() => testRpc()} style={ghostButton(isLight)} disabled={testingRpc}>{testingRpc ? "Testing..." : "Test RPC"}</button>
-              <button onClick={confirmRpcSave} style={primaryButtonStyle()} disabled={testingRpc}>Save RPC</button>
+          <div className="wallet-mobile-stack">
+            <input value={customRpc} onChange={(e) => setCustomRpc(e.target.value)} placeholder="RPC URL" className={inputClass} />
+            <div className="wallet-action-row">
+              <ActionButton theme={theme} tone="secondary" onClick={() => testRpc()}>{testingRpc ? "Testing..." : "Test RPC"}</ActionButton>
+              <ActionButton theme={theme} tone="primary" onClick={confirmRpcSave}>Save RPC</ActionButton>
             </div>
-            {rpcStatus ? <div style={statusStyle(isLight, rpcStatus.type)}>{rpcStatus.text}</div> : null}
+            {rpcStatus ? <StatusPill theme={theme} tone={rpcStatus.type === "success" ? "success" : rpcStatus.type === "error" ? "danger" : rpcStatus.type === "warning" ? "warning" : "primary"}>{rpcStatus.text}</StatusPill> : null}
           </div>
         </div>
-      </section>
+      </ScreenCard>
 
-      <section style={cardStyle(isLight)}>
-        <div style={sectionTitleStyle(isLight)}>Available networks</div>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, symbol or chain ID" style={inputStyle(isLight)} />
-        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-          {networks.map((item) => {
-            const locked = isProtectedNetwork(item.key) || isProtectedNetwork(item.chainId);
+      <ScreenCard theme={theme}>
+        <SectionTitle theme={theme} title={editingNetworkKey ? "Edit network" : "Add network"} compact subtitle="Preset data can be pulled automatically from a known chain ID." />
+        <div className="wallet-form-grid">
+          <input className={inputClass} placeholder="Network name" value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} />
+          <input className={inputClass} placeholder="Chain ID" value={draft.chainId} onChange={(e) => { setDraft((prev) => ({ ...prev, chainId: e.target.value })); fillFromChainId(e.target.value); }} />
+          <input className={inputClass} placeholder="Symbol" value={draft.symbol} onChange={(e) => setDraft((prev) => ({ ...prev, symbol: e.target.value }))} />
+          <input className={inputClass} placeholder="RPC URL" value={draft.rpcUrl} onChange={(e) => setDraft((prev) => ({ ...prev, rpcUrl: e.target.value }))} />
+          <input className={inputClass} placeholder="Explorer base URL" value={draft.explorerUrl} onChange={(e) => setDraft((prev) => ({ ...prev, explorerUrl: e.target.value }))} />
+          <input className={inputClass} placeholder="Logo path or URL" value={draft.logo} onChange={(e) => setDraft((prev) => ({ ...prev, logo: e.target.value }))} />
+        </div>
+        <div className="wallet-action-row">
+          {editingNetworkKey ? <ActionButton theme={theme} tone="ghost" onClick={resetDraft}>Cancel</ActionButton> : null}
+          <ActionButton theme={theme} tone="primary" onClick={saveCustom}>{editingNetworkKey ? "Save changes" : "Add network"}</ActionButton>
+        </div>
+      </ScreenCard>
+
+      <ScreenCard theme={theme}>
+        <SectionTitle theme={theme} title="Available networks" compact subtitle="Search, switch, edit or remove networks. INRI always stays protected." actions={<StatusPill theme={theme} tone="neutral">{networks.length} visible</StatusPill>} />
+        <input className={inputClass} placeholder="Search by name, symbol or chain ID" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <div style={{ display: "grid", gap: 8 }}>
+          {!networks.length ? <EmptyState theme={theme} title="No networks found" description="Try a different search or restore a hidden preset network below." /> : networks.map((item) => {
+            const active = Number(item.chainId) === Number(network.chainId);
+            const protectedNet = isProtectedNetwork(item.key) || isProtectedNetwork(item.chainId);
             return (
-              <div key={`${item.key}-${item.chainId}`} style={rowStyle(isLight)}>
-                <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr)", gap: 12, alignItems: "center", minWidth: 0 }}>
-                  <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={44} />
+              <div key={item.key || item.chainId} className="wallet-list-row" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr)", gap: 12, alignItems: "center" }}>
+                  <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={42} />
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#ffffff" }}>{item.name}</div>
-                    <div style={subtitleStyle(isLight)}>Chain {item.chainId} • {item.symbol}{item.isCustom ? " • Custom" : " • Preset"}{locked ? " • Protected" : ""}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#ffffff" }}>{item.name}</div>
+                      {active ? <StatusPill theme={theme} tone="primary">Active</StatusPill> : null}
+                      {protectedNet ? <StatusPill theme={theme} tone="success">Protected</StatusPill> : item.isCustom ? <StatusPill theme={theme} tone="warning">Custom</StatusPill> : <StatusPill theme={theme} tone="neutral">Preset</StatusPill>}
+                    </div>
+                    <div className="wallet-ui-subtle">Chain {item.chainId} • {item.symbol}</div>
+                    <div className="wallet-ui-subtle">{item.rpcUrl}</div>
                   </div>
                 </div>
-                <div className="wallet-action-wrap" style={{ justifyContent: "flex-end" }}>
-                  <button onClick={() => selectNetwork(item)} style={ghostButton(isLight)}>{Number(item.chainId) === Number(network.chainId) ? "Active" : "Select"}</button>
-                  {!locked ? <button onClick={() => startEdit(item)} style={ghostButton(isLight)}>Edit</button> : null}
-                  {!locked ? <button onClick={() => askRemoveNetwork(item)} style={dangerButton(isLight)}>Remove</button> : null}
+                <div className="wallet-action-row">
+                  {!active ? <ActionButton theme={theme} tone="primary" compact onClick={() => selectNetwork(item)}>Use</ActionButton> : null}
+                  {!protectedNet ? <ActionButton theme={theme} tone="secondary" compact onClick={() => startEdit(item)}>Edit</ActionButton> : null}
+                  {!protectedNet ? <ActionButton theme={theme} tone="danger" compact onClick={() => askRemoveNetwork(item)}>Remove</ActionButton> : null}
                 </div>
               </div>
             );
           })}
         </div>
-      </section>
+      </ScreenCard>
 
       {hiddenPresets.length ? (
-        <section style={cardStyle(isLight)}>
-          <div style={sectionTitleStyle(isLight)}>Restore removed preset networks</div>
+        <ScreenCard theme={theme}>
+          <SectionTitle theme={theme} title="Hidden presets" compact subtitle="Restore any preset network you removed from the visible list." />
           <div style={{ display: "grid", gap: 8 }}>
             {hiddenPresets.map((item) => (
-              <div key={`restore-${item.chainId}`} style={rowStyle(isLight)}>
+              <div key={`hidden-${item.chainId}`} className="wallet-list-row" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr)", gap: 12, alignItems: "center" }}>
-                  <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={44} />
+                  <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={42} />
                   <div>
                     <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#ffffff" }}>{item.name}</div>
-                    <div style={subtitleStyle(isLight)}>Chain {item.chainId} • {item.symbol}</div>
+                    <div className="wallet-ui-subtle">Chain {item.chainId} • {item.symbol}</div>
                   </div>
                 </div>
-                <button onClick={() => restorePreset(item)} style={ghostButton(isLight)}>Restore</button>
+                <div className="wallet-action-row">
+                  <ActionButton theme={theme} tone="secondary" compact onClick={() => restoreHiddenPresetNetwork(item.chainId)}>Restore</ActionButton>
+                </div>
               </div>
             ))}
           </div>
-        </section>
+        </ScreenCard>
       ) : null}
 
-      <section style={cardStyle(isLight)}>
-        <div style={sectionTitleStyle(isLight)}>{editingNetworkKey ? "Edit network" : "Add custom network"}</div>
-        <div className="wallet-form-grid">
-          <input value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Network name" style={inputStyle(isLight)} />
-          <input value={draft.chainId} onChange={(e) => { setDraft((prev) => ({ ...prev, chainId: e.target.value })); if (!editingNetworkKey) fillFromChainId(e.target.value); }} placeholder="Chain ID" style={inputStyle(isLight)} />
-          <input value={draft.symbol} onChange={(e) => setDraft((prev) => ({ ...prev, symbol: e.target.value }))} placeholder="Currency symbol" style={inputStyle(isLight)} />
-          <input value={draft.rpcUrl} onChange={(e) => setDraft((prev) => ({ ...prev, rpcUrl: e.target.value }))} placeholder="RPC URL" style={inputStyle(isLight)} />
-          <input value={draft.explorerUrl} onChange={(e) => setDraft((prev) => ({ ...prev, explorerUrl: e.target.value }))} placeholder="Explorer URL" style={inputStyle(isLight)} />
-          <input value={draft.logo} onChange={(e) => setDraft((prev) => ({ ...prev, logo: e.target.value }))} placeholder="Logo path or URL" style={inputStyle(isLight)} />
-        </div>
-        <div className="wallet-action-wrap" style={{ marginTop: 12 }}>
-          {editingNetworkKey ? <button onClick={resetDraft} style={ghostButton(isLight)}>Cancel</button> : null}
-          <button onClick={() => testRpc(draft.rpcUrl.trim(), Number(draft.chainId || 0))} style={ghostButton(isLight)}>Test draft RPC</button>
-          <button onClick={saveCustom} style={primaryButtonStyle()}>{editingNetworkKey ? "Save changes" : "Save network"}</button>
-        </div>
-      </section>
-
-      <ConfirmModal
-        open={!!confirm}
-        theme={theme}
-        title={confirm?.title || ""}
-        description={confirm?.description || ""}
-        confirmLabel={confirm?.confirmLabel || "Confirm"}
-        tone={confirm?.tone || "danger"}
-        onConfirm={() => confirm?.action()}
-        onCancel={() => setConfirm(null)}
-      />
+      <ConfirmModal open={!!confirm} theme={theme} title={confirm?.title || ""} description={confirm?.description || ""} confirmLabel={confirm?.confirmLabel || "Confirm"} tone={confirm?.tone || "danger"} onConfirm={() => confirm?.action()} onCancel={() => setConfirm(null)} />
     </div>
   );
-}
-
-function cardStyle(isLight: boolean): React.CSSProperties { return { border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, borderRadius: 20, background: isLight ? "#ffffff" : "#121621", padding: 16 }; }
-function titleStyle(isLight: boolean): React.CSSProperties { return { fontSize: 28, fontWeight: 900, color: isLight ? "#10131a" : "#ffffff" }; }
-function sectionTitleStyle(isLight: boolean): React.CSSProperties { return { fontWeight: 900, fontSize: 18, color: isLight ? "#10131a" : "#ffffff", marginBottom: 12 }; }
-function subtitleStyle(isLight: boolean): React.CSSProperties { return { color: isLight ? "#5b6578" : "#97a0b3", lineHeight: 1.5, fontSize: 13 }; }
-function inputStyle(isLight: boolean): React.CSSProperties { return { width: "100%", padding: "12px 14px", borderRadius: 14, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0d1420", color: isLight ? "#10131a" : "#ffffff", boxSizing: "border-box" }; }
-function primaryButtonStyle(): React.CSSProperties { return { padding: "12px 14px", borderRadius: 14, border: "none", background: "#3f7cff", color: "#ffffff", fontWeight: 800, cursor: "pointer" }; }
-function ghostButton(isLight: boolean): React.CSSProperties { return { padding: "11px 13px", borderRadius: 14, border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1520", color: isLight ? "#10131a" : "#ffffff", fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }; }
-function dangerButton(isLight: boolean): React.CSSProperties { return { padding: "11px 13px", borderRadius: 14, border: `1px solid ${isLight ? "rgba(255,123,123,.26)" : "rgba(255,123,123,.26)"}`, background: "rgba(255,123,123,.08)", color: "#ff7b7b", fontWeight: 800, cursor: "pointer" }; }
-function rowStyle(isLight: boolean): React.CSSProperties { return { display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: 12, borderRadius: 16, border: `1px solid ${isLight ? "#e6ecf5" : "#202635"}`, background: isLight ? "#f8fbff" : "#0f1520" }; }
-function statusStyle(isLight: boolean, type: "success" | "error" | "warning" | "info"): React.CSSProperties {
-  const tone = type === "success" ? { border: "rgba(16,185,129,.26)", bg: isLight ? "#eefaf1" : "rgba(16,185,129,.08)", color: isLight ? "#1f7a4f" : "#74f0b4" } : type === "error" ? { border: "rgba(255,123,123,.26)", bg: isLight ? "#fff2f2" : "rgba(255,123,123,.08)", color: "#ff7b7b" } : type === "warning" ? { border: "rgba(245,158,11,.26)", bg: isLight ? "#fff8eb" : "rgba(245,158,11,.08)", color: isLight ? "#9a6800" : "#ffd98a" } : { border: "rgba(63,124,255,.26)", bg: isLight ? "#eef4ff" : "rgba(63,124,255,.08)", color: isLight ? "#1f57c9" : "#8cb2ff" };
-  return { padding: "10px 12px", borderRadius: 14, border: `1px solid ${tone.border}`, background: tone.bg, color: tone.color, fontSize: 13, fontWeight: 700 };
 }

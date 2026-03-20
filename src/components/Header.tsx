@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { getAllNetworks, getStoredNetwork, saveStoredNetwork, type NetworkItem } from "../lib/network";
 import { tr } from "../i18n/translations";
 import LogoImage from "./LogoImage";
+import StatusPill from "./StatusPill";
 
 const DEFAULT_AVATAR = `data:image/svg+xml;utf8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
@@ -65,6 +66,8 @@ export default function Header({
     return items.filter((item) => [item.name, item.symbol, String(item.chainId)].join(" ").toLowerCase().includes(q));
   }, [networkQuery, network.chainId]);
 
+  const inputClass = `wallet-ui-input ${isLight ? "light" : ""}`.trim();
+
   const networkPanel = (
     <div
       className={isCompact ? "wallet-network-drawer" : "wallet-network-popover"}
@@ -78,27 +81,17 @@ export default function Header({
       <div className="wallet-network-panel-head">
         <div>
           <div style={{ fontWeight: 900, fontSize: 18, color: isLight ? "#10131a" : "#ffffff" }}>Networks</div>
-          <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3", marginTop: 4 }}>Switch network without leaving the current screen.</div>
+          <div className="wallet-ui-subtle" style={{ marginTop: 4 }}>Switch network without leaving the current screen.</div>
         </div>
-        {isCompact ? (
-          <button className="wallet-icon-btn" onClick={() => setNetworkOpen(false)} style={{ width: 38, height: 38 }}>✕</button>
-        ) : null}
+        {isCompact ? <button className="wallet-icon-btn" onClick={() => setNetworkOpen(false)} style={{ width: 38, height: 38 }}>✕</button> : null}
       </div>
 
       <input
         value={networkQuery}
         onChange={(e) => setNetworkQuery(e.target.value)}
         placeholder="Search network, symbol or chain ID"
-        style={{
-          width: "100%",
-          marginBottom: 8,
-          padding: "11px 12px",
-          borderRadius: 14,
-          border: `1px solid ${isLight ? "#d7e0ee" : "#2b3950"}`,
-          background: isLight ? "#f7fafe" : "#0d1420",
-          color: isLight ? "#10131a" : "#fff",
-          outline: "none",
-        }}
+        className={inputClass}
+        style={{ marginBottom: 8 }}
       />
 
       <div style={{ display: "grid", gap: 6 }}>
@@ -131,13 +124,13 @@ export default function Header({
               <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={24} />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</div>
-                <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3" }}>Chain ID {item.chainId} • {item.symbol}{item.isCustom ? " • Custom" : ""}</div>
+                <div className="wallet-ui-subtle">Chain ID {item.chainId} • {item.symbol}{item.isCustom ? " • Custom" : ""}</div>
               </div>
-              {active ? <span style={{ fontSize: 12, fontWeight: 800, color: "#3f7cff" }}>ACTIVE</span> : null}
+              {active ? <StatusPill theme={theme} tone="primary">ACTIVE</StatusPill> : null}
             </button>
           );
         })}
-        {!filteredNetworks.length ? <div style={{ padding: 12, color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>No networks found.</div> : null}
+        {!filteredNetworks.length ? <div className="wallet-ui-subtle" style={{ padding: 12 }}>No networks found.</div> : null}
       </div>
     </div>
   );
@@ -153,8 +146,8 @@ export default function Header({
         zIndex: 30,
       }}
     >
-      <div className="wallet-header-shell">
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+      <div className="wallet-header-shell wallet-mobile-scroll-fix">
+        <div className="wallet-header-brand">
           <LogoImage src={BRAND_LOGO} alt="INRI" kind="dapp" label="INRI" size={44} rounded={false} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 900, fontSize: 17, color: isLight ? "#10131a" : "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -169,37 +162,27 @@ export default function Header({
         <div className="wallet-header-actions">
           <div style={{ position: isCompact ? "static" : "relative" }} onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setNetworkOpen((prev) => !prev)} className="wallet-network-trigger" title={network.name}>
-              <LogoImage src={network.logo} alt={network.name} kind="network" label={network.name} symbol={network.symbol} size={20} />
-              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{network.name}</span>
+              <LogoImage src={network.logo} alt={network.name} kind="network" label={network.name} symbol={network.symbol} size={18} />
+              <span className="wallet-header-network-name">{network.name}</span>
+              <span className="wallet-header-network-meta">#{network.chainId}</span>
             </button>
             {!isCompact && networkOpen ? networkPanel : null}
           </div>
 
-          <button onClick={onOpenSettings} title={tr(lang, "nav_settings")} className="wallet-icon-btn">⚙</button>
+          <button onClick={onOpenSettings} title={tr(lang, "nav_settings")} className="wallet-icon-btn wallet-header-settings-btn">⚙</button>
 
-          <img
-            src={avatar}
-            alt="avatar"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR;
-            }}
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: "50%",
-              objectFit: "cover",
-              border: `2px solid ${isLight ? "#dbe2f0" : "#2b3650"}`,
-              flexShrink: 0,
-            }}
-          />
+          <button onClick={onOpenSettings} className="wallet-header-avatar-btn" title={tr(lang, "nav_settings") || "Settings"}>
+            <img
+              src={avatar}
+              alt="avatar"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR; }}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          </button>
         </div>
       </div>
 
-      {isCompact && networkOpen ? (
-        <div className="wallet-network-overlay" onClick={() => setNetworkOpen(false)}>
-          {networkPanel}
-        </div>
-      ) : null}
+      {isCompact && networkOpen ? <div className="wallet-network-overlay" onClick={() => setNetworkOpen(false)}>{networkPanel}</div> : null}
     </header>
   );
 }

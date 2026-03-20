@@ -9,14 +9,17 @@ import { getStoredNetwork } from "../lib/network";
 import { resolveTokenAsset } from "../lib/assets";
 import LogoImage from "../components/LogoImage";
 import ConfirmModal from "../components/ConfirmModal";
+import ScreenCard from "../components/ScreenCard";
+import SectionTitle from "../components/SectionTitle";
+import ActionButton from "../components/ActionButton";
+import EmptyState from "../components/EmptyState";
+import StatusPill from "../components/StatusPill";
 import { showAppToast } from "../lib/ui";
 
 const CUSTOM_TOKENS_KEY = "wallet_custom_tokens";
 const HIDDEN_TOKENS_KEY = "wallet_hidden_default_tokens_v1";
 
-type ViewToken = TokenItem & {
-  balance: string;
-};
+type ViewToken = TokenItem & { balance: string };
 
 function readCustomTokens() {
   try {
@@ -45,15 +48,7 @@ function tokenKey(token: Partial<TokenItem>, fallbackNetworkKey?: string) {
   return `${networkKey}:${String(token.address || token.symbol || "").toLowerCase()}`;
 }
 
-export default function TokensScreen({
-  theme = "dark",
-  lang = "en",
-  address,
-}: {
-  theme?: "dark" | "light";
-  lang?: string;
-  address: string;
-}) {
+export default function TokensScreen({ theme = "dark", lang = "en", address }: { theme?: "dark" | "light"; lang?: string; address: string; }) {
   const isLight = theme === "light";
   const [networkKey, setNetworkKey] = useState(getStoredNetwork().key);
   const [customTokens, setCustomTokens] = useState<ViewToken[]>(readCustomTokens());
@@ -82,34 +77,21 @@ export default function TokensScreen({
     };
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(CUSTOM_TOKENS_KEY, JSON.stringify(customTokens));
-  }, [customTokens]);
-
-  useEffect(() => {
-    localStorage.setItem(HIDDEN_TOKENS_KEY, JSON.stringify(hiddenTokens));
-  }, [hiddenTokens]);
+  useEffect(() => { localStorage.setItem(CUSTOM_TOKENS_KEY, JSON.stringify(customTokens)); }, [customTokens]);
+  useEffect(() => { localStorage.setItem(HIDDEN_TOKENS_KEY, JSON.stringify(hiddenTokens)); }, [hiddenTokens]);
 
   const tokens = useMemo(() => {
-    const defaults = getDefaultTokensForNetwork(networkKey)
-      .filter((item) => !hiddenTokens.includes(tokenKey(item, networkKey)))
-      .map((item) => ({ ...item, balance: "0.000000" }));
-
+    const defaults = getDefaultTokensForNetwork(networkKey).filter((item) => !hiddenTokens.includes(tokenKey(item, networkKey))).map((item) => ({ ...item, balance: "0.000000" }));
     const overrides = customTokens.filter((item) => (item.networkKey || networkKey) === networkKey);
     const overrideKeys = new Set(overrides.map((item) => tokenKey(item, networkKey)));
-    const merged = [
-      ...defaults.filter((item) => !overrideKeys.has(tokenKey(item, networkKey))),
-      ...overrides,
-    ].map((item) => ({
+    const merged = [...defaults.filter((item) => !overrideKeys.has(tokenKey(item, networkKey))), ...overrides].map((item) => ({
       ...item,
       logo: resolveTokenAsset({ symbol: item.symbol, name: item.subtitle, networkKey: item.networkKey, logo: item.logo }),
     }));
 
     const q = query.trim().toLowerCase();
     const withBalances = merged.map((item) => ({ ...item, balance: balances[item.symbol] || item.balance || "0.000000" }));
-    const filtered = q
-      ? withBalances.filter((item) => [item.symbol, item.subtitle, item.address || ""].join(" ").toLowerCase().includes(q))
-      : withBalances;
+    const filtered = q ? withBalances.filter((item) => [item.symbol, item.subtitle, item.address || ""].join(" ").toLowerCase().includes(q)) : withBalances;
 
     return filtered.sort((a, b) => {
       const aBalance = Number(a.balance || 0);
@@ -138,27 +120,14 @@ export default function TokensScreen({
     }
     refresh();
     const timer = setInterval(refresh, 12000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
+    return () => { active = false; clearInterval(timer); };
   }, [address, networkKey, customTokens, hiddenTokens]);
 
   useEffect(() => {
     const cleanAddress = tokenAddress.trim();
-    if (!/^0x[a-fA-F0-9]{40}$/.test(cleanAddress)) {
-      setDetectingToken(false);
-      return;
-    }
-
-    const exists = [...getDefaultTokensForNetwork(networkKey), ...customTokens].some(
-      (token) => token.address && token.address.toLowerCase() === cleanAddress.toLowerCase() && (token.networkKey || networkKey) === networkKey
-    );
-    if (exists && !editingTokenKey) {
-      setDetectingToken(false);
-      return;
-    }
-
+    if (!/^0x[a-fA-F0-9]{40}$/.test(cleanAddress)) { setDetectingToken(false); return; }
+    const exists = [...getDefaultTokensForNetwork(networkKey), ...customTokens].some((token) => token.address && token.address.toLowerCase() === cleanAddress.toLowerCase() && (token.networkKey || networkKey) === networkKey);
+    if (exists && !editingTokenKey) { setDetectingToken(false); return; }
     let active = true;
     setDetectingToken(true);
     const timer = window.setTimeout(async () => {
@@ -175,10 +144,7 @@ export default function TokensScreen({
         if (active) setDetectingToken(false);
       }
     }, 550);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
+    return () => { active = false; clearTimeout(timer); };
   }, [tokenAddress, networkKey, editingTokenKey]);
 
   function showMessage(text: string, type: "success" | "error" | "warning" | "info" = "info") {
@@ -188,12 +154,7 @@ export default function TokensScreen({
   }
 
   function resetForm() {
-    setSymbol("");
-    setTokenName("");
-    setTokenAddress("");
-    setDecimals("18");
-    setLogo("");
-    setEditingTokenKey("");
+    setSymbol(""); setTokenName(""); setTokenAddress(""); setDecimals("18"); setLogo(""); setEditingTokenKey("");
   }
 
   function handleUploadTokenLogo(event: React.ChangeEvent<HTMLInputElement>) {
@@ -212,22 +173,21 @@ export default function TokensScreen({
     const cleanDecimals = Number(decimals);
     const formKey = `${networkKey}:${(cleanAddress || cleanSymbol).toLowerCase()}`;
 
-    if (!cleanSymbol) return showMessage(t.symbolRequired);
-    if (!cleanAddress) return showMessage(t.addressRequired);
-    if (!/^0x[a-fA-F0-9]{40}$/.test(cleanAddress)) return showMessage(t.invalidAddress);
-    if (!Number.isFinite(cleanDecimals) || cleanDecimals < 0 || cleanDecimals > 36) return showMessage(t.invalidDecimals);
+    if (!cleanSymbol) return showMessage(t.symbolRequired, "warning");
+    if (!cleanAddress) return showMessage(t.addressRequired, "warning");
+    if (!/^0x[a-fA-F0-9]{40}$/.test(cleanAddress)) return showMessage(t.invalidAddress, "warning");
+    if (!Number.isFinite(cleanDecimals) || cleanDecimals < 0 || cleanDecimals > 36) return showMessage(t.invalidDecimals, "warning");
 
     const defaults = getDefaultTokensForNetwork(networkKey);
     const nativeConflict = defaults.find((token) => token.isNative && (token.symbol.toUpperCase() === cleanSymbol || token.address?.toLowerCase() === cleanAddress.toLowerCase()));
-    if (nativeConflict) return showMessage(t.nativeProtected);
+    if (nativeConflict) return showMessage(t.nativeProtected, "warning");
 
     const exists = [...defaults, ...customTokens].some((token) => {
       const key = tokenKey(token, networkKey);
       if (editingTokenKey && key === editingTokenKey) return false;
       return key === formKey || (token.symbol.toUpperCase() === cleanSymbol && (token.networkKey || networkKey) === networkKey);
     });
-
-    if (exists) return showMessage(t.tokenExists);
+    if (exists) return showMessage(t.tokenExists, "warning");
 
     const newToken: ViewToken = {
       symbol: cleanSymbol,
@@ -257,7 +217,7 @@ export default function TokensScreen({
   }
 
   function editToken(token: ViewToken) {
-    if (token.isNative) return showMessage(t.nativeProtected);
+    if (token.isNative) return showMessage(t.nativeProtected, "warning");
     setEditingTokenKey(tokenKey(token, networkKey));
     setSymbol(token.symbol);
     setTokenName(token.subtitle?.startsWith("custom token") ? "" : token.subtitle || "");
@@ -267,7 +227,7 @@ export default function TokensScreen({
   }
 
   function removeToken(token: ViewToken) {
-    if (token.isNative) return showMessage(t.nativeProtected);
+    if (token.isNative) return showMessage(t.nativeProtected, "warning");
     const key = tokenKey(token, networkKey);
     const isDefaultToken = getDefaultTokensForNetwork(networkKey).some((item) => tokenKey(item, networkKey) === key);
     if (isDefaultToken) {
@@ -280,165 +240,90 @@ export default function TokensScreen({
     showMessage(t.tokenRemoved, "success");
   }
 
-  function askRemoveToken(token: ViewToken) {
-    if (token.isNative) return showMessage(t.nativeProtected, "warning");
-    setConfirmRemove(token);
-  }
-
   const totalTokens = tokens.length;
   const visibleWithBalance = tokens.filter((token) => Number(token.balance || 0) > 0).length;
+  const inputClass = `wallet-ui-input ${isLight ? "light" : ""}`.trim();
 
   return (
-    <div style={{ border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, borderRadius: 24, background: isLight ? "#ffffff" : "#121621", padding: 16, display: "grid", gap: 16 }}>
-      <div style={{ display: "grid", gap: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div>
-            <h2 style={{ margin: 0, color: isLight ? "#10131a" : "#ffffff" }}>{t.tokens}</h2>
-            <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginTop: 6 }}>{getStoredNetwork().name} • {totalTokens} assets • {visibleWithBalance} with balance</div>
-          {loadingBalances ? <div style={{ marginTop: 8, color: isLight ? "#7b879c" : "#8ea0bd", fontSize: 12, fontWeight: 700 }}>Loading balances...</div> : null}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 999, border: `1px solid ${isLight ? "#dbe2f0" : "#2b3950"}`, background: isLight ? "#f8fbff" : "#0d1420" }}>
-            <LogoImage src={getStoredNetwork().logo} alt={getStoredNetwork().name} kind="network" label={getStoredNetwork().name} symbol={getStoredNetwork().symbol} size={22} />
-            <strong style={{ color: isLight ? "#10131a" : "#fff", fontSize: 13 }}>{getStoredNetwork().symbol}</strong>
-          </div>
-        </div>
-        <input placeholder={t.searchPlaceholder} value={query} onChange={(e) => setQuery(e.target.value)} style={inputStyle(isLight)} />
-      </div>
+    <div style={{ display: "grid", gap: 16 }}>
+      <ScreenCard theme={theme}>
+        <SectionTitle
+          theme={theme}
+          title={t.tokens}
+          subtitle={`${getStoredNetwork().name} • ${totalTokens} assets • ${visibleWithBalance} with balance`}
+          actions={<div className="wallet-mini-stat" style={{ background: isLight ? "#f8fbff" : "#0d1420", borderColor: isLight ? "#dbe2f0" : "#2b3950" } as React.CSSProperties}><LogoImage src={getStoredNetwork().logo} alt={getStoredNetwork().name} kind="network" label={getStoredNetwork().name} symbol={getStoredNetwork().symbol} size={22} /><strong style={{ color: isLight ? "#10131a" : "#fff", fontSize: 13 }}>{getStoredNetwork().symbol}</strong></div>}
+        />
+        {loadingBalances ? <StatusPill theme={theme} tone="primary">Loading balances...</StatusPill> : null}
+        <input placeholder={t.searchPlaceholder} value={query} onChange={(e) => setQuery(e.target.value)} className={inputClass} />
+      </ScreenCard>
 
-      <div style={{ display: "grid", gap: 10, padding: 14, borderRadius: 18, background: isLight ? "#f8fbff" : "#0d1420", border: `1px solid ${isLight ? "#dde6f3" : "#223044"}` }}>
-        <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>{editingTokenKey ? t.editToken : t.addToken}</div>
+      <ScreenCard theme={theme}>
+        <SectionTitle theme={theme} title={editingTokenKey ? t.editToken : t.addToken} compact subtitle={detectingToken ? t.detecting : t.formHint} />
         <div className="wallet-form-grid">
-          <input placeholder={t.tokenAddress} value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} style={inputStyle(isLight)} />
-          <input placeholder={t.tokenSymbol} value={symbol} onChange={(e) => setSymbol(e.target.value)} style={inputStyle(isLight)} />
-          <input placeholder={t.tokenName} value={tokenName} onChange={(e) => setTokenName(e.target.value)} style={inputStyle(isLight)} />
-          <input placeholder="18" value={decimals} onChange={(e) => setDecimals(e.target.value)} style={inputStyle(isLight)} />
-          <input placeholder={t.logoOptional} value={logo} onChange={(e) => setLogo(e.target.value)} style={inputStyle(isLight)} />
-          <label style={{ ...inputStyle(isLight), display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
-            <span>{t.uploadLogo}</span>
+          <input placeholder={t.tokenAddress} value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} className={inputClass} />
+          <input placeholder={t.tokenSymbol} value={symbol} onChange={(e) => setSymbol(e.target.value)} className={inputClass} />
+          <input placeholder={t.tokenName} value={tokenName} onChange={(e) => setTokenName(e.target.value)} className={inputClass} />
+          <input placeholder="18" value={decimals} onChange={(e) => setDecimals(e.target.value)} className={inputClass} />
+          <input placeholder={t.logoOptional} value={logo} onChange={(e) => setLogo(e.target.value)} className={inputClass} />
+          <ActionButton theme={theme} tone="secondary" asLabel>
+            {t.uploadLogo}
             <input type="file" accept="image/*" onChange={handleUploadTokenLogo} style={{ display: "none" }} />
-            <span style={{ color: "#3f7cff", fontWeight: 800 }}>+</span>
-          </label>
+          </ActionButton>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="wallet-list-row" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <LogoImage src={logo || resolveTokenAsset({ symbol, name: tokenName, networkKey })} alt={symbol || "Token"} kind="token" label={tokenName || symbol || "Token"} symbol={symbol || "TOK"} size={34} rounded={false} />
-            <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13 }}>
-              {detectingToken ? t.detecting : t.formHint}
-            </div>
+            <div className="wallet-ui-subtle">{detectingToken ? t.detecting : t.formHint}</div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {editingTokenKey ? <button onClick={resetForm} style={secondaryButton(isLight)}>{t.cancel}</button> : null}
-            <button onClick={addToken} style={primaryButton}>{editingTokenKey ? t.saveChanges : t.add}</button>
+          <div className="wallet-action-row">
+            {editingTokenKey ? <ActionButton theme={theme} tone="ghost" onClick={resetForm}>{t.cancel}</ActionButton> : null}
+            <ActionButton theme={theme} tone="primary" onClick={addToken}>{editingTokenKey ? t.saveChanges : t.add}</ActionButton>
           </div>
         </div>
-        {message ? <div style={{ color: "#3f7cff", fontWeight: 700, fontSize: 13 }}>{message}</div> : null}
-      </div>
+        {message ? <StatusPill theme={theme} tone="primary">{message}</StatusPill> : null}
+      </ScreenCard>
 
-      <div style={{ display: "grid", gap: 10 }}>
+      <ScreenCard theme={theme}>
+        <SectionTitle theme={theme} title={t.tokens} compact subtitle="Review default, custom and native assets for the current network." actions={<StatusPill theme={theme} tone="neutral">{tokens.length} listed</StatusPill>} />
         {loadingBalances && tokens.length > 0 ? (
-          <div className="wallet-skeleton-list">
-            {Array.from({ length: 3 }).map((_, idx) => <div key={idx} className="wallet-skeleton-card" />)}
-          </div>
+          <div className="wallet-skeleton-list">{Array.from({ length: 3 }).map((_, idx) => <div key={idx} className="wallet-skeleton-card" />)}</div>
         ) : tokens.length === 0 ? (
-          <div style={{ padding: 18, borderRadius: 16, border: `1px dashed ${isLight ? "#d9e2f0" : "#2b3950"}`, color: isLight ? "#5b6578" : "#97a0b3" }}>{t.noTokens}</div>
-        ) : tokens.map((token) => {
-          const editable = !token.isNative;
-          const isDefaultToken = getDefaultTokensForNetwork(networkKey).some((item) => tokenKey(item, networkKey) === tokenKey(token, networkKey));
-          return (
-            <div key={`${token.symbol}-${token.address || token.networkKey || "native"}`} style={{ padding: 14, borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: isLight ? "#ffffff" : "#111722", display: "grid", gap: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                  <LogoImage src={token.logo} alt={token.symbol} kind="token" label={token.subtitle || token.symbol} symbol={token.symbol} size={42} rounded={false} />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff" }}>{token.symbol}</div>
-                      {token.isNative ? <span style={pillStyle(theme, true)}>Native</span> : isDefaultToken ? <span style={pillStyle(theme, true)}>Default</span> : <span style={pillStyle(theme, false)}>Custom</span>}
+          <EmptyState theme={theme} title={t.noTokens} description="Add a custom asset or switch to another network to load a different default token list." />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {tokens.map((token) => {
+              const editable = !token.isNative;
+              const isDefaultToken = getDefaultTokensForNetwork(networkKey).some((item) => tokenKey(item, networkKey) === tokenKey(token, networkKey));
+              return (
+                <div key={`${token.symbol}-${token.address || token.networkKey || "native"}`} className="wallet-list-row" style={{ background: isLight ? "#ffffff" : "#111722", borderColor: isLight ? "#dbe2f0" : "#252b39" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <LogoImage src={token.logo} alt={token.symbol} kind="token" label={token.subtitle || token.symbol} symbol={token.symbol} size={42} rounded={false} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff" }}>{token.symbol}</div>
+                        {token.isNative ? <StatusPill theme={theme} tone="success">Native</StatusPill> : isDefaultToken ? <StatusPill theme={theme} tone="primary">Default</StatusPill> : <StatusPill theme={theme} tone="warning">Custom</StatusPill>}
+                      </div>
+                      <div className="wallet-ui-subtle">{token.subtitle}</div>
+                      {token.address ? <div className="wallet-ui-subtle">{token.address}</div> : null}
                     </div>
-                    <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis" }}>{token.subtitle}</div>
-                    {token.address ? <div style={{ color: isLight ? "#8a94a8" : "#7f8aa3", fontSize: 12 }}>{token.address}</div> : null}
+                  </div>
+                  <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff", fontSize: 18 }}>{token.balance}</div>
+                      <div className="wallet-ui-subtle">{token.symbol}</div>
+                    </div>
+                    {editable ? <div className="wallet-action-row"><ActionButton theme={theme} tone="secondary" compact onClick={() => editToken(token)}>{t.edit}</ActionButton><ActionButton theme={theme} tone="danger" compact onClick={() => setConfirmRemove(token)}>{t.remove}</ActionButton></div> : null}
                   </div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff", fontSize: 18 }}>{token.balance}</div>
-                  <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 12 }}>{token.symbol}</div>
-                </div>
-              </div>
-              {editable ? (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={() => editToken(token)} style={secondaryButton(isLight)}>{t.edit}</button>
-                  <button onClick={() => askRemoveToken(token)} style={dangerButton}>{t.remove}</button>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-      <ConfirmModal
-        open={!!confirmRemove}
-        theme={theme}
-        title={confirmRemove ? `${t.remove} ${confirmRemove.symbol}?` : ""}
-        description={confirmRemove ? `${confirmRemove.symbol} will be hidden or removed from ${getStoredNetwork().name}. Native tokens remain protected.` : ""}
-        confirmLabel={t.remove}
-        onConfirm={() => { if (confirmRemove) removeToken(confirmRemove); setConfirmRemove(null); }}
-        onCancel={() => setConfirmRemove(null)}
-      />
+              );
+            })}
+          </div>
+        )}
+      </ScreenCard>
+
+      <ConfirmModal open={!!confirmRemove} theme={theme} title={confirmRemove ? `${t.remove} ${confirmRemove.symbol}?` : ""} description={confirmRemove ? `${confirmRemove.symbol} will be hidden or removed from ${getStoredNetwork().name}. Native tokens remain protected.` : ""} confirmLabel={t.remove} onConfirm={() => { if (confirmRemove) removeToken(confirmRemove); setConfirmRemove(null); }} onCancel={() => setConfirmRemove(null)} />
     </div>
   );
-}
-
-function inputStyle(isLight: boolean): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "12px 14px",
-    borderRadius: 14,
-    border: `1px solid ${isLight ? "#d7e0ee" : "#2b3950"}`,
-    background: isLight ? "#f8fbff" : "#0d1420",
-    color: isLight ? "#10131a" : "#fff",
-    outline: "none",
-  };
-}
-
-const primaryButton: React.CSSProperties = {
-  padding: "12px 16px",
-  borderRadius: 14,
-  border: "none",
-  background: "#3f7cff",
-  color: "#fff",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-function secondaryButton(isLight: boolean): React.CSSProperties {
-  return {
-    padding: "12px 14px",
-    borderRadius: 14,
-    border: `1px solid ${isLight ? "#d7e0ee" : "#2b3950"}`,
-    background: isLight ? "#fff" : "#101826",
-    color: isLight ? "#10131a" : "#fff",
-    fontWeight: 700,
-    cursor: "pointer",
-  };
-}
-
-const dangerButton: React.CSSProperties = {
-  padding: "12px 14px",
-  borderRadius: 14,
-  border: "1px solid rgba(255,123,123,.28)",
-  background: "rgba(255,123,123,.08)",
-  color: "#ff7b7b",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-function pillStyle(theme: "dark" | "light", positive: boolean): React.CSSProperties {
-  return {
-    padding: "4px 8px",
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: 800,
-    background: positive ? (theme === "light" ? "#eefaf1" : "rgba(74,222,128,.1)") : (theme === "light" ? "#eef4ff" : "rgba(63,124,255,.12)"),
-    color: positive ? (theme === "light" ? "#1e7d4b" : "#6ee7a6") : "#6ea0ff",
-  };
 }
 
 function getText(lang: string) {
