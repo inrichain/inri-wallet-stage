@@ -38,13 +38,13 @@ export default function Header({
   const [networkOpen, setNetworkOpen] = useState(false);
   const [networkQuery, setNetworkQuery] = useState("");
   const [avatar, setAvatar] = useState<string>(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
-  const [isCompact, setIsCompact] = useState(() => window.innerWidth <= 720);
+  const [isCompact, setIsCompact] = useState(() => window.innerWidth <= 760);
 
   useEffect(() => {
     const syncNetwork = () => setNetwork(getStoredNetwork());
     const syncAvatar = () => setAvatar(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
     const closeMenu = () => setNetworkOpen(false);
-    const onResize = () => setIsCompact(window.innerWidth <= 720);
+    const onResize = () => setIsCompact(window.innerWidth <= 760);
     window.addEventListener("storage", syncNetwork);
     window.addEventListener("wallet-network-updated", syncNetwork as EventListener);
     window.addEventListener("wallet-avatar-updated", syncAvatar as EventListener);
@@ -81,7 +81,7 @@ export default function Header({
       <div className="wallet-network-panel-head">
         <div>
           <div style={{ fontWeight: 900, fontSize: 18, color: isLight ? "#10131a" : "#ffffff" }}>Networks</div>
-          <div className="wallet-ui-subtle" style={{ marginTop: 4 }}>Switch network without leaving the current screen.</div>
+          <div className="wallet-ui-subtle" style={{ marginTop: 4 }}>Choose the active chain for this wallet.</div>
         </div>
         {isCompact ? <button className="wallet-icon-btn" onClick={() => setNetworkOpen(false)} style={{ width: 38, height: 38 }}>✕</button> : null}
       </div>
@@ -91,10 +91,10 @@ export default function Header({
         onChange={(e) => setNetworkQuery(e.target.value)}
         placeholder="Search network, symbol or chain ID"
         className={inputClass}
-        style={{ marginBottom: 8 }}
+        style={{ marginBottom: 10 }}
       />
 
-      <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ display: "grid", gap: 8 }}>
         {filteredNetworks.map((item) => {
           const active = Number(item.chainId) === Number(network.chainId);
           return (
@@ -107,18 +107,11 @@ export default function Header({
                 setNetworkQuery("");
                 window.dispatchEvent(new Event("wallet-network-updated"));
               }}
+              className="wallet-network-option"
               style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "11px 12px",
-                borderRadius: 14,
-                border: active ? "1px solid rgba(63,124,255,.36)" : "1px solid transparent",
-                background: active ? (isLight ? "#eef4ff" : "#162138") : "transparent",
+                border: active ? "1px solid rgba(63,124,255,.38)" : `1px solid ${isLight ? "#e6ecf5" : "#202635"}`,
+                background: active ? (isLight ? "#eef4ff" : "#162138") : (isLight ? "#f8fbff" : "#0f1520"),
                 color: isLight ? "#10131a" : "#ffffff",
-                cursor: "pointer",
-                textAlign: "left",
               }}
             >
               <LogoImage src={item.logo} alt={item.name} kind="network" label={item.name} symbol={item.symbol} size={24} />
@@ -148,36 +141,36 @@ export default function Header({
     >
       <div className="wallet-header-shell wallet-mobile-scroll-fix">
         <div className="wallet-header-brand">
-          <LogoImage src={BRAND_LOGO} alt="INRI" kind="dapp" label="INRI" size={44} rounded={false} />
+          <LogoImage src={BRAND_LOGO} alt="INRI" kind="dapp" label="INRI" size={isCompact ? 38 : 44} rounded={false} />
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 900, fontSize: 17, color: isLight ? "#10131a" : "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div style={{ fontWeight: 900, fontSize: isCompact ? 15 : 17, color: isLight ? "#10131a" : "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {walletName}
             </div>
-            <div style={{ fontSize: 12, color: isLight ? "#5b6578" : "#97a0b3", lineHeight: 1.35 }}>
+            <div style={{ fontSize: isCompact ? 11 : 12, color: isLight ? "#5b6578" : "#97a0b3", lineHeight: 1.35 }}>
               {tr(lang, "header_subtitle")}
             </div>
           </div>
         </div>
 
         <div className="wallet-header-actions">
-          <div style={{ position: isCompact ? "static" : "relative" }} onClick={(e) => e.stopPropagation()}>
+          <div className="wallet-header-network-wrap" style={{ position: isCompact ? "static" : "relative" }} onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setNetworkOpen((prev) => !prev)} className="wallet-network-trigger" title={network.name}>
               <LogoImage src={network.logo} alt={network.name} kind="network" label={network.name} symbol={network.symbol} size={18} />
               <span className="wallet-header-network-name">{network.name}</span>
               <span className="wallet-header-network-meta">#{network.chainId}</span>
+              <span className="wallet-header-network-caret">▾</span>
             </button>
             {!isCompact && networkOpen ? networkPanel : null}
           </div>
 
-          <button onClick={onOpenSettings} title={tr(lang, "nav_settings")} className="wallet-icon-btn wallet-header-settings-btn">⚙</button>
-
-          <button onClick={onOpenSettings} className="wallet-header-avatar-btn" title={tr(lang, "nav_settings") || "Settings"}>
+          <button onClick={onOpenSettings} className="wallet-header-avatar-btn wallet-header-settings-fab" title={tr(lang, "nav_settings") || "Settings"}>
             <img
               src={avatar}
               alt="avatar"
               onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR; }}
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
+            <span className="wallet-header-avatar-gear">⚙</span>
           </button>
         </div>
       </div>

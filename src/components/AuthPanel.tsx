@@ -92,28 +92,24 @@ export default function AuthPanel({
 
   return (
     <div className="wallet-auth-shell" style={{ color: isLight ? "#10131a" : "#ffffff" }}>
-      <div className="wallet-auth-wrap">
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
+      <div className="wallet-auth-wrap wallet-auth-layout">
+        <div className="wallet-auth-hero">
           <img
             src={baseUrl + "token-inri.png"}
             alt="INRI"
+            className="wallet-auth-logo"
             style={{
-              width: 154,
-              height: 154,
-              objectFit: "contain",
-              margin: "0 auto 18px",
-              display: "block",
               filter: isLight
                 ? "drop-shadow(0 16px 40px rgba(63,124,255,.20))"
                 : "drop-shadow(0 18px 44px rgba(63,124,255,.38))",
             }}
           />
 
-          <div style={{ fontSize: 46, fontWeight: 900, lineHeight: 1, marginBottom: 12, letterSpacing: "-0.03em" }}>
+          <div style={{ fontSize: 44, fontWeight: 900, lineHeight: 1, marginBottom: 12, letterSpacing: "-0.03em" }}>
             INRI Wallet
           </div>
 
-          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 15 }}>{texts.authSubtitle}</div>
+          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 15, maxWidth: 420, margin: "0 auto" }}>{texts.authSubtitle}</div>
         </div>
 
         <div className="wallet-surface wallet-auth-card" style={{ background: isLight ? "rgba(255,255,255,.94)" : "rgba(18,22,33,.92)" }}>

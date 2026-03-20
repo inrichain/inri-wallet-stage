@@ -1,9 +1,13 @@
 import React from "react";
 import type { Tab } from "../lib/navigation";
+import ScreenCard from "../components/ScreenCard";
+import SectionTitle from "../components/SectionTitle";
+import StatusPill from "../components/StatusPill";
 
 const groups = [
   {
     title: "Actions",
+    subtitle: "Daily wallet flows kept one tap away.",
     items: [
       { id: "send", title: "Send", subtitle: "Transfer native coin and tokens", icon: "↑" },
       { id: "receive", title: "Receive", subtitle: "Address, QR code and share", icon: "↓" },
@@ -13,6 +17,7 @@ const groups = [
   },
   {
     title: "Portfolio",
+    subtitle: "Track positions beyond the main tabs.",
     items: [
       { id: "nfts", title: "NFTs", subtitle: "Collectibles and media", icon: "✦" },
       { id: "staking", title: "Staking", subtitle: "Earn and track positions", icon: "◆" },
@@ -20,6 +25,7 @@ const groups = [
   },
   {
     title: "Connections & management",
+    subtitle: "Power tools, network controls and wallet settings.",
     items: [
       { id: "walletconnect", title: "WalletConnect", subtitle: "Pair, scan and manage sessions", icon: "⌁" },
       { id: "networks", title: "Networks", subtitle: "Switch chains and manage RPCs", icon: "◎" },
@@ -29,80 +35,36 @@ const groups = [
   },
 ] as const;
 
-export default function MoreScreen({
-  theme = "dark",
-  setTab,
-}: {
-  theme?: "dark" | "light";
-  lang?: string;
-  setTab: (tab: Tab) => void;
-}) {
+export default function MoreScreen({ theme = "dark", setTab }: { theme?: "dark" | "light"; lang?: string; setTab: (tab: Tab) => void; }) {
   const isLight = theme === "light";
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <section style={cardStyle(isLight)}>
-        <div style={{ fontSize: 28, fontWeight: 900, color: isLight ? "#10131a" : "#ffffff" }}>More</div>
-        <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginTop: 6, lineHeight: 1.5 }}>
-          Centralize everything that should stay out of the main navigation. This keeps Home, Tokens and Activity clean while preserving all wallet functions.
+    <div className="wallet-screen-stack wallet-screen-mobile-tight">
+      <ScreenCard theme={theme}>
+        <SectionTitle title="More" subtitle="Everything that should stay outside the main navigation lives here." theme={theme} />
+        <div className="wallet-action-row">
+          <StatusPill theme={theme} tone="primary">Power center</StatusPill>
+          <StatusPill theme={theme}>Organized</StatusPill>
         </div>
-      </section>
+      </ScreenCard>
 
       {groups.map((group) => (
-        <section key={group.title} style={cardStyle(isLight)}>
-          <div style={{ fontWeight: 900, fontSize: 18, color: isLight ? "#10131a" : "#ffffff", marginBottom: 12 }}>{group.title}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+        <ScreenCard key={group.title} theme={theme}>
+          <SectionTitle title={group.title} subtitle={group.subtitle} theme={theme} compact />
+          <div className="wallet-more-grid">
             {group.items.map((item) => (
-              <button key={item.id} onClick={() => setTab(item.id as Tab)} style={tileStyle(isLight)}>
-                <div style={iconStyle(isLight)}>{item.icon}</div>
+              <button key={item.id} onClick={() => setTab(item.id as Tab)} className="wallet-more-tile" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635", color: isLight ? "#10131a" : "#ffffff" }}>
+                <div className="wallet-more-tile-icon" style={{ background: isLight ? "#eef4ff" : "#162138" }}>{item.icon}</div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 900, fontSize: 16, color: isLight ? "#10131a" : "#ffffff" }}>{item.title}</div>
-                  <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, lineHeight: 1.45, marginTop: 4 }}>{item.subtitle}</div>
+                  <div style={{ fontWeight: 900, fontSize: 16 }}>{item.title}</div>
+                  <div className="wallet-ui-subtle" style={{ marginTop: 4 }}>{item.subtitle}</div>
                 </div>
                 <div style={{ color: "#3f7cff", fontSize: 18, fontWeight: 900 }}>›</div>
               </button>
             ))}
           </div>
-        </section>
+        </ScreenCard>
       ))}
     </div>
   );
-}
-
-function cardStyle(isLight: boolean): React.CSSProperties {
-  return {
-    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-    borderRadius: 20,
-    background: isLight ? "#ffffff" : "#121621",
-    padding: 16,
-  };
-}
-
-function tileStyle(isLight: boolean): React.CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "44px minmax(0, 1fr) auto",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
-    borderRadius: 18,
-    border: `1px solid ${isLight ? "#e6ecf5" : "#202635"}`,
-    background: isLight ? "#f8fbff" : "#0f1520",
-    cursor: "pointer",
-    textAlign: "left",
-  };
-}
-
-function iconStyle(isLight: boolean): React.CSSProperties {
-  return {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    display: "grid",
-    placeItems: "center",
-    fontWeight: 900,
-    fontSize: 18,
-    background: isLight ? "#eef4ff" : "#162138",
-    color: "#3f7cff",
-  };
 }

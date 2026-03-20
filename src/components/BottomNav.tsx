@@ -23,30 +23,11 @@ export default function BottomNav({
   ];
 
   return (
-    <nav
-      style={{
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        zIndex: 100,
-        background: isLight ? "rgba(255,255,255,.98)" : "rgba(9,13,22,.98)",
-        borderTop: `1px solid ${isLight ? "#dbe2f0" : "#1e2535"}`,
-        padding: "10px 12px calc(10px + env(safe-area-inset-bottom, 0px))",
-        boxSizing: "border-box",
-        backdropFilter: "blur(18px)",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 980,
-          margin: "0 auto",
-          display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-          gap: 8,
-          alignItems: "stretch",
-        }}
-      >
+    <nav className="wallet-bottom-nav" style={{
+      background: isLight ? "rgba(255,255,255,.98)" : "rgba(9,13,22,.98)",
+      borderTop: `1px solid ${isLight ? "#dbe2f0" : "#1e2535"}`,
+    }}>
+      <div className="wallet-bottom-nav-inner">
         {items.map((item) => {
           const active = item.active ?? tab === item.id;
           return (
@@ -54,29 +35,14 @@ export default function BottomNav({
               key={item.id}
               onClick={() => setTab(item.id)}
               title={item.label}
+              className={`wallet-bottom-nav-item ${active ? "active" : ""}`}
               style={{
-                padding: "10px 6px",
-                borderRadius: 16,
-                border: active
-                  ? "1px solid #4d7ef2"
-                  : `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-                background: active ? "#3f7cff" : isLight ? "#f8f9ff" : "#12182a",
-                color: active ? "#ffffff" : isLight ? "#334155" : "#cfd6e4",
-                fontWeight: 800,
-                fontSize: 11,
-                cursor: "pointer",
-                minHeight: 54,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 3,
+                color: active ? "#3f7cff" : isLight ? "#5b6578" : "#93a1b7",
+                background: active ? (isLight ? "#eef4ff" : "rgba(63,124,255,.14)") : "transparent",
               }}
             >
-              <span style={{ fontSize: 14, lineHeight: 1 }}>{item.icon}</span>
-              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
-                {item.label}
-              </span>
+              <span className="wallet-bottom-nav-icon">{item.icon}</span>
+              <span className="wallet-bottom-nav-label">{item.label}</span>
             </button>
           );
         })}
