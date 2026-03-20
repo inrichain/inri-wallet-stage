@@ -12,7 +12,8 @@ export type Tab =
   | "settings"
   | "networks"
   | "walletconnect"
-  | "assets";
+  | "assets"
+  | "p2p";
 
 export const MORE_TABS: Tab[] = [
   "more",
@@ -26,4 +27,5 @@ export const MORE_TABS: Tab[] = [
   "networks",
   "walletconnect",
   "assets",
+  "p2p",
 ];

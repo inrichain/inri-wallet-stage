@@ -13,6 +13,7 @@ const groups = [
       { id: "receive", title: "Receive", subtitle: "Address, QR code and share", icon: "↓" },
       { id: "swap", title: "Swap", subtitle: "Token exchange flow", icon: "⇄" },
       { id: "bridge", title: "Bridge", subtitle: "Move assets across chains", icon: "⤴" },
+      { id: "p2p", title: "P2P", subtitle: "Direct peer-to-peer trade flow", icon: "⇆" },
     ],
   },
   {
