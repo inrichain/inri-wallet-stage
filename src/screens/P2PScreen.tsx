@@ -87,6 +87,10 @@ export default function P2PScreen({
   const [sideFilter, setSideFilter] = useState<FilterSide>("all");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("all");
   const [searchMaker, setSearchMaker] = useState("");
+  const [minPriceFilter, setMinPriceFilter] = useState("");
+  const [maxPriceFilter, setMaxPriceFilter] = useState("");
+  const [minSizeFilter, setMinSizeFilter] = useState("");
+  const [maxSizeFilter, setMaxSizeFilter] = useState("");
   const [recentTx, setRecentTx] = useState<{ hash: string; label: string } | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
@@ -95,6 +99,8 @@ export default function P2PScreen({
   const [resizeValue, setResizeValue] = useState<Record<number, string>>({});
   const [eventsPage, setEventsPage] = useState(1);
   const [eventsHasMore, setEventsHasMore] = useState(false);
+  const [walletPage, setWalletPage] = useState(1);
+  const [walletHasMore, setWalletHasMore] = useState(false);
   const [walletEvents, setWalletEvents] = useState<P2PEventItem[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<P2POrder | null>(null);
 
@@ -116,6 +122,11 @@ export default function P2PScreen({
   const feeIusd = useMemo(() => (iusdNeeded * BigInt(stats?.feeBps || 0)) / 10000n, [iusdNeeded, stats?.feeBps]);
   const totalEstimateText = useMemo(() => `${formatIusd(iusdNeeded)} iUSD`, [iusdNeeded]);
 
+  const minPriceRaw = useMemo(() => { try { return minPriceFilter ? parsePrice(minPriceFilter) : 0n; } catch { return 0n; } }, [minPriceFilter]);
+  const maxPriceRaw = useMemo(() => { try { return maxPriceFilter ? parsePrice(maxPriceFilter) : 0n; } catch { return 0n; } }, [maxPriceFilter]);
+  const minSizeRaw = useMemo(() => { try { return minSizeFilter ? parseInriAmount(minSizeFilter) : 0n; } catch { return 0n; } }, [minSizeFilter]);
+  const maxSizeRaw = useMemo(() => { try { return maxSizeFilter ? parseInriAmount(maxSizeFilter) : 0n; } catch { return 0n; } }, [maxSizeFilter]);
+
   const visibleOrders = useMemo(() => {
     const base = view === "mine" ? orders.filter((item) => item.maker.toLowerCase() === address.toLowerCase()) : orders;
     const filtered = base
@@ -127,7 +138,11 @@ export default function P2PScreen({
         if (statusFilter === "expired") return item.expired;
         return !item.active;
       })
-      .filter((item) => !searchMaker.trim() ? true : item.maker.toLowerCase().includes(searchMaker.trim().toLowerCase()));
+      .filter((item) => !searchMaker.trim() ? true : item.maker.toLowerCase().includes(searchMaker.trim().toLowerCase()))
+      .filter((item) => (minPriceRaw > 0n ? item.priceRaw >= minPriceRaw : true))
+      .filter((item) => (maxPriceRaw > 0n ? item.priceRaw <= maxPriceRaw : true))
+      .filter((item) => (minSizeRaw > 0n ? item.remainingInri >= minSizeRaw : true))
+      .filter((item) => (maxSizeRaw > 0n ? item.remainingInri <= maxSizeRaw : true));
     const sorted = [...filtered].sort((a, b) => {
       if (sortMode === "price-asc") return Number(a.priceRaw - b.priceRaw);
       if (sortMode === "price-desc") return Number(b.priceRaw - a.priceRaw);
@@ -138,26 +153,51 @@ export default function P2PScreen({
       return Number(b.priceRaw - a.priceRaw) || b.id - a.id;
     });
     return sorted;
-  }, [orders, view, address, sideFilter, statusFilter, searchMaker, sortMode]);
+  }, [orders, view, address, sideFilter, statusFilter, searchMaker, sortMode, minPriceRaw, maxPriceRaw, minSizeRaw, maxSizeRaw]);
 
   const bestSell = useMemo(() => visibleOrders.filter((item) => item.side === "sell" && item.active && !item.expired).sort((a,b)=>Number(a.priceRaw-b.priceRaw))[0] || null, [visibleOrders]);
   const bestBuy = useMemo(() => visibleOrders.filter((item) => item.side === "buy" && item.active && !item.expired).sort((a,b)=>Number(b.priceRaw-a.priceRaw))[0] || null, [visibleOrders]);
-  const topTraders = useMemo(() => {
-    const volume = new Map<string, { address: string; fills: number; inri: number }>();
-    for (const event of walletEvents.length ? walletEvents : events) {
+  const tradeLeaderboard = useMemo(() => {
+    const buyers = new Map<string, { address: string; fills: number; inri: number }>();
+    const sellers = new Map<string, { address: string; fills: number; inri: number }>();
+    for (const event of events) {
       if (event.kind !== "filled") continue;
       const inri = Number(event.inri || 0);
-      for (const who of [event.maker, event.taker]) {
-        if (!who) continue;
-        const key = who.toLowerCase();
-        const curr = volume.get(key) || { address: who, fills: 0, inri: 0 };
+      if (event.maker) {
+        const makerKey = event.maker.toLowerCase();
+        const curr = buyers.get(makerKey) || { address: event.maker, fills: 0, inri: 0 };
         curr.fills += 1;
         curr.inri += inri;
-        volume.set(key, curr);
+        buyers.set(makerKey, curr);
+      }
+      if (event.taker) {
+        const takerKey = event.taker.toLowerCase();
+        const curr = sellers.get(takerKey) || { address: event.taker, fills: 0, inri: 0 };
+        curr.fills += 1;
+        curr.inri += inri;
+        sellers.set(takerKey, curr);
       }
     }
-    return [...volume.values()].sort((a,b)=>b.inri-a.inri).slice(0,5);
-  }, [events, walletEvents]);
+    const sortFn = (a:any,b:any)=> b.inri-a.inri || b.fills-a.fills;
+    return {
+      buyers: [...buyers.values()].sort(sortFn).slice(0,5),
+      sellers: [...sellers.values()].sort(sortFn).slice(0,5),
+    };
+  }, [events]);
+
+  function performanceTone(index: number) {
+    if (index === 0) return "success" as const;
+    if (index === 1) return "primary" as const;
+    if (index === 2) return "warning" as const;
+    return "default" as const;
+  }
+
+  function performanceLabel(index: number) {
+    if (index === 0) return "Elite";
+    if (index === 1) return "Strong";
+    if (index === 2) return "Rising";
+    return "Active";
+  }
 
   async function refreshBalances() {
     if (!address) return;
@@ -180,7 +220,7 @@ export default function P2PScreen({
         getP2PStats(),
         loadRecentP2POrders({ limit: 12, page: nextPage }),
         loadP2PEventsPage(nextEventsPage, 10).catch(() => ({ items: [], hasMore: false, page: nextEventsPage })),
-        address ? loadP2PEventsPage(1, 20, address).catch(() => ({ items: [], hasMore: false, page: 1 })) : Promise.resolve({ items: [], hasMore: false, page: 1 }),
+        address ? loadP2PEventsPage(walletPage, 10, address).catch(() => ({ items: [], hasMore: false, page: walletPage })) : Promise.resolve({ items: [], hasMore: false, page: walletPage }),
       ]);
       setStats(nextStats);
       setOrders(ordersResp.items);
@@ -188,6 +228,7 @@ export default function P2PScreen({
       setEvents(nextEventsResp.items);
       setEventsHasMore(Boolean(nextEventsResp.hasMore));
       setWalletEvents(walletEventsResp.items);
+      setWalletHasMore(Boolean(walletEventsResp.hasMore));
       await refreshBalances();
     } catch (error: any) {
       showAppToast({ message: error?.message || "Unable to load P2P market", type: "error" });
@@ -202,7 +243,7 @@ export default function P2PScreen({
     window.addEventListener("wallet-network-updated", sync as EventListener);
     return () => window.removeEventListener("wallet-network-updated", sync as EventListener);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, page, eventsPage]);
+  }, [address, page, eventsPage, walletPage]);
 
   const needsApproval = side === "buy" && iusdNeeded > 0n && allowance < iusdNeeded;
   const wrongNetwork = network.chainId !== 3777;
@@ -538,6 +579,18 @@ export default function P2PScreen({
             <Field theme={theme} label="Maker filter">
               <input className="wallet-ui-input" value={searchMaker} onChange={(e) => setSearchMaker(e.target.value)} placeholder="0x maker..." />
             </Field>
+            <Field theme={theme} label="Min price">
+              <input className="wallet-ui-input" value={minPriceFilter} onChange={(e) => setMinPriceFilter(e.target.value)} placeholder="0.04" inputMode="decimal" />
+            </Field>
+            <Field theme={theme} label="Max price">
+              <input className="wallet-ui-input" value={maxPriceFilter} onChange={(e) => setMaxPriceFilter(e.target.value)} placeholder="0.08" inputMode="decimal" />
+            </Field>
+            <Field theme={theme} label="Min size INRI">
+              <input className="wallet-ui-input" value={minSizeFilter} onChange={(e) => setMinSizeFilter(e.target.value)} placeholder="50" inputMode="decimal" />
+            </Field>
+            <Field theme={theme} label="Max size INRI">
+              <input className="wallet-ui-input" value={maxSizeFilter} onChange={(e) => setMaxSizeFilter(e.target.value)} placeholder="5000" inputMode="decimal" />
+            </Field>
           </div>
 
           {loading ? (
@@ -675,7 +728,7 @@ export default function P2PScreen({
 
 
       <ScreenCard theme={theme}>
-        <SectionTitle title="Wallet history" subtitle="Your maker and taker activity from recent contract events." theme={theme} compact />
+        <SectionTitle title="Wallet history" subtitle="Your maker and taker activity from recent contract events." theme={theme} compact actions={<div className="wallet-action-row" style={{ gap: 8 }}><ActionButton theme={theme} compact tone="ghost" onClick={() => setWalletPage((p) => Math.max(1, p - 1))} disabled={walletPage === 1}>Prev</ActionButton><ActionButton theme={theme} compact tone="secondary" onClick={() => setWalletPage((p) => p + 1)} disabled={!walletHasMore}>Next</ActionButton></div>} />
         {walletEvents.length === 0 ? (
           <EmptyState theme={theme} title="No wallet history yet" description="After you create, fill or cancel orders, your own event history will show here." />
         ) : (
@@ -689,21 +742,47 @@ export default function P2PScreen({
                 <a href={`${EXPLORER_TX_URL}${event.txHash}`} target="_blank" rel="noreferrer" className="wallet-link-like">View tx</a>
               </div>
             ))}
+            <div className="wallet-ui-subtle" style={{ textAlign: "center" }}>Wallet page {walletPage}</div>
           </div>
         )}
       </ScreenCard>
 
       <ScreenCard theme={theme}>
-        <SectionTitle title="Top traders" subtitle="Recent onchain volume leaderboard. This is a trading rank, not a true reputation score." theme={theme} compact />
-        {topTraders.length === 0 ? (
-          <EmptyState theme={theme} title="No ranking yet" description="When fills happen, top buyers and sellers by recent volume will appear here." />
+        <SectionTitle title="Top buyers" subtitle="Recent onchain buy-side volume. This is a trading rank, not a true reputation score." theme={theme} compact />
+        {tradeLeaderboard.buyers.length === 0 ? (
+          <EmptyState theme={theme} title="No buyer ranking yet" description="When buy-side fills happen, top buyers will appear here." />
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
-            {topTraders.map((item, index) => (
-              <div key={item.address} className="wallet-list-row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            {tradeLeaderboard.buyers.map((item, index) => (
+              <div key={`buyer-${item.address}`} className="wallet-list-row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>#{index + 1} • {shortenAddress(item.address, 5)}</div>
-                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent volume</div>
+                  <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span>#{index + 1} • {shortenAddress(item.address, 5)}</span>
+                    <StatusPill theme={theme} tone={performanceTone(index)}>{performanceLabel(index)}</StatusPill>
+                  </div>
+                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent buy volume</div>
+                </div>
+                <a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a>
+              </div>
+            ))}
+          </div>
+        )}
+      </ScreenCard>
+
+      <ScreenCard theme={theme}>
+        <SectionTitle title="Top sellers" subtitle="Recent onchain sell-side volume. This is a trading rank, not a true reputation score." theme={theme} compact />
+        {tradeLeaderboard.sellers.length === 0 ? (
+          <EmptyState theme={theme} title="No seller ranking yet" description="When sell-side fills happen, top sellers will appear here." />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {tradeLeaderboard.sellers.map((item, index) => (
+              <div key={`seller-${item.address}`} className="wallet-list-row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span>#{index + 1} • {shortenAddress(item.address, 5)}</span>
+                    <StatusPill theme={theme} tone={performanceTone(index)}>{performanceLabel(index)}</StatusPill>
+                  </div>
+                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent sell volume</div>
                 </div>
                 <a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a>
               </div>
@@ -726,7 +805,7 @@ export default function P2PScreen({
         open={Boolean(selectedOrder)}
         theme={theme}
         title={selectedOrder ? `Order #${selectedOrder.id} details` : "Order details"}
-        description={selectedOrder ? `${selectedOrder.side === "sell" ? "Sell" : "Buy"} order by ${shortenAddress(selectedOrder.maker, 5)} • price ${selectedOrder.priceDisplay} iUSD • remaining ${selectedOrder.remainingInriDisplay} INRI${selectedOrder.remainingIusd > 0n ? ` • locked ${selectedOrder.remainingIusdDisplay} iUSD` : ""}${selectedOrder.deadline ? ` • deadline ${new Date(selectedOrder.deadline * 1000).toLocaleString()}` : " • no deadline"}` : ""}
+        description={selectedOrder ? `${selectedOrder.side === "sell" ? "Sell" : "Buy"} order by ${shortenAddress(selectedOrder.maker, 5)} • price ${selectedOrder.priceDisplay} iUSD per INRI • remaining ${selectedOrder.remainingInriDisplay} INRI${selectedOrder.remainingIusd > 0n ? ` • locked ${selectedOrder.remainingIusdDisplay} iUSD` : ""} • estimated total ${formatIusd((selectedOrder.remainingInri * selectedOrder.priceRaw) / 10n ** 18n)} iUSD${selectedOrder.deadline ? ` • deadline ${new Date(selectedOrder.deadline * 1000).toLocaleString()}` : " • no deadline"} • ${selectedOrder.active ? (selectedOrder.expired ? "expired" : "active") : "closed"}` : ""}
         confirmLabel="Close"
         cancelLabel=""
         tone="primary"

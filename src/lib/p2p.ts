@@ -384,7 +384,7 @@ export async function getInriBalance(address: string) {
 export async function loadP2PEventsPage(page = 1, limit = 20, walletAddress?: string): Promise<{ items: P2PEventItem[]; hasMore: boolean; page: number; }> {
   const safePage = Math.max(1, Number(page || 1));
   const safeLimit = Math.max(1, Math.min(limit || 20, 50));
-  const all = await loadP2PEvents(Math.max(40, safePage * safeLimit + safeLimit));
+  const all = await loadP2PEvents(Math.max(120, safePage * safeLimit + safeLimit + 40));
   const filtered = walletAddress
     ? all.filter((item) => [item.maker, item.taker].filter(Boolean).some((value) => String(value).toLowerCase() === walletAddress.toLowerCase()))
     : all;
