@@ -242,17 +242,28 @@ export default function TokensScreen({ theme = "dark", lang = "en", address }: {
 
   const totalTokens = tokens.length;
   const visibleWithBalance = tokens.filter((token) => Number(token.balance || 0) > 0).length;
+  const customCount = tokens.filter((token) => !token.isNative && !getDefaultTokensForNetwork(networkKey).some((item) => tokenKey(item, networkKey) === tokenKey(token, networkKey))).length;
   const inputClass = `wallet-ui-input ${isLight ? "light" : ""}`.trim();
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div className="wallet-screen-stack">
       <ScreenCard theme={theme}>
         <SectionTitle
           theme={theme}
           title={t.tokens}
-          subtitle={`${getStoredNetwork().name} • ${totalTokens} assets • ${visibleWithBalance} with balance`}
+          subtitle={`${getStoredNetwork().name} • ${totalTokens} assets tracked`}
           actions={<div className="wallet-mini-stat" style={{ background: isLight ? "#f8fbff" : "#0d1420", borderColor: isLight ? "#dbe2f0" : "#2b3950" } as React.CSSProperties}><LogoImage src={getStoredNetwork().logo} alt={getStoredNetwork().name} kind="network" label={getStoredNetwork().name} symbol={getStoredNetwork().symbol} size={22} /><strong style={{ color: isLight ? "#10131a" : "#fff", fontSize: 13 }}>{getStoredNetwork().symbol}</strong></div>}
         />
+        <div className="wallet-token-stats-grid">
+          <div className="wallet-token-stat-card" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#dbe2f0" : "#202635" }}>
+            <span className="wallet-ui-subtle">With balance</span>
+            <strong style={{ color: isLight ? "#10131a" : "#fff", fontSize: 22 }}>{visibleWithBalance}</strong>
+          </div>
+          <div className="wallet-token-stat-card" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#dbe2f0" : "#202635" }}>
+            <span className="wallet-ui-subtle">Custom assets</span>
+            <strong style={{ color: isLight ? "#10131a" : "#fff", fontSize: 22 }}>{customCount}</strong>
+          </div>
+        </div>
         {loadingBalances ? <StatusPill theme={theme} tone="primary">Loading balances...</StatusPill> : null}
         <input placeholder={t.searchPlaceholder} value={query} onChange={(e) => setQuery(e.target.value)} className={inputClass} />
       </ScreenCard>
@@ -270,7 +281,7 @@ export default function TokensScreen({ theme = "dark", lang = "en", address }: {
             <input type="file" accept="image/*" onChange={handleUploadTokenLogo} style={{ display: "none" }} />
           </ActionButton>
         </div>
-        <div className="wallet-list-row" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
+        <div className="wallet-list-row wallet-token-form-preview" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <LogoImage src={logo || resolveTokenAsset({ symbol, name: tokenName, networkKey })} alt={symbol || "Token"} kind="token" label={tokenName || symbol || "Token"} symbol={symbol || "TOK"} size={34} rounded={false} />
             <div className="wallet-ui-subtle">{detectingToken ? t.detecting : t.formHint}</div>
@@ -290,12 +301,12 @@ export default function TokensScreen({ theme = "dark", lang = "en", address }: {
         ) : tokens.length === 0 ? (
           <EmptyState theme={theme} title={t.noTokens} description="Add a custom asset or switch to another network to load a different default token list." />
         ) : (
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="wallet-token-list">
             {tokens.map((token) => {
               const editable = !token.isNative;
               const isDefaultToken = getDefaultTokensForNetwork(networkKey).some((item) => tokenKey(item, networkKey) === tokenKey(token, networkKey));
               return (
-                <div key={`${token.symbol}-${token.address || token.networkKey || "native"}`} className="wallet-list-row" style={{ background: isLight ? "#ffffff" : "#111722", borderColor: isLight ? "#dbe2f0" : "#252b39" }}>
+                <div key={`${token.symbol}-${token.address || token.networkKey || "native"}`} className="wallet-list-row wallet-token-row" style={{ background: isLight ? "#ffffff" : "#111722", borderColor: isLight ? "#dbe2f0" : "#252b39" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
                     <LogoImage src={token.logo} alt={token.symbol} kind="token" label={token.subtitle || token.symbol} symbol={token.symbol} size={42} rounded={false} />
                     <div style={{ minWidth: 0 }}>
@@ -307,12 +318,12 @@ export default function TokensScreen({ theme = "dark", lang = "en", address }: {
                       {token.address ? <div className="wallet-ui-subtle">{token.address}</div> : null}
                     </div>
                   </div>
-                  <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
+                  <div className="wallet-token-side">
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#fff", fontSize: 18 }}>{token.balance}</div>
                       <div className="wallet-ui-subtle">{token.symbol}</div>
                     </div>
-                    {editable ? <div className="wallet-action-row"><ActionButton theme={theme} tone="secondary" compact onClick={() => editToken(token)}>{t.edit}</ActionButton><ActionButton theme={theme} tone="danger" compact onClick={() => setConfirmRemove(token)}>{t.remove}</ActionButton></div> : null}
+                    {editable ? <div className="wallet-action-row wallet-token-actions"><ActionButton theme={theme} tone="secondary" compact onClick={() => editToken(token)}>{t.edit}</ActionButton><ActionButton theme={theme} tone="danger" compact onClick={() => setConfirmRemove(token)}>{t.remove}</ActionButton></div> : null}
                   </div>
                 </div>
               );

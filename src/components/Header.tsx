@@ -140,27 +140,13 @@ export default function Header({
       }}
     >
       <div className="wallet-header-shell wallet-mobile-scroll-fix">
-        <div className="wallet-header-brand">
-          <LogoImage src={BRAND_LOGO} alt="INRI" kind="dapp" label="INRI" size={isCompact ? 38 : 44} rounded={false} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 900, fontSize: isCompact ? 15 : 17, color: isLight ? "#10131a" : "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {walletName}
+        <div className="wallet-header-top-row">
+          <div className="wallet-header-brand">
+            <LogoImage src={BRAND_LOGO} alt="INRI" kind="dapp" label="INRI" size={isCompact ? 38 : 44} rounded={false} />
+            <div style={{ minWidth: 0 }}>
+              <div className="wallet-header-title">{walletName}</div>
+              <div className="wallet-header-subtitle">{tr(lang, "header_subtitle")}</div>
             </div>
-            <div style={{ fontSize: isCompact ? 11 : 12, color: isLight ? "#5b6578" : "#97a0b3", lineHeight: 1.35 }}>
-              {tr(lang, "header_subtitle")}
-            </div>
-          </div>
-        </div>
-
-        <div className="wallet-header-actions">
-          <div className="wallet-header-network-wrap" style={{ position: isCompact ? "static" : "relative" }} onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setNetworkOpen((prev) => !prev)} className="wallet-network-trigger" title={network.name}>
-              <LogoImage src={network.logo} alt={network.name} kind="network" label={network.name} symbol={network.symbol} size={18} />
-              <span className="wallet-header-network-name">{network.name}</span>
-              <span className="wallet-header-network-meta">#{network.chainId}</span>
-              <span className="wallet-header-network-caret">▾</span>
-            </button>
-            {!isCompact && networkOpen ? networkPanel : null}
           </div>
 
           <button onClick={onOpenSettings} className="wallet-header-avatar-btn wallet-header-settings-fab" title={tr(lang, "nav_settings") || "Settings"}>
@@ -172,6 +158,20 @@ export default function Header({
             />
             <span className="wallet-header-avatar-gear">⚙</span>
           </button>
+        </div>
+
+        <div className="wallet-header-actions">
+          <div className="wallet-header-network-wrap" style={{ position: isCompact ? "static" : "relative" }} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setNetworkOpen((prev) => !prev)} className="wallet-network-trigger" title={network.name}>
+              <LogoImage src={network.logo} alt={network.name} kind="network" label={network.name} symbol={network.symbol} size={18} />
+              <span className="wallet-header-network-content">
+                <span className="wallet-header-network-name">{network.name}</span>
+                <span className="wallet-header-network-meta">Chain {network.chainId}</span>
+              </span>
+              <span className="wallet-header-network-caret">▾</span>
+            </button>
+            {!isCompact && networkOpen ? networkPanel : null}
+          </div>
         </div>
       </div>
 

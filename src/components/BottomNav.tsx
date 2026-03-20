@@ -23,11 +23,12 @@ export default function BottomNav({
   ];
 
   return (
-    <nav className="wallet-bottom-nav" style={{
-      background: isLight ? "rgba(255,255,255,.98)" : "rgba(9,13,22,.98)",
-      borderTop: `1px solid ${isLight ? "#dbe2f0" : "#1e2535"}`,
-    }}>
-      <div className="wallet-bottom-nav-inner">
+    <nav className="wallet-bottom-nav" style={{ background: "transparent", borderTop: "none" }}>
+      <div className="wallet-bottom-nav-inner" style={{
+        background: isLight ? "rgba(255,255,255,.98)" : "rgba(9,13,22,.98)",
+        border: `1px solid ${isLight ? "#dbe2f0" : "#1e2535"}`,
+        boxShadow: isLight ? "0 12px 34px rgba(16,22,35,.12)" : "0 16px 40px rgba(0,0,0,.34)",
+      }}>
         {items.map((item) => {
           const active = item.active ?? tab === item.id;
           return (
@@ -38,10 +39,12 @@ export default function BottomNav({
               className={`wallet-bottom-nav-item ${active ? "active" : ""}`}
               style={{
                 color: active ? "#3f7cff" : isLight ? "#5b6578" : "#93a1b7",
-                background: active ? (isLight ? "#eef4ff" : "rgba(63,124,255,.14)") : "transparent",
+                background: active ? (isLight ? "#eef4ff" : "rgba(63,124,255,.16)") : "transparent",
               }}
             >
-              <span className="wallet-bottom-nav-icon">{item.icon}</span>
+              <span className="wallet-bottom-nav-icon-wrap">
+                <span className="wallet-bottom-nav-icon">{item.icon}</span>
+              </span>
               <span className="wallet-bottom-nav-label">{item.label}</span>
             </button>
           );
