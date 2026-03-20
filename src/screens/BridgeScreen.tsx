@@ -96,7 +96,8 @@ export default function BridgeScreen({
 
   const fromToken = direction === "polygon_to_inri" ? TOKENS.usdt : TOKENS.iusd;
   const toToken = direction === "polygon_to_inri" ? TOKENS.iusd : TOKENS.usdt;
-  const feePercent = (direction === "polygon_to_inri" ? balances.polygonDepositFeeBps : balances.inriFeeBps) / 100;
+  const rawFeeBps = direction === "polygon_to_inri" ? balances.polygonDepositFeeBps : balances.inriFeeBps;
+  const feePercent = ((rawFeeBps || 20) / 100);
   const amountRaw = useMemo(() => {
     try {
       return parseBridgeAmount(amount);
@@ -111,6 +112,20 @@ export default function BridgeScreen({
   const needsApproval = direction === "polygon_to_inri" ? balances.polygonUsdtAllowance < amountRaw : balances.inriIusdAllowance < amountRaw;
   const canProceed = !!address && !!privateKey && amountRaw > 0n && hasEnoughBalance && !wrongNetwork;
   const operations = useMemo(() => getBridgeOperations(address).slice(0, 8), [address, opsVersion]);
+
+  async function runVerifyNow() {
+    try {
+      setBusy(true);
+      setMessage(t.checkingStatus);
+      const updates = await verifyBridgeOperations(address);
+      setOpsVersion((v) => v + 1);
+      setMessage(updates.length ? `${updates.length} bridge update(s) found.` : t.noNewUpdates);
+    } catch (err: any) {
+      setMessage(err?.shortMessage || err?.message || t.statusCheckFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function runApprove() {
     if (!privateKey || amountRaw <= 0n) return;
@@ -166,6 +181,7 @@ export default function BridgeScreen({
             {wrongNetwork ? `${t.switchTo} ${requiredNetworkKey.toUpperCase()}` : t.liveContracts}
           </StatusPill>
           <StatusPill theme={theme} tone="info">{fromToken.symbol} → {toToken.symbol}</StatusPill>
+          <StatusPill theme={theme} tone="warning">{feePercent.toFixed(2)}%</StatusPill>
         </div>
       </ScreenCard>
 
@@ -197,7 +213,7 @@ export default function BridgeScreen({
       ) : null}
 
       <ScreenCard theme={theme}>
-        <div className="wallet-section-head">
+        <div className="wallet-section-head" style={{ alignItems: "flex-start" }}>
           <div>
             <div style={{ fontSize: 12, color: isLight ? "#64748b" : "#94a3b8", fontWeight: 800, textTransform: "uppercase" }}>{t.route}</div>
             <div style={{ marginTop: 4, fontWeight: 900, fontSize: 22, color: isLight ? "#0f172a" : "#fff" }}>{fromToken.network} → {toToken.network}</div>
@@ -253,6 +269,9 @@ export default function BridgeScreen({
           <ActionButton theme={theme} onClick={() => setConfirmIntent("bridge")} disabled={!canProceed || needsApproval || busy} tone="primary">
             {busy ? t.processing : direction === "polygon_to_inri" ? t.depositNow : t.burnNow}
           </ActionButton>
+          <ActionButton theme={theme} onClick={runVerifyNow} disabled={busy}>
+            {busy ? t.processing : t.checkStatusNow}
+          </ActionButton>
         </div>
         {!hasEnoughBalance && amountRaw > 0n ? <div className="wallet-ui-subtle" style={{ marginTop: 10, color: isLight ? "#b91c1c" : "#fca5a5" }}>{t.insufficientBalance}</div> : null}
       </ScreenCard>
@@ -265,7 +284,7 @@ export default function BridgeScreen({
           <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
             {operations.map((item) => (
               <div key={item.id} style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 16, padding: 14, background: isLight ? "#f8fafc" : "#0b1120" }}>
-                <div className="wallet-section-head">
+                <div className="wallet-section-head" style={{ alignItems: "flex-start" }}>
                   <div>
                     <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{item.fromSymbol} → {item.toSymbol}</div>
                     <div className="wallet-ui-subtle" style={{ marginTop: 4 }}>{item.stageLabel}</div>
@@ -277,6 +296,8 @@ export default function BridgeScreen({
                   <InfoRow theme={theme} label={t.youReceive} value={`${item.amountOut} ${item.toSymbol}`} />
                   <InfoRow theme={theme} label={t.destination} value={item.destination} mono />
                   <InfoRow theme={theme} label={t.fee} value={`${item.feePercent.toFixed(2)}%`} />
+                  <InfoRow theme={theme} label={t.sourceContract} value={item.contractAddress || contractAddress} mono />
+                  {item.claimContractAddress ? <InfoRow theme={theme} label={t.validatorTarget} value={item.claimContractAddress} mono /> : null}
                 </div>
                 <div className="wallet-action-row" style={{ marginTop: 12 }}>
                   {item.sourceTxHash ? <a href={bridgeTxUrl(item.direction, item.sourceTxHash)} target="_blank" rel="noreferrer" className="wallet-link-chip">{t.openTx}</a> : null}
@@ -405,6 +426,10 @@ function getText(lang: string) {
       networkWarning: (key: string) => `Use the ${key.toUpperCase()} network for this direction.`,
       currentNetwork: (name: string) => `Current network: ${name}`,
       balanceLoadFailed: "Could not refresh bridge balances right now.",
+      checkStatusNow: "Check status now",
+      checkingStatus: "Checking mint/release status...",
+      noNewUpdates: "No new mint/release updates found yet.",
+      statusCheckFailed: "Unable to check bridge status right now.",
     },
     pt: {
       bridge: "Bridge",
@@ -459,6 +484,10 @@ function getText(lang: string) {
       networkWarning: (key: string) => `Use a rede ${key.toUpperCase()} para essa direção.`,
       currentNetwork: (name: string) => `Rede atual: ${name}`,
       balanceLoadFailed: "Não foi possível atualizar os saldos do bridge agora.",
+      checkStatusNow: "Checar status agora",
+      checkingStatus: "Checando status do mint/release...",
+      noNewUpdates: "Ainda não houve novas atualizações de mint/release.",
+      statusCheckFailed: "Não foi possível checar o status do bridge agora.",
     },
     es: {
       bridge: "Bridge",
@@ -513,6 +542,10 @@ function getText(lang: string) {
       networkWarning: (key: string) => `Usa la red ${key.toUpperCase()} para esta dirección.`,
       currentNetwork: (name: string) => `Red actual: ${name}`,
       balanceLoadFailed: "No se pudieron actualizar los saldos del bridge ahora.",
+      checkStatusNow: "Revisar estado ahora",
+      checkingStatus: "Revisando estado de mint/release...",
+      noNewUpdates: "Aún no hay nuevas actualizaciones de mint/release.",
+      statusCheckFailed: "No se pudo revisar el estado del bridge ahora.",
     },
   };
   return map[lang] || map.en;

@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { getStoredNetwork } from "../lib/network";
+import { getAllNetworks, getStoredNetwork } from "../lib/network";
 import { tr } from "../i18n/translations";
 import ScreenCard from "../components/ScreenCard";
 import SectionTitle from "../components/SectionTitle";
@@ -13,12 +13,15 @@ export default function ActivityScreen({ theme = "dark", lang = "en", address }:
   const isLight = theme === "light";
   const network = getStoredNetwork();
 
+  const allNetworks = useMemo(() => getAllNetworks({ includeHidden: true }), []);
+
   const items = useMemo(() => {
     const raw = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]");
     return raw
       .filter((item: any) => item.from?.toLowerCase() === address.toLowerCase() || item.to?.toLowerCase() === address.toLowerCase())
+      .filter((item: any) => !item.networkKey || String(item.networkKey) === String(network.key))
       .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  }, [address]);
+  }, [address, network.key]);
 
   function priorityLabel(priority: string) {
     if (priority === "high") return tr(lang, "activity_priority_high");
@@ -45,11 +48,13 @@ export default function ActivityScreen({ theme = "dark", lang = "en", address }:
           {items.map((item: any, index: number) => {
             const isOutgoing = item.from?.toLowerCase() === address.toLowerCase();
             const txHash = item.hash || "";
+            const itemNetwork = allNetworks.find((entry) => entry.key === item.networkKey || Number(entry.chainId) === Number(item.chainId)) || network;
+            const title = item.method === "approve" ? `Approve ${item.symbol || "token"}` : isOutgoing ? tr(lang, "activity_sent") : tr(lang, "activity_received");
             return (
               <ScreenCard key={item.hash || index} theme={theme}>
                 <div className="wallet-section-head">
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#ffffff", fontSize: 18 }}>{isOutgoing ? tr(lang, "activity_sent") : tr(lang, "activity_received")}</div>
+                    <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#ffffff", fontSize: 18 }}>{title}</div>
                     <div className="wallet-ui-subtle" style={{ marginTop: 4 }}>{new Date(item.createdAt).toLocaleString()}</div>
                   </div>
                   <StatusPill theme={theme} tone={statusTone(item.status)}>
@@ -60,8 +65,8 @@ export default function ActivityScreen({ theme = "dark", lang = "en", address }:
                 <div className="wallet-activity-summary">
                   <div style={{ fontWeight: 900, color: isLight ? "#10131a" : "#ffffff", fontSize: 28, overflowWrap: "anywhere" }}>{item.amount} {item.symbol}</div>
                   <div className="wallet-mini-stat" style={{ background: isLight ? "#f1f5f9" : "#0f172a", color: isLight ? "#475569" : "#cbd5e1" }}>
-                    <LogoImage src={network.logo} alt={network.name} kind="network" label={network.name} symbol={network.symbol} size={18} />
-                    <span>{item.networkName || network.name}</span>
+                    <LogoImage src={itemNetwork.logo} alt={itemNetwork.name} kind="network" label={itemNetwork.name} symbol={itemNetwork.symbol} size={18} />
+                    <span>{item.networkName || itemNetwork.name}</span>
                   </div>
                 </div>
 
@@ -70,13 +75,13 @@ export default function ActivityScreen({ theme = "dark", lang = "en", address }:
                   <InfoRow label={tr(lang, "activity_hash")} value={txHash} isLight={isLight} mono />
                   <InfoRow label={tr(lang, "activity_gas_used")} value={String(item.gasUsed || "-")} isLight={isLight} />
                   <InfoRow label={tr(lang, "activity_gas_price")} value={item.gasPriceGwei && item.gasPriceGwei !== "pending" ? `${item.gasPriceGwei} Gwei` : "-"} isLight={isLight} />
-                  <InfoRow label={tr(lang, "activity_fee")} value={item.feeNative && item.feeNative !== "pending" ? `${item.feeNative} ${network.symbol}` : "-"} isLight={isLight} />
+                  <InfoRow label={tr(lang, "activity_fee")} value={item.feeNative && item.feeNative !== "pending" ? `${item.feeNative} ${itemNetwork.symbol}` : "-"} isLight={isLight} />
                   <InfoRow label={tr(lang, "activity_priority")} value={priorityLabel(item.priority || "normal")} isLight={isLight} />
                 </div>
 
                 {txHash ? (
                   <div className="wallet-action-row">
-                    <a href={`${network.explorerTxUrl}${txHash}`} target="_blank" rel="noreferrer" className="wallet-link-chip">
+                    <a href={`${itemNetwork.explorerTxUrl}${txHash}`} target="_blank" rel="noreferrer" className="wallet-link-chip">
                       {tr(lang, "activity_open_explorer")}
                     </a>
                   </div>
