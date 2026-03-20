@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, startQrDecode, stopVideoStream } from "../lib/camera";
 
 const INRI_LOGO = "/favicon.png";
 
@@ -45,43 +46,40 @@ export default function ReceiveScreen({
   async function openCameraQr() {
     setCameraError("");
     setScanResult("");
+    setCameraOpen(true);
 
     try {
-      setCameraOpen(true);
+      await ensureCameraAccess();
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
-      setTimeout(async () => {
-        try {
-          if (!videoRef.current || !readerRef.current) return;
+      if (!videoRef.current || !readerRef.current) {
+        setCameraError(t.cameraFail);
+        setCameraOpen(false);
+        return;
+      }
 
-          const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-          const backCamera =
-            devices.find((d) =>
-              d.label.toLowerCase().includes("back") ||
-              d.label.toLowerCase().includes("rear") ||
-              d.label.toLowerCase().includes("environment")
-            ) || devices[0];
+      videoRef.current.setAttribute("playsinline", "true");
+      videoRef.current.muted = true;
 
-          if (!backCamera) {
-            setCameraError(t.noCamera);
-            setCameraOpen(false);
-            return;
-          }
+      const devices = await listVideoDevices();
+      const preferred = pickPreferredCamera(devices);
+      if (!preferred && devices.length === 0) {
+        setCameraError(t.noCamera);
+        setCameraOpen(false);
+        return;
+      }
 
-          const result = await readerRef.current.decodeOnceFromVideoDevice(
-            backCamera.deviceId,
-            videoRef.current
-          );
-
-          if (result?.getText()) {
-            setScanResult(result.getText());
-          }
-
+      await startQrDecode({
+        reader: readerRef.current,
+        video: videoRef.current,
+        deviceId: preferred?.deviceId,
+        onResult: (text) => {
+          setScanResult(text);
           closeCamera();
-        } catch {
-          setCameraError(t.cameraFail);
-        }
-      }, 150);
-    } catch {
+        },
+      });
+    } catch (error) {
+      console.error(error);
       setCameraError(t.cameraFail);
       setCameraOpen(false);
     }
@@ -91,6 +89,7 @@ export default function ReceiveScreen({
     try {
       readerRef.current?.reset();
     } catch {}
+    stopVideoStream(videoRef.current);
     setCameraOpen(false);
   }
 

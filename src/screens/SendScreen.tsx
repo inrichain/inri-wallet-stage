@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, startQrDecode, stopVideoStream } from "../lib/camera";
 import { ethers } from "ethers";
 import { TokenItem, getDefaultTokensForNetwork, getProvider, loadAllBalances } from "../lib/inri";
 import { getStoredNetwork } from "../lib/network";
@@ -334,22 +335,14 @@ export default function SendScreen({
   }
 
   function stopCameraTracks() {
-    const video = videoRef.current;
-    const stream = video?.srcObject as MediaStream | null;
-
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
-
-    if (video) {
-      video.srcObject = null;
-    }
+    stopVideoStream(videoRef.current);
   }
 
   async function openScanner() {
     setShowScanner(true);
 
     try {
+      await ensureCameraAccess();
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       if (!videoRef.current) {
@@ -357,38 +350,29 @@ export default function SendScreen({
         return;
       }
 
+      videoRef.current.setAttribute("playsinline", "true");
+      videoRef.current.muted = true;
+
       const reader = new BrowserMultiFormatReader();
       readerRef.current = reader;
 
-      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-      const backCamera = devices.find((d) =>
-        /back|rear|environment/gi.test(`${d.label} ${d.deviceId}`)
-      );
+      const devices = await listVideoDevices();
+      const preferred = pickPreferredCamera(devices);
 
-      const constraints: MediaStreamConstraints = {
-        audio: false,
-        video: backCamera?.deviceId
-          ? { deviceId: { exact: backCamera.deviceId } }
-          : {
-              facingMode: { ideal: "environment" },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
-      };
-
-      await reader.decodeFromConstraints(constraints, videoRef.current, (result) => {
-        if (!result) return;
-
-        const text = result.getText();
-        const match = text.match(/0x[a-fA-F0-9]{40}/);
-
-        if (match?.[0]) {
+      await startQrDecode({
+        reader,
+        video: videoRef.current,
+        deviceId: preferred?.deviceId,
+        onResult: (text) => {
+          const match = text.match(/0x[a-fA-F0-9]{40}/);
+          if (!match?.[0]) return;
           setToAddress(match[0]);
           closeScanner();
           showMessage(t.qrCaptured);
-        }
+        },
       });
-    } catch {
+    } catch (error) {
+      console.error(error);
       showMessage(t.cameraFail);
     }
   }

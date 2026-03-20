@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { tr } from "../i18n/translations";
+import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, startQrDecode, stopVideoStream } from "../lib/camera";
 
 type Props = {
   open: boolean;
@@ -23,7 +24,6 @@ export default function WalletConnectQrScanner({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const openingRef = useRef(false);
   const scannedRef = useRef(false);
   const [cameraError, setCameraError] = useState("");
@@ -40,10 +40,7 @@ export default function WalletConnectQrScanner({
     void prepareAndOpenCamera();
 
     return () => {
-      try {
-        (readerRef.current as any)?.reset?.();
-      } catch {}
-      stopCameraTracks();
+      resetReader();
     };
   }, [open]);
 
@@ -52,109 +49,62 @@ export default function WalletConnectQrScanner({
     void openCamera(selectedDeviceId);
   }, [open, selectedDeviceId]);
 
-  useEffect(() => {
-    if (!open) return;
-    const cleanup = () => stopCameraTracks();
-    window.addEventListener("pagehide", cleanup);
-    document.addEventListener("visibilitychange", cleanup);
-    return () => {
-      window.removeEventListener("pagehide", cleanup);
-      document.removeEventListener("visibilitychange", cleanup);
-    };
-  }, [open]);
-
-  function stopCameraTracks() {
-    const video = videoRef.current;
-    const stream = streamRef.current || (video?.srcObject as MediaStream | null);
-    if (stream) {
-      stream.getTracks().forEach((track) => {
-        try { track.stop(); } catch {}
-      });
-    }
-    streamRef.current = null;
-    if (video) video.srcObject = null;
-  }
-
-  function findBackCamera(devices: MediaDeviceInfo[]) {
-    const patterns = /back|rear|environment|traseira|traseiro/gi;
-    return devices.find((d) => patterns.test(`${d.label} ${d.deviceId}`));
+  function resetReader() {
+    try {
+      (readerRef.current as any)?.reset?.();
+    } catch {}
+    stopVideoStream(videoRef.current);
   }
 
   async function prepareAndOpenCamera() {
     try {
       setCameraError("");
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError(t("scanner_camera_unavailable"));
-        return;
-      }
-      const warmup = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      warmup.getTracks().forEach((track) => track.stop());
-      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-      const list = Array.isArray(devices) ? devices : [];
+      await ensureCameraAccess();
+
+      const list = await listVideoDevices();
       setCameras(list);
-      const preferred = selectedDeviceId || findBackCamera(list)?.deviceId || list[0]?.deviceId || "";
+
+      const preferred = pickPreferredCamera(list, selectedDeviceId)?.deviceId || "";
       if (preferred) setSelectedDeviceId(preferred);
-      else await openCamera();
+      await openCamera(preferred || undefined);
     } catch (err: any) {
       console.error(err);
-      setCameraError(err?.message || t("scanner_could_not_open"));
+      setCameraError(t("scanner_could_not_open"));
     } finally {
       openingRef.current = false;
     }
   }
 
-  async function startDecodeWithConstraints(constraints: MediaStreamConstraints) {
-    if (!readerRef.current || !videoRef.current || scannedRef.current) return;
-    stopCameraTracks();
-    const stream = await navigator.mediaDevices.getUserMedia(constraints.video ? constraints : { audio: false, video: true });
-    streamRef.current = stream;
-    videoRef.current.srcObject = stream;
-    await videoRef.current.play().catch(() => {});
-    await readerRef.current.decodeFromVideoElement(videoRef.current, (result) => {
-      if (!result || scannedRef.current) return;
-      const text = result.getText()?.trim() || "";
-      setScannedText(text);
-      if (text.startsWith("wc:")) {
-        scannedRef.current = true;
-        stopCameraTracks();
-        handleClose();
-        void onScan(text);
-      }
-    });
-  }
-
   async function openCamera(deviceId?: string) {
     if (openingRef.current || scannedRef.current) return;
+
     openingRef.current = true;
     setCameraError("");
     setScannedText("");
+
     try {
-      await new Promise((resolve) => setTimeout(resolve, 120));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
       if (!videoRef.current || !readerRef.current) {
         setCameraError(t("scanner_camera_unavailable"));
         return;
       }
-      if (deviceId) {
-        try {
-          await startDecodeWithConstraints({
-            audio: false,
-            video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          });
-          return;
-        } catch (err) {
-          console.warn("Selected camera failed, trying environment mode", err);
-        }
-      }
-      try {
-        await startDecodeWithConstraints({
-          audio: false,
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        });
-        return;
-      } catch (err) {
-        console.warn("Environment camera failed, trying any camera", err);
-      }
-      await startDecodeWithConstraints({ audio: false, video: true });
+
+      videoRef.current.setAttribute("playsinline", "true");
+      videoRef.current.muted = true;
+
+      await startQrDecode({
+        reader: readerRef.current,
+        video: videoRef.current,
+        deviceId,
+        onResult: (text) => {
+          setScannedText(text);
+          if (!text.startsWith("wc:")) return;
+          scannedRef.current = true;
+          handleClose();
+          void onScan(text);
+        },
+      });
     } catch (err: any) {
       console.error(err);
       setCameraError(err?.message || t("scanner_could_not_open"));
@@ -187,10 +137,7 @@ export default function WalletConnectQrScanner({
   }
 
   function handleClose() {
-    try {
-      (readerRef.current as any)?.reset?.();
-    } catch {}
-    stopCameraTracks();
+    resetReader();
     onClose();
   }
 
