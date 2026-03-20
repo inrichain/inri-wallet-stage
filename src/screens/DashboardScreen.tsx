@@ -118,16 +118,13 @@ export default function DashboardScreen({ setTab, theme = "dark", lang = "en", a
           <ActionButton onClick={() => setTab("bridge")} theme={theme} tone="ghost">Bridge</ActionButton>
         </div>
 
-        <div className="wallet-action-row">
-          <a href={network.explorerAddressUrl + address} target="_blank" rel="noreferrer" className="wallet-link-chip">
-            {tr(lang, "dashboard_open_explorer")}
-          </a>
-          {canInstall ? (
+        {canInstall ? (
+          <div className="wallet-action-row">
             <button onClick={installApp} className="wallet-link-chip" type="button">
               {tr(lang, "dashboard_install_app")}
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </ScreenCard>
 
       <ScreenCard theme={theme}>

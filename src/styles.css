@@ -667,3 +667,33 @@ img{max-width:100%}
     font-size:10px;
   }
 }
+
+
+/* v9 final width and dashboard cleanup */
+.wallet-bottom-nav{
+  padding-left:16px;
+  padding-right:16px;
+}
+.wallet-bottom-nav-inner{
+  max-width:980px;
+  width:100%;
+}
+@media (max-width: 760px){
+  .wallet-bottom-nav{
+    padding-left:12px;
+    padding-right:12px;
+  }
+  .wallet-bottom-nav-inner{
+    max-width:980px;
+    width:100%;
+  }
+}
+@media (max-width: 520px){
+  .wallet-bottom-nav{
+    padding-left:12px;
+    padding-right:12px;
+  }
+  .wallet-bottom-nav-inner{
+    width:100%;
+  }
+}
