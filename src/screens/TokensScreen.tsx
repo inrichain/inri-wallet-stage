@@ -8,6 +8,8 @@ import {
 import { getStoredNetwork } from "../lib/network";
 import { resolveTokenAsset } from "../lib/assets";
 import LogoImage from "../components/LogoImage";
+import ConfirmModal from "../components/ConfirmModal";
+import { showAppToast } from "../lib/ui";
 
 const CUSTOM_TOKENS_KEY = "wallet_custom_tokens";
 const HIDDEN_TOKENS_KEY = "wallet_hidden_default_tokens_v1";
@@ -66,6 +68,8 @@ export default function TokensScreen({
   const [editingTokenKey, setEditingTokenKey] = useState("");
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [detectingToken, setDetectingToken] = useState(false);
+  const [loadingBalances, setLoadingBalances] = useState(true);
+  const [confirmRemove, setConfirmRemove] = useState<ViewToken | null>(null);
   const t = getText(lang);
 
   useEffect(() => {
@@ -118,6 +122,7 @@ export default function TokensScreen({
   }, [customTokens, networkKey, query, balances, hiddenTokens]);
 
   useEffect(() => {
+    setLoadingBalances(true);
     let active = true;
     async function refresh() {
       try {
@@ -127,6 +132,8 @@ export default function TokensScreen({
       } catch {
         if (!active) return;
         setBalances({});
+      } finally {
+        if (active) setLoadingBalances(false);
       }
     }
     refresh();
@@ -174,9 +181,10 @@ export default function TokensScreen({
     };
   }, [tokenAddress, networkKey, editingTokenKey]);
 
-  function showMessage(text: string) {
+  function showMessage(text: string, type: "success" | "error" | "warning" | "info" = "info") {
     setMessage(text);
     setTimeout(() => setMessage(""), 2500);
+    showAppToast({ message: text, type });
   }
 
   function resetForm() {
@@ -245,7 +253,7 @@ export default function TokensScreen({
     }
 
     resetForm();
-    showMessage(editingTokenKey ? t.tokenUpdated : t.tokenAdded);
+    showMessage(editingTokenKey ? t.tokenUpdated : t.tokenAdded, "success");
   }
 
   function editToken(token: ViewToken) {
@@ -269,7 +277,12 @@ export default function TokensScreen({
       setCustomTokens((prev) => prev.filter((item) => tokenKey(item, networkKey) !== key));
     }
     if (editingTokenKey === key) resetForm();
-    showMessage(t.tokenRemoved);
+    showMessage(t.tokenRemoved, "success");
+  }
+
+  function askRemoveToken(token: ViewToken) {
+    if (token.isNative) return showMessage(t.nativeProtected, "warning");
+    setConfirmRemove(token);
   }
 
   const totalTokens = tokens.length;
@@ -282,6 +295,7 @@ export default function TokensScreen({
           <div>
             <h2 style={{ margin: 0, color: isLight ? "#10131a" : "#ffffff" }}>{t.tokens}</h2>
             <div style={{ color: isLight ? "#5b6578" : "#97a0b3", marginTop: 6 }}>{getStoredNetwork().name} • {totalTokens} assets • {visibleWithBalance} with balance</div>
+          {loadingBalances ? <div style={{ marginTop: 8, color: isLight ? "#7b879c" : "#8ea0bd", fontSize: 12, fontWeight: 700 }}>Loading balances...</div> : null}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 999, border: `1px solid ${isLight ? "#dbe2f0" : "#2b3950"}`, background: isLight ? "#f8fbff" : "#0d1420" }}>
             <LogoImage src={getStoredNetwork().logo} alt={getStoredNetwork().name} kind="network" label={getStoredNetwork().name} symbol={getStoredNetwork().symbol} size={22} />
@@ -293,7 +307,7 @@ export default function TokensScreen({
 
       <div style={{ display: "grid", gap: 10, padding: 14, borderRadius: 18, background: isLight ? "#f8fbff" : "#0d1420", border: `1px solid ${isLight ? "#dde6f3" : "#223044"}` }}>
         <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>{editingTokenKey ? t.editToken : t.addToken}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+        <div className="wallet-form-grid">
           <input placeholder={t.tokenAddress} value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} style={inputStyle(isLight)} />
           <input placeholder={t.tokenSymbol} value={symbol} onChange={(e) => setSymbol(e.target.value)} style={inputStyle(isLight)} />
           <input placeholder={t.tokenName} value={tokenName} onChange={(e) => setTokenName(e.target.value)} style={inputStyle(isLight)} />
@@ -321,7 +335,11 @@ export default function TokensScreen({
       </div>
 
       <div style={{ display: "grid", gap: 10 }}>
-        {tokens.length === 0 ? (
+        {loadingBalances && tokens.length > 0 ? (
+          <div className="wallet-skeleton-list">
+            {Array.from({ length: 3 }).map((_, idx) => <div key={idx} className="wallet-skeleton-card" />)}
+          </div>
+        ) : tokens.length === 0 ? (
           <div style={{ padding: 18, borderRadius: 16, border: `1px dashed ${isLight ? "#d9e2f0" : "#2b3950"}`, color: isLight ? "#5b6578" : "#97a0b3" }}>{t.noTokens}</div>
         ) : tokens.map((token) => {
           const editable = !token.isNative;
@@ -348,13 +366,22 @@ export default function TokensScreen({
               {editable ? (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button onClick={() => editToken(token)} style={secondaryButton(isLight)}>{t.edit}</button>
-                  <button onClick={() => removeToken(token)} style={dangerButton}>{t.remove}</button>
+                  <button onClick={() => askRemoveToken(token)} style={dangerButton}>{t.remove}</button>
                 </div>
               ) : null}
             </div>
           );
         })}
       </div>
+      <ConfirmModal
+        open={!!confirmRemove}
+        theme={theme}
+        title={confirmRemove ? `${t.remove} ${confirmRemove.symbol}?` : ""}
+        description={confirmRemove ? `${confirmRemove.symbol} will be hidden or removed from ${getStoredNetwork().name}. Native tokens remain protected.` : ""}
+        confirmLabel={t.remove}
+        onConfirm={() => { if (confirmRemove) removeToken(confirmRemove); setConfirmRemove(null); }}
+        onCancel={() => setConfirmRemove(null)}
+      />
     </div>
   );
 }

@@ -18,6 +18,7 @@ import MoreScreen from "../screens/MoreScreen";
 import NetworksScreen from "../screens/NetworksScreen";
 import WalletConnectScreen from "../screens/WalletConnectScreen";
 import AssetManagerScreen from "../screens/AssetManagerScreen";
+import ToastViewport from "./ToastViewport";
 import WcSessionProposalModal from "./WcSessionProposalModal";
 import WcRequestModal from "./WcRequestModal";
 import {
@@ -32,6 +33,7 @@ import { isValidSeedPhrase, normalizeSeed, shortAddress } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
 import { installDesktopEthereumProvider } from "../lib/desktopProvider";
 import { getInriNetwork, getStoredNetwork, saveStoredNetwork } from "../lib/network";
+import type { AppToastPayload, AppToastType } from "../lib/ui";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const VAULTS_KEY = "inri_wallet_vaults_v2";
@@ -98,6 +100,7 @@ export default function WalletShell() {
 
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: AppToastType }>>([]);
 
   const [unlockedWallet, setUnlockedWallet] = useState<UnlockedWallet | null>(null);
   const [security, setSecurity] = useState<SecuritySettings>(() => getSecuritySettings());
@@ -144,6 +147,20 @@ export default function WalletShell() {
     seedBackupConfirm: tr(lang, "auth_seed_backup_confirm"),
     walletAlreadyExists: tr(lang, "auth_wallet_already_exists"),
   };
+
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<AppToastPayload>).detail;
+      if (!detail?.message) return;
+      const id = Date.now() + Math.floor(Math.random() * 1000);
+      const duration = Math.max(1200, Math.min(detail.durationMs || 2600, 6000));
+      setToasts((prev) => [...prev, { id, message: detail.message, type: detail.type || "info" }]);
+      window.setTimeout(() => setToasts((prev) => prev.filter((item) => item.id !== id)), duration);
+    };
+    window.addEventListener("app-toast", handler as EventListener);
+    return () => window.removeEventListener("app-toast", handler as EventListener);
+  }, []);
 
   useEffect(() => {
     if (!localStorage.getItem("wallet_active_network")) {
@@ -1008,6 +1025,8 @@ export default function WalletShell() {
         onApprove={onApproveRequest}
         onReject={onRejectRequest}
       />
+
+      <ToastViewport toasts={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))} />
 
       {reauthOpen ? (
         <div style={overlayStyle()}>

@@ -30,3 +30,46 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px rgba(63,124,255,.14
 img{max-width:100%}
 
 @keyframes inri-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+:root{
+  --radius-xl:24px;
+  --radius-lg:18px;
+  --radius-md:14px;
+  --space-1:8px;
+  --space-2:12px;
+  --space-3:16px;
+  --space-4:20px;
+}
+
+.wallet-form-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:10px;
+}
+
+.wallet-responsive-2col{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+
+.wallet-action-wrap{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+.wallet-skeleton-list{display:grid;gap:10px}
+.wallet-skeleton-card{
+  height:92px;
+  border-radius:18px;
+  border:1px solid rgba(148,163,184,.15);
+  background:linear-gradient(90deg, rgba(148,163,184,.08) 25%, rgba(148,163,184,.16) 50%, rgba(148,163,184,.08) 75%);
+  background-size:200% 100%;
+  animation:wallet-shimmer 1.35s linear infinite;
+}
+@keyframes wallet-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+@media (max-width: 760px){
+  .wallet-responsive-2col{grid-template-columns:1fr}
+}
