@@ -374,3 +374,21 @@ export async function loadP2PEvents(limit = 20): Promise<P2PEventItem[]> {
 
   return items.sort((a,b)=>b.blockNumber-a.blockNumber).slice(0, Math.max(1, Math.min(limit, 50)));
 }
+
+
+export async function getInriBalance(address: string) {
+  if (!address) return 0n;
+  return BigInt(await getP2PReadProvider().getBalance(address));
+}
+
+export async function loadP2PEventsPage(page = 1, limit = 20, walletAddress?: string): Promise<{ items: P2PEventItem[]; hasMore: boolean; page: number; }> {
+  const safePage = Math.max(1, Number(page || 1));
+  const safeLimit = Math.max(1, Math.min(limit || 20, 50));
+  const all = await loadP2PEvents(Math.max(40, safePage * safeLimit + safeLimit));
+  const filtered = walletAddress
+    ? all.filter((item) => [item.maker, item.taker].filter(Boolean).some((value) => String(value).toLowerCase() === walletAddress.toLowerCase()))
+    : all;
+  const start = (safePage - 1) * safeLimit;
+  const items = filtered.slice(start, start + safeLimit);
+  return { items, hasMore: start + safeLimit < filtered.length, page: safePage };
+}

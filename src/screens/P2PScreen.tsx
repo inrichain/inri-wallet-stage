@@ -8,7 +8,7 @@ import LogoImage from "../components/LogoImage";
 import ConfirmModal from "../components/ConfirmModal";
 import { getStoredNetwork, saveStoredNetwork, getInriNetwork } from "../lib/network";
 import { showAppToast } from "../lib/ui";
-import { EXPLORER_TX_URL } from "../lib/inri";
+import { EXPLORER_ADDRESS_URL, EXPLORER_TX_URL } from "../lib/inri";
 import {
   P2P_MARKET_ADDRESS,
   P2P_IUSD_ADDRESS,
@@ -23,8 +23,9 @@ import {
   formatIusd,
   getIusdAllowance,
   getIusdBalance,
+  getInriBalance,
   getP2PStats,
-  loadP2PEvents,
+  loadP2PEventsPage,
   loadRecentP2POrders,
   parseInriAmount,
   parseIusdAmount,
@@ -46,6 +47,7 @@ const inriLogo = `${import.meta.env.BASE_URL || "/"}token-inri.png`;
 type ViewMode = "create" | "market" | "mine";
 type FilterSide = "all" | "sell" | "buy";
 type FilterStatus = "all" | "active" | "closed" | "expired";
+type SortMode = "best" | "price-asc" | "price-desc" | "size-desc" | "newest";
 type PendingAction =
   | { kind: "fill"; order: P2POrder }
   | { kind: "cancel"; order: P2POrder }
@@ -77,9 +79,11 @@ export default function P2PScreen({
   const [deadlineMinutes, setDeadlineMinutes] = useState("120");
   const [allowance, setAllowance] = useState<bigint>(0n);
   const [iusdBalance, setIusdBalance] = useState<bigint>(0n);
+  const [inriBalance, setInriBalance] = useState<bigint>(0n);
   const [fillAmounts, setFillAmounts] = useState<Record<number, string>>({});
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>("best");
   const [sideFilter, setSideFilter] = useState<FilterSide>("all");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("all");
   const [searchMaker, setSearchMaker] = useState("");
@@ -89,6 +93,10 @@ export default function P2PScreen({
   const [editPrice, setEditPrice] = useState("");
   const [editDeadlineMinutes, setEditDeadlineMinutes] = useState("");
   const [resizeValue, setResizeValue] = useState<Record<number, string>>({});
+  const [eventsPage, setEventsPage] = useState(1);
+  const [eventsHasMore, setEventsHasMore] = useState(false);
+  const [walletEvents, setWalletEvents] = useState<P2PEventItem[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<P2POrder | null>(null);
 
   const inriAmountRaw = useMemo(() => {
     try { return parseInriAmount(inriAmount); } catch { return 0n; }
@@ -110,7 +118,7 @@ export default function P2PScreen({
 
   const visibleOrders = useMemo(() => {
     const base = view === "mine" ? orders.filter((item) => item.maker.toLowerCase() === address.toLowerCase()) : orders;
-    return base
+    const filtered = base
       .filter((item) => (view === "market" ? item.active || item.expired : true))
       .filter((item) => (sideFilter === "all" ? true : item.side === sideFilter))
       .filter((item) => {
@@ -120,32 +128,66 @@ export default function P2PScreen({
         return !item.active;
       })
       .filter((item) => !searchMaker.trim() ? true : item.maker.toLowerCase().includes(searchMaker.trim().toLowerCase()));
-  }, [orders, view, address, sideFilter, statusFilter, searchMaker]);
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortMode === "price-asc") return Number(a.priceRaw - b.priceRaw);
+      if (sortMode === "price-desc") return Number(b.priceRaw - a.priceRaw);
+      if (sortMode === "size-desc") return Number(b.remainingInri - a.remainingInri);
+      if (sortMode === "newest") return b.id - a.id;
+      if (a.side !== b.side) return a.side === "sell" ? -1 : 1;
+      if (a.side === "sell") return Number(a.priceRaw - b.priceRaw) || b.id - a.id;
+      return Number(b.priceRaw - a.priceRaw) || b.id - a.id;
+    });
+    return sorted;
+  }, [orders, view, address, sideFilter, statusFilter, searchMaker, sortMode]);
+
+  const bestSell = useMemo(() => visibleOrders.filter((item) => item.side === "sell" && item.active && !item.expired).sort((a,b)=>Number(a.priceRaw-b.priceRaw))[0] || null, [visibleOrders]);
+  const bestBuy = useMemo(() => visibleOrders.filter((item) => item.side === "buy" && item.active && !item.expired).sort((a,b)=>Number(b.priceRaw-a.priceRaw))[0] || null, [visibleOrders]);
+  const topTraders = useMemo(() => {
+    const volume = new Map<string, { address: string; fills: number; inri: number }>();
+    for (const event of walletEvents.length ? walletEvents : events) {
+      if (event.kind !== "filled") continue;
+      const inri = Number(event.inri || 0);
+      for (const who of [event.maker, event.taker]) {
+        if (!who) continue;
+        const key = who.toLowerCase();
+        const curr = volume.get(key) || { address: who, fills: 0, inri: 0 };
+        curr.fills += 1;
+        curr.inri += inri;
+        volume.set(key, curr);
+      }
+    }
+    return [...volume.values()].sort((a,b)=>b.inri-a.inri).slice(0,5);
+  }, [events, walletEvents]);
 
   async function refreshBalances() {
     if (!address) return;
     try {
-      const [nextAllowance, nextIusdBalance] = await Promise.all([
+      const [nextAllowance, nextIusdBalance, nextInriBalance] = await Promise.all([
         getIusdAllowance(address),
         getIusdBalance(address),
+        getInriBalance(address),
       ]);
       setAllowance(nextAllowance);
       setIusdBalance(nextIusdBalance);
+      setInriBalance(nextInriBalance);
     } catch {}
   }
 
-  async function loadData(nextPage = page) {
+  async function loadData(nextPage = page, nextEventsPage = eventsPage) {
     setLoading(true);
     try {
-      const [nextStats, ordersResp, nextEvents] = await Promise.all([
+      const [nextStats, ordersResp, nextEventsResp, walletEventsResp] = await Promise.all([
         getP2PStats(),
         loadRecentP2POrders({ limit: 12, page: nextPage }),
-        loadP2PEvents(12).catch(() => []),
+        loadP2PEventsPage(nextEventsPage, 10).catch(() => ({ items: [], hasMore: false, page: nextEventsPage })),
+        address ? loadP2PEventsPage(1, 20, address).catch(() => ({ items: [], hasMore: false, page: 1 })) : Promise.resolve({ items: [], hasMore: false, page: 1 }),
       ]);
       setStats(nextStats);
       setOrders(ordersResp.items);
       setHasMore(Boolean(ordersResp.hasMore));
-      setEvents(nextEvents);
+      setEvents(nextEventsResp.items);
+      setEventsHasMore(Boolean(nextEventsResp.hasMore));
+      setWalletEvents(walletEventsResp.items);
       await refreshBalances();
     } catch (error: any) {
       showAppToast({ message: error?.message || "Unable to load P2P market", type: "error" });
@@ -160,7 +202,7 @@ export default function P2PScreen({
     window.addEventListener("wallet-network-updated", sync as EventListener);
     return () => window.removeEventListener("wallet-network-updated", sync as EventListener);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, page]);
+  }, [address, page, eventsPage]);
 
   const needsApproval = side === "buy" && iusdNeeded > 0n && allowance < iusdNeeded;
   const wrongNetwork = network.chainId !== 3777;
@@ -385,6 +427,7 @@ export default function P2PScreen({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
             <StatBox theme={theme} label="Contract" value={shortenAddress(P2P_MARKET_ADDRESS, 5)} sub="INRI chain" />
             <StatBox theme={theme} label="Fee" value={`${((stats?.feeBps || 0) / 100).toFixed(2)}%`} sub={`${stats?.feeBps || 0} bps`} />
+            <StatBox theme={theme} label="INRI balance" value={formatInri(inriBalance)} sub="native wallet balance" />
             <StatBox theme={theme} label="iUSD balance" value={formatIusd(iusdBalance)} sub={shortenAddress(P2P_IUSD_ADDRESS, 5)} />
             <StatBox theme={theme} label="Allowance" value={formatIusd(allowance)} sub="for market contract" />
           </div>
@@ -396,6 +439,13 @@ export default function P2PScreen({
                 <div className="wallet-ui-subtle">{shortenAddress(recentTx.hash, 6)}</div>
               </div>
               <a href={`${EXPLORER_TX_URL}${recentTx.hash}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open tx</a>
+            </div>
+          ) : null}
+
+          {(bestSell || bestBuy) ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
+              {bestSell ? <StatBox theme={theme} label="Best ask" value={`${bestSell.priceDisplay} iUSD`} sub={`Order #${bestSell.id} • ${bestSell.remainingInriDisplay} INRI`} /> : null}
+              {bestBuy ? <StatBox theme={theme} label="Best bid" value={`${bestBuy.priceDisplay} iUSD`} sub={`Order #${bestBuy.id} • ${bestBuy.remainingInriDisplay} INRI`} /> : null}
             </div>
           ) : null}
 
@@ -577,6 +627,7 @@ export default function P2PScreen({
                               inputMode="decimal"
                             />
                           </Field>
+                          <ActionButton theme={theme} tone="ghost" compact onClick={() => setSelectedOrder(order)}>Details</ActionButton>
                           <ActionButton theme={theme} tone="primary" compact onClick={() => setPendingAction({ kind: "fill", order })} disabled={busy || wrongNetwork}>Fill fraction</ActionButton>
                         </div>
                         {fillRaw > 0n ? (
@@ -603,7 +654,7 @@ export default function P2PScreen({
       ) : null}
 
       <ScreenCard theme={theme}>
-        <SectionTitle title="Recent market events" subtitle="Created, filled and cancelled orders read from contract events." theme={theme} compact />
+        <SectionTitle title="Recent market events" subtitle="Created, filled and cancelled orders read from contract events." theme={theme} compact actions={<div className="wallet-action-row" style={{ gap: 8 }}><ActionButton theme={theme} compact tone="ghost" onClick={() => setEventsPage((p) => Math.max(1, p - 1))} disabled={eventsPage === 1}>Prev</ActionButton><ActionButton theme={theme} compact tone="secondary" onClick={() => setEventsPage((p) => p + 1)} disabled={!eventsHasMore}>Next</ActionButton></div>} />
         {events.length === 0 ? (
           <EmptyState theme={theme} title="No recent events" description="When orders are created or filled, they will show here." />
         ) : (
@@ -621,6 +672,46 @@ export default function P2PScreen({
         )}
       </ScreenCard>
 
+
+
+      <ScreenCard theme={theme}>
+        <SectionTitle title="Wallet history" subtitle="Your maker and taker activity from recent contract events." theme={theme} compact />
+        {walletEvents.length === 0 ? (
+          <EmptyState theme={theme} title="No wallet history yet" description="After you create, fill or cancel orders, your own event history will show here." />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {walletEvents.map((event) => (
+              <div key={`wallet-${event.txHash}-${event.orderId}-${event.kind}`} className="wallet-list-row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>Order #{event.orderId} • {event.kind}</div>
+                  <div className="wallet-ui-subtle">{event.inri ? `${event.inri} INRI` : ""}{event.iusd ? ` • ${event.iusd} iUSD` : ""}{event.fee ? ` • fee ${event.fee}` : ""}</div>
+                </div>
+                <a href={`${EXPLORER_TX_URL}${event.txHash}`} target="_blank" rel="noreferrer" className="wallet-link-like">View tx</a>
+              </div>
+            ))}
+          </div>
+        )}
+      </ScreenCard>
+
+      <ScreenCard theme={theme}>
+        <SectionTitle title="Top traders" subtitle="Recent onchain volume leaderboard. This is a trading rank, not a true reputation score." theme={theme} compact />
+        {topTraders.length === 0 ? (
+          <EmptyState theme={theme} title="No ranking yet" description="When fills happen, top buyers and sellers by recent volume will appear here." />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {topTraders.map((item, index) => (
+              <div key={item.address} className="wallet-list-row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 800, color: isLight ? "#10131a" : "#fff" }}>#{index + 1} • {shortenAddress(item.address, 5)}</div>
+                  <div className="wallet-ui-subtle">{item.fills} fills • {item.inri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI recent volume</div>
+                </div>
+                <a href={`${EXPLORER_ADDRESS_URL}${item.address}`} target="_blank" rel="noreferrer" className="wallet-link-like">Open wallet</a>
+              </div>
+            ))}
+          </div>
+        )}
+      </ScreenCard>
+
       <ScreenCard theme={theme}>
         <SectionTitle title="How this P2P works" subtitle="Adapted for the wallet from your INRI P2P market contract." theme={theme} compact />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
@@ -629,6 +720,19 @@ export default function P2PScreen({
           <InfoPanel theme={theme} title="Current fee" description={`The contract charges ${(stats?.feeBps || 0) / 100}% on iUSD gross amount and forwards it to treasury ${shortenAddress(stats?.treasury)}.`} />
         </div>
       </ScreenCard>
+
+
+      <ConfirmModal
+        open={Boolean(selectedOrder)}
+        theme={theme}
+        title={selectedOrder ? `Order #${selectedOrder.id} details` : "Order details"}
+        description={selectedOrder ? `${selectedOrder.side === "sell" ? "Sell" : "Buy"} order by ${shortenAddress(selectedOrder.maker, 5)} • price ${selectedOrder.priceDisplay} iUSD • remaining ${selectedOrder.remainingInriDisplay} INRI${selectedOrder.remainingIusd > 0n ? ` • locked ${selectedOrder.remainingIusdDisplay} iUSD` : ""}${selectedOrder.deadline ? ` • deadline ${new Date(selectedOrder.deadline * 1000).toLocaleString()}` : " • no deadline"}` : ""}
+        confirmLabel="Close"
+        cancelLabel=""
+        tone="primary"
+        onCancel={() => setSelectedOrder(null)}
+        onConfirm={() => setSelectedOrder(null)}
+      />
 
       <ConfirmModal
         open={pendingAction?.kind === "cancel"}
@@ -645,7 +749,17 @@ export default function P2PScreen({
         open={pendingAction?.kind === "fill"}
         theme={theme}
         title={`Fill order #${pendingAction?.order.id || ""}?`}
-        description="This executes a partial or full fill, depending on the INRI amount entered in the order card."
+        description={(() => {
+          const order = pendingAction?.order;
+          if (!order) return "Review this fill before signing.";
+          const fillRaw = (() => { try { return parseInriAmount(fillAmounts[order.id] || "0"); } catch { return 0n; } })();
+          const gross = (fillRaw * order.priceRaw) / 10n ** 18n;
+          const fee = (gross * BigInt(stats?.feeBps || 0)) / 10000n;
+          const net = gross - fee;
+          return order.side === "sell"
+            ? `You will spend about ${formatIusd(gross)} iUSD to receive ${formatInri(fillRaw)} INRI at ${order.priceDisplay} iUSD per INRI.`
+            : `You will send ${formatInri(fillRaw)} INRI and receive about ${formatIusd(net)} iUSD net after ${formatIusd(fee)} fee.`;
+        })()}
         confirmLabel="Fill now"
         cancelLabel="Go back"
         tone="primary"
