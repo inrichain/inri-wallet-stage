@@ -17,18 +17,11 @@ export default function SectionTitle({
   return (
     <div className="wallet-section-head">
       <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: compact ? 17 : 28,
-            fontWeight: 900,
-            color: isLight ? "#10131a" : "#ffffff",
-            lineHeight: compact ? 1.2 : 1.1,
-          }}
-        >
+        <div className={`wallet-section-title ${compact ? "compact" : ""}`.trim()} style={{ color: isLight ? "#10131a" : "#ffffff" }}>
           {title}
         </div>
         {subtitle ? (
-          <div className="wallet-ui-subtle" style={{ marginTop: compact ? 4 : 8 }}>{subtitle}</div>
+          <div className={`wallet-ui-subtle wallet-section-subtitle ${compact ? "compact" : ""}`.trim()}>{subtitle}</div>
         ) : null}
       </div>
       {actions ? <div className="wallet-action-row">{actions}</div> : null}

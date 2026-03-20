@@ -105,11 +105,9 @@ export default function AuthPanel({
             }}
           />
 
-          <div style={{ fontSize: 44, fontWeight: 900, lineHeight: 1, marginBottom: 12, letterSpacing: "-0.03em" }}>
-            INRI Wallet
-          </div>
+          <div className="wallet-auth-title">INRI Wallet</div>
 
-          <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 15, maxWidth: 420, margin: "0 auto" }}>{texts.authSubtitle}</div>
+          <div className="wallet-auth-subtitle" style={{ color: isLight ? "#5b6578" : "#97a0b3" }}>{texts.authSubtitle}</div>
         </div>
 
         <div className="wallet-surface wallet-auth-card" style={{ background: isLight ? "rgba(255,255,255,.94)" : "rgba(18,22,33,.92)" }}>

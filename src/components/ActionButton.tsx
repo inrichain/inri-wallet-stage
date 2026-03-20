@@ -41,7 +41,7 @@ export default function ActionButton({
   };
 
   const toneStyles: Record<Tone, React.CSSProperties> = {
-    primary: { border: "none", background: "#3f7cff", color: "#ffffff", boxShadow: "0 10px 24px rgba(63,124,255,.22)" },
+    primary: { border: "none", background: "#3f7cff", color: "#ffffff" },
     secondary: { border: `1px solid ${isLight ? "#dbe2f0" : "#273042"}`, background: isLight ? "#f8fbff" : "#0f1520", color: isLight ? "#10131a" : "#ffffff" },
     ghost: { border: `1px solid ${isLight ? "#e7eef8" : "#202635"}`, background: "transparent", color: isLight ? "#10131a" : "#ffffff" },
     danger: { border: "1px solid rgba(255,123,123,.26)", background: "rgba(255,123,123,.08)", color: "#ff7b7b" },
