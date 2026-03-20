@@ -22,6 +22,9 @@ export type P2POrder = {
 };
 
 export const P2P_ABI = [
+  "event OrderCreated(uint256 indexed orderId, uint8 side, address indexed maker, uint256 priceIusdPer1e18Inri, uint256 inriAmount, uint256 iusdAmount, uint64 deadline)",
+  "event OrderFilled(uint256 indexed orderId, address indexed maker, address indexed taker, uint256 inriFilled, uint256 iusdGross, uint256 feeIusd, uint256 iusdNetToMakerOrTaker)",
+  "event OrderCancelled(uint256 indexed orderId, address indexed maker, uint256 refundInri, uint256 refundIusd)",
   "function nextOrderId() view returns (uint256)",
   "function FEE_BPS() view returns (uint256)",
   "function treasury() view returns (address)",
@@ -141,19 +144,27 @@ export function normalizeOrder(id: number, raw: any): P2POrder {
   };
 }
 
-export async function loadRecentP2POrders(options?: { limit?: number; activeOnly?: boolean; maker?: string }) {
+export async function loadRecentP2POrders(options?: { limit?: number; activeOnly?: boolean; maker?: string; page?: number }) {
   const contract = getP2PContract();
   const nextOrderId = Number(await contract.nextOrderId());
   const limit = Math.max(1, Math.min(80, options?.limit || 24));
   const maker = options?.maker?.toLowerCase() || "";
+  const page = Math.max(1, Number(options?.page || 1));
+  const startId = Math.max(1, nextOrderId - 1 - (page - 1) * limit);
   const ids: number[] = [];
-  for (let id = nextOrderId - 1; id >= 1 && ids.length < limit; id -= 1) ids.push(id);
+  for (let id = startId; id >= 1 && ids.length < limit; id -= 1) ids.push(id);
   const raws = await Promise.all(ids.map((id) => contract.orders(id).catch(() => null)));
-  return raws
+  const items = raws
     .map((raw, index) => (raw ? normalizeOrder(ids[index], raw) : null))
     .filter(Boolean)
     .filter((item: any) => (options?.activeOnly ? item.active : true))
     .filter((item: any) => (maker ? String(item.maker).toLowerCase() === maker : true)) as P2POrder[];
+  return {
+    items,
+    hasMore: startId - limit >= 1,
+    page,
+    totalApprox: Math.max(0, nextOrderId - 1),
+  };
 }
 
 export async function getIusdBalance(address: string) {
@@ -247,4 +258,119 @@ export function appendP2PActivity(item: {
     ].slice(0, 100);
     localStorage.setItem(ACTIVITY_KEY, JSON.stringify(next));
   } catch {}
+}
+
+
+export async function updateP2PPriceTx(args: { privateKey: string; orderId: number; newPriceRaw: bigint }) {
+  const signer = getP2PSigner(args.privateKey);
+  const contract = getP2PContract(signer);
+  const tx = await contract.updatePrice(args.orderId, args.newPriceRaw);
+  const receipt = await tx.wait();
+  return { hash: tx.hash as string, receipt };
+}
+
+export async function updateP2PDeadlineTx(args: { privateKey: string; orderId: number; newDeadline: number }) {
+  const signer = getP2PSigner(args.privateKey);
+  const contract = getP2PContract(signer);
+  const tx = await contract.updateDeadline(args.orderId, args.newDeadline);
+  const receipt = await tx.wait();
+  return { hash: tx.hash as string, receipt };
+}
+
+export async function addInriToSellOrderTx(args: { privateKey: string; orderId: number; inriAmount: bigint }) {
+  const signer = getP2PSigner(args.privateKey);
+  const contract = getP2PContract(signer);
+  const tx = await contract.addInriToSellOrder(args.orderId, { value: args.inriAmount });
+  const receipt = await tx.wait();
+  return { hash: tx.hash as string, receipt };
+}
+
+export async function removeInriFromSellOrderTx(args: { privateKey: string; orderId: number; inriAmount: bigint }) {
+  const signer = getP2PSigner(args.privateKey);
+  const contract = getP2PContract(signer);
+  const tx = await contract.removeInriFromSellOrder(args.orderId, args.inriAmount);
+  const receipt = await tx.wait();
+  return { hash: tx.hash as string, receipt };
+}
+
+export async function addIusdToBuyOrderTx(args: { privateKey: string; orderId: number; iusdAmount: bigint }) {
+  const signer = getP2PSigner(args.privateKey);
+  const contract = getP2PContract(signer);
+  const tx = await contract.addIusdToBuyOrder(args.orderId, args.iusdAmount);
+  const receipt = await tx.wait();
+  return { hash: tx.hash as string, receipt };
+}
+
+export async function reduceBuyOrderTx(args: { privateKey: string; orderId: number; inriAmount: bigint }) {
+  const signer = getP2PSigner(args.privateKey);
+  const contract = getP2PContract(signer);
+  const tx = await contract.reduceBuyOrder(args.orderId, args.inriAmount);
+  const receipt = await tx.wait();
+  return { hash: tx.hash as string, receipt };
+}
+
+export type P2PEventItem = {
+  kind: string;
+  orderId: number;
+  txHash: string;
+  blockNumber: number;
+  maker?: string;
+  taker?: string;
+  inri?: string;
+  iusd?: string;
+  fee?: string;
+};
+
+export async function loadP2PEvents(limit = 20): Promise<P2PEventItem[]> {
+  const contract = getP2PContract();
+  const createdFilter = contract.filters.OrderCreated();
+  const filledFilter = contract.filters.OrderFilled();
+  const cancelledFilter = contract.filters.OrderCancelled();
+  const [created, filled, cancelled] = await Promise.all([
+    contract.queryFilter(createdFilter, -5000),
+    contract.queryFilter(filledFilter, -5000),
+    contract.queryFilter(cancelledFilter, -5000),
+  ]);
+
+  const items: P2PEventItem[] = [];
+  for (const event of created) {
+    const args: any = event.args || [];
+    items.push({
+      kind: 'created',
+      orderId: Number(args.orderId ?? args[0] ?? 0),
+      txHash: String(event.transactionHash || ''),
+      blockNumber: Number(event.blockNumber || 0),
+      maker: String(args.maker ?? args[2] ?? ''),
+      inri: formatInri(BigInt(args.inriAmount ?? args[4] ?? 0)),
+      iusd: formatIusd(BigInt(args.iusdAmount ?? args[5] ?? 0)),
+    });
+  }
+  for (const event of filled) {
+    const args: any = event.args || [];
+    items.push({
+      kind: 'filled',
+      orderId: Number(args.orderId ?? args[0] ?? 0),
+      txHash: String(event.transactionHash || ''),
+      blockNumber: Number(event.blockNumber || 0),
+      maker: String(args.maker ?? args[1] ?? ''),
+      taker: String(args.taker ?? args[2] ?? ''),
+      inri: formatInri(BigInt(args.inriFilled ?? args[3] ?? 0)),
+      iusd: formatIusd(BigInt(args.iusdGross ?? args[4] ?? 0)),
+      fee: formatIusd(BigInt(args.feeIusd ?? args[5] ?? 0)),
+    });
+  }
+  for (const event of cancelled) {
+    const args: any = event.args || [];
+    items.push({
+      kind: 'cancelled',
+      orderId: Number(args.orderId ?? args[0] ?? 0),
+      txHash: String(event.transactionHash || ''),
+      blockNumber: Number(event.blockNumber || 0),
+      maker: String(args.maker ?? args[1] ?? ''),
+      inri: formatInri(BigInt(args.refundInri ?? args[2] ?? 0)),
+      iusd: formatIusd(BigInt(args.refundIusd ?? args[3] ?? 0)),
+    });
+  }
+
+  return items.sort((a,b)=>b.blockNumber-a.blockNumber).slice(0, Math.max(1, Math.min(limit, 50)));
 }
