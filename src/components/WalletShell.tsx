@@ -45,6 +45,7 @@ const CURRENT_WALLET_KEY = "inri_wallet_current_id";
 const LANG_KEY = "wallet_lang";
 const THEME_KEY = "wallet_theme";
 
+
 type WalletVault = {
   id: string;
   name: string;
@@ -175,19 +176,6 @@ export default function WalletShell() {
     window.addEventListener("wallet-security-updated", syncSecurity);
     return () => window.removeEventListener("wallet-security-updated", syncSecurity);
   }, []);
-
-  useEffect(() => {
-    if (!wallets.length) {
-      if (selectedWalletId) setSelectedWalletId("");
-      return;
-    }
-    const exists = wallets.some((w) => w.id === selectedWalletId);
-    if (!exists) {
-      const currentId = localStorage.getItem(CURRENT_WALLET_KEY);
-      const nextId = wallets.find((w) => w.id === currentId)?.id || wallets[0]?.id || "";
-      if (nextId && nextId !== selectedWalletId) setSelectedWalletId(nextId);
-    }
-  }, [wallets, selectedWalletId]);
 
   useEffect(() => {
     localStorage.setItem(THEME_KEY, theme);
@@ -712,7 +700,9 @@ export default function WalletShell() {
     }
   };
 
-  if (!unlockedWallet) {
+  const isLocked = !unlockedWallet;
+
+  if (isLocked) {
     return (
       <AuthPanel
         theme={theme}
