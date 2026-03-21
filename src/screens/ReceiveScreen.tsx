@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { BrowserMultiFormatReader } from "@zxing/browser";
-import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, shouldPreferImageCaptureFallback, startQrDecode, stopVideoStream } from "../lib/camera";
+import { decodeQrFromFile, ensureCameraAccess, isIosPwaStandalone, listVideoDevices, pickPreferredCamera, startQrDecode, stopVideoStream } from "../lib/camera";
 
 const INRI_LOGO = "/favicon.png";
 
@@ -49,12 +49,6 @@ export default function ReceiveScreen({
     setCameraOpen(true);
 
     try {
-      if (shouldPreferImageCaptureFallback()) {
-        setCameraOpen(false);
-        fileRef.current?.click();
-        return;
-      }
-
       await ensureCameraAccess();
       await new Promise((resolve) => setTimeout(resolve, 150));
 
@@ -104,14 +98,12 @@ export default function ReceiveScreen({
     if (!file || !readerRef.current) return;
 
     try {
-      const url = URL.createObjectURL(file);
-      const result = await readerRef.current.decodeFromImageUrl(url);
-      if (result?.getText()) {
-        setScanResult(result.getText());
+      const text = await decodeQrFromFile(file, readerRef.current);
+      if (text) {
+        setScanResult(text);
       } else {
         alert(t.noQrFound);
       }
-      URL.revokeObjectURL(url);
     } catch {
       alert(t.noQrFound);
     } finally {
@@ -186,7 +178,7 @@ export default function ReceiveScreen({
         </button>
 
         <button onClick={openCameraQr} style={ghostBtn(isLight)}>
-          {shouldPreferImageCaptureFallback() ? t.imageScan : t.openCamera}
+          {t.openCamera}
         </button>
 
         <button onClick={() => fileRef.current?.click()} style={ghostBtn(isLight)}>

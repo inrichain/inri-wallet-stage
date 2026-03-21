@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { tr } from "../i18n/translations";
-import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, shouldPreferImageCaptureFallback, startQrDecode, stopVideoStream } from "../lib/camera";
+import { decodeQrFromFile, ensureCameraAccess, isIosPwaStandalone, listVideoDevices, pickPreferredCamera, startQrDecode, stopVideoStream } from "../lib/camera";
 
 type Props = {
   open: boolean;
@@ -37,7 +37,11 @@ export default function WalletConnectQrScanner({
 
     scannedRef.current = false;
     readerRef.current = new BrowserMultiFormatReader();
-    void prepareAndOpenCamera();
+    if (isIosPwaStandalone()) {
+      setCameraError(t("scanner_ios_capture_hint") || t("scanner_from_image"));
+    } else {
+      void prepareAndOpenCamera();
+    }
 
     return () => {
       resetReader();
@@ -59,10 +63,6 @@ export default function WalletConnectQrScanner({
   async function prepareAndOpenCamera() {
     try {
       setCameraError("");
-      if (shouldPreferImageCaptureFallback()) {
-        fileRef.current?.click();
-        return;
-      }
       await ensureCameraAccess();
 
       const list = await listVideoDevices();
@@ -121,17 +121,13 @@ export default function WalletConnectQrScanner({
     const file = event.target.files?.[0];
     if (!file || !readerRef.current) return;
     try {
-      const url = URL.createObjectURL(file);
-      const result = await readerRef.current.decodeFromImageUrl(url);
-      const text = result?.getText()?.trim() || "";
+      const text = (await decodeQrFromFile(file, readerRef.current)).trim();
       setScannedText(text);
       if (text.startsWith("wc:")) {
-        URL.revokeObjectURL(url);
         handleClose();
         await onScan(text);
         return;
       }
-      URL.revokeObjectURL(url);
       setCameraError(t("scanner_not_walletconnect"));
     } catch {
       setCameraError(t("scanner_no_valid_qr"));
@@ -161,7 +157,7 @@ export default function WalletConnectQrScanner({
         }}
       >
         <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>{t("scanner_title")}</div>
-        <div style={{ color: isLight ? "#5f6b7d" : "#9aa4b5", marginBottom: 14, lineHeight: 1.5 }}>{shouldPreferImageCaptureFallback() ? `${t("scanner_hint")} On installed iPhone app, the camera may open through the system capture flow.` : t("scanner_hint")}</div>
+        <div style={{ color: isLight ? "#5f6b7d" : "#9aa4b5", marginBottom: 14, lineHeight: 1.5 }}>{t("scanner_hint")}</div>
 
         {cameras.length > 1 ? (
           <div style={{ marginBottom: 12 }}>
@@ -188,7 +184,7 @@ export default function WalletConnectQrScanner({
         <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPickImage} style={{ display: "none" }} />
 
         {connecting ? <div style={{ marginTop: 12, color: "#3f7cff", fontSize: 13, fontWeight: 700 }}>Connecting WalletConnect...</div> : null}
-        {cameraError ? <div style={{ marginTop: 12, color: "#ef4444", fontSize: 13, fontWeight: 700 }}>{cameraError}</div> : null}
+        {cameraError ? <div style={{ marginTop: 12, color: isIosPwaStandalone() ? (isLight ? "#334155" : "#cdd6ea") : "#ef4444", fontSize: 13, fontWeight: 700 }}>{cameraError}</div> : null}
         {scannedText ? (
           <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: isLight ? "#f8fafc" : "#0f1522", color: isLight ? "#334155" : "#cdd6ea", wordBreak: "break-all", fontSize: 12, lineHeight: 1.5 }}>
             {scannedText}

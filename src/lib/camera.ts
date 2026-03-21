@@ -104,21 +104,82 @@ export async function startQrDecode({
   throw lastError || new Error("Could not open camera");
 }
 
-
-export function isIOSDevice() {
-  if (typeof navigator === "undefined") return false;
+export function isIosPwaStandalone() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
-  const platform = navigator.platform || "";
-  const maxTouchPoints = (navigator as any).maxTouchPoints || 0;
-  return /iPhone|iPad|iPod/i.test(ua) || (platform === "MacIntel" && maxTouchPoints > 1);
+  const isiOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && (navigator as any).maxTouchPoints > 1);
+  const standalone = window.matchMedia?.("(display-mode: standalone)")?.matches || (navigator as any).standalone === true;
+  return Boolean(isiOS && standalone);
 }
 
-export function isStandaloneWebApp() {
-  if (typeof window === "undefined") return false;
-  const standalone = (window.navigator as any)?.standalone;
-  return Boolean(standalone) || window.matchMedia?.("(display-mode: standalone)")?.matches === true;
+function hasBarcodeDetector() {
+  return typeof window !== "undefined" && "BarcodeDetector" in window;
 }
 
-export function shouldPreferImageCaptureFallback() {
-  return isIOSDevice() && isStandaloneWebApp();
+async function decodeWithBarcodeDetector(source: CanvasImageSource): Promise<string> {
+  const Detector = (window as any).BarcodeDetector;
+  const detector = new Detector({ formats: ["qr_code"] });
+  const codes = await detector.detect(source);
+  const raw = codes?.[0]?.rawValue?.trim?.();
+  if (!raw) throw new Error("No QR detected");
+  return raw;
+}
+
+async function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Could not read image"));
+    reader.readAsDataURL(file);
+  });
+
+  const img = new Image();
+  img.decoding = "async";
+  img.src = dataUrl;
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("Could not load image"));
+  });
+  return img;
+}
+
+function drawNormalizedCanvas(img: HTMLImageElement) {
+  const maxSide = 1600;
+  const ratio = Math.min(1, maxSide / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+  const width = Math.max(1, Math.round((img.naturalWidth || img.width || 1) * ratio));
+  const height = Math.max(1, Math.round((img.naturalHeight || img.height || 1) * ratio));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Canvas unavailable");
+  ctx.drawImage(img, 0, 0, width, height);
+  return canvas;
+}
+
+export async function decodeQrFromFile(file: File, reader?: BrowserMultiFormatReader): Promise<string> {
+  const img = await loadImageFromFile(file);
+  const canvas = drawNormalizedCanvas(img);
+
+  if (hasBarcodeDetector()) {
+    try {
+      return await decodeWithBarcodeDetector(canvas);
+    } catch {}
+    try {
+      return await decodeWithBarcodeDetector(img);
+    } catch {}
+  }
+
+  const activeReader = reader || new BrowserMultiFormatReader();
+  try {
+    const result = await activeReader.decodeFromImageElement(img);
+    const text = result?.getText?.()?.trim?.();
+    if (text) return text;
+  } catch {}
+
+  const dataUrl = canvas.toDataURL("image/png");
+  const result = await activeReader.decodeFromImageUrl(dataUrl);
+  const text = result?.getText?.()?.trim?.();
+  if (text) return text;
+  throw new Error("No QR found");
 }

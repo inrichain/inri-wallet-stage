@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { BrowserMultiFormatReader } from "@zxing/browser";
-import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, shouldPreferImageCaptureFallback, startQrDecode, stopVideoStream } from "../lib/camera";
+import { decodeQrFromFile, ensureCameraAccess, isIosPwaStandalone, listVideoDevices, pickPreferredCamera, startQrDecode, stopVideoStream } from "../lib/camera";
 import { ethers } from "ethers";
 import { TokenItem, getDefaultTokensForNetwork, getProvider, loadAllBalances } from "../lib/inri";
 import { getStoredNetwork } from "../lib/network";
@@ -102,8 +102,8 @@ export default function SendScreen({
   );
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
 
   const token = useMemo(
     () => tokens.find((t) => t.symbol === selectedToken) || tokens[0],
@@ -342,29 +342,30 @@ export default function SendScreen({
   async function onPickImage(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new BrowserMultiFormatReader();
+
     try {
-      const url = URL.createObjectURL(file);
-      const result = await reader.decodeFromImageUrl(url);
-      const text = result?.getText?.()?.trim?.() || "";
+      const reader = readerRef.current || new BrowserMultiFormatReader();
+      readerRef.current = reader;
+      const text = await decodeQrFromFile(file, reader);
       const match = text.match(/0x[a-fA-F0-9]{40}/);
-      if (match?.[0]) {
-        setToAddress(match[0]);
-        showMessage(t.qrCaptured);
-      } else {
+      if (!match?.[0]) {
         showMessage(t.cameraFail);
+        return;
       }
-      URL.revokeObjectURL(url);
-    } catch {
+      setToAddress(match[0]);
+      closeScanner();
+      showMessage(t.qrCaptured);
+    } catch (error) {
+      console.error(error);
       showMessage(t.cameraFail);
     } finally {
-      try { (reader as any)?.reset?.(); } catch {}
       event.target.value = "";
     }
   }
 
   async function openScanner() {
-    if (shouldPreferImageCaptureFallback()) {
+    if (isIosPwaStandalone()) {
+      setShowScanner(true);
       fileRef.current?.click();
       return;
     }
@@ -485,14 +486,13 @@ export default function SendScreen({
             }}
           >
             <button onClick={openScanner} style={secondaryButtonStyle()}>
-              {shouldPreferImageCaptureFallback() ? t.scanQr : t.openCamera}
+              {t.openCamera}
             </button>
 
             <button onClick={() => setToAddress(address)} style={secondaryButtonStyle()}>
               {t.useMyAddress}
             </button>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPickImage} style={{ display: "none" }} />
         </div>
 
         <div style={cardStyle(isLight)}>
@@ -602,6 +602,8 @@ export default function SendScreen({
               </button>
             </div>
 
+            <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPickImage} style={{ display: "none" }} />
+
             <video
               ref={videoRef}
               autoPlay
@@ -624,7 +626,7 @@ export default function SendScreen({
                 marginTop: 12,
               }}
             >
-              {t.scanHint}
+              {isIosPwaStandalone() ? `${t.scanHint} ${t.openCamera}.` : t.scanHint}
             </div>
           </div>
         </div>
