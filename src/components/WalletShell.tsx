@@ -45,8 +45,6 @@ const CURRENT_WALLET_KEY = "inri_wallet_current_id";
 const LANG_KEY = "wallet_lang";
 const THEME_KEY = "wallet_theme";
 
-type View = "auth" | "wallet";
-
 type WalletVault = {
   id: string;
   name: string;
@@ -64,7 +62,6 @@ type UnlockedWallet = {
 
 export default function WalletShell() {
   const [tab, setTab] = useState<Tab>("dashboard");
-  const [view, setView] = useState<View>("auth");
   const [authMode, setAuthMode] = useState<AuthMode>("unlock");
 
   const [theme, setTheme] = useState<"dark" | "light">(
@@ -180,6 +177,19 @@ export default function WalletShell() {
   }, []);
 
   useEffect(() => {
+    if (!wallets.length) {
+      if (selectedWalletId) setSelectedWalletId("");
+      return;
+    }
+    const exists = wallets.some((w) => w.id === selectedWalletId);
+    if (!exists) {
+      const currentId = localStorage.getItem(CURRENT_WALLET_KEY);
+      const nextId = wallets.find((w) => w.id === currentId)?.id || wallets[0]?.id || "";
+      if (nextId && nextId !== selectedWalletId) setSelectedWalletId(nextId);
+    }
+  }, [wallets, selectedWalletId]);
+
+  useEffect(() => {
     localStorage.setItem(THEME_KEY, theme);
     localStorage.setItem(LANG_KEY, lang);
 
@@ -286,7 +296,6 @@ export default function WalletShell() {
       setCreatePassword("");
       setGeneratedSeed("");
       setConfirmSeedSaved(false);
-      setView("wallet");
       setTab("dashboard");
       showMessage(t.walletCreated);
     } catch {
@@ -352,7 +361,6 @@ export default function WalletShell() {
       setImportName("");
       setImportPassword("");
       setImportSeed("");
-      setView("wallet");
       setTab("dashboard");
       showMessage(t.walletImported);
     } catch {
@@ -391,7 +399,6 @@ export default function WalletShell() {
       });
 
       localStorage.setItem(CURRENT_WALLET_KEY, vault.id);
-      setView("wallet");
       setTab("dashboard");
       setUnlockPassword("");
       showMessage(t.unlocked);
@@ -407,11 +414,8 @@ export default function WalletShell() {
     setReauthOpen(false);
     setReauthPassword("");
     setReauthError("");
-    setUnlockedWallet((current) => {
-      if (!current) return null;
-      return null;
-    });
-    setView("auth");
+    setUnlockedWallet(null);
+    setTab("dashboard");
     setUnlockPassword("");
     showMessage(reason || t.locked);
   }, [t.locked]);
@@ -708,7 +712,7 @@ export default function WalletShell() {
     }
   };
 
-  if (view === "auth") {
+  if (!unlockedWallet) {
     return (
       <AuthPanel
         theme={theme}
