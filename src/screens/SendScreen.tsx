@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { BrowserMultiFormatReader } from "@zxing/browser";
-import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, startQrDecode, stopVideoStream } from "../lib/camera";
+import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, shouldPreferImageCaptureFallback, startQrDecode, stopVideoStream } from "../lib/camera";
 import { ethers } from "ethers";
 import { TokenItem, getDefaultTokensForNetwork, getProvider, loadAllBalances } from "../lib/inri";
 import { getStoredNetwork } from "../lib/network";
@@ -103,6 +103,7 @@ export default function SendScreen({
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const token = useMemo(
     () => tokens.find((t) => t.symbol === selectedToken) || tokens[0],
@@ -338,7 +339,36 @@ export default function SendScreen({
     stopVideoStream(videoRef.current);
   }
 
+  async function onPickImage(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new BrowserMultiFormatReader();
+    try {
+      const url = URL.createObjectURL(file);
+      const result = await reader.decodeFromImageUrl(url);
+      const text = result?.getText?.()?.trim?.() || "";
+      const match = text.match(/0x[a-fA-F0-9]{40}/);
+      if (match?.[0]) {
+        setToAddress(match[0]);
+        showMessage(t.qrCaptured);
+      } else {
+        showMessage(t.cameraFail);
+      }
+      URL.revokeObjectURL(url);
+    } catch {
+      showMessage(t.cameraFail);
+    } finally {
+      try { (reader as any)?.reset?.(); } catch {}
+      event.target.value = "";
+    }
+  }
+
   async function openScanner() {
+    if (shouldPreferImageCaptureFallback()) {
+      fileRef.current?.click();
+      return;
+    }
+
     setShowScanner(true);
 
     try {
@@ -455,13 +485,14 @@ export default function SendScreen({
             }}
           >
             <button onClick={openScanner} style={secondaryButtonStyle()}>
-              {t.openCamera}
+              {shouldPreferImageCaptureFallback() ? t.scanQr : t.openCamera}
             </button>
 
             <button onClick={() => setToAddress(address)} style={secondaryButtonStyle()}>
               {t.useMyAddress}
             </button>
           </div>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPickImage} style={{ display: "none" }} />
         </div>
 
         <div style={cardStyle(isLight)}>

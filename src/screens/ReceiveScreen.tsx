@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { BrowserMultiFormatReader } from "@zxing/browser";
-import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, startQrDecode, stopVideoStream } from "../lib/camera";
+import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, shouldPreferImageCaptureFallback, startQrDecode, stopVideoStream } from "../lib/camera";
 
 const INRI_LOGO = "/favicon.png";
 
@@ -49,6 +49,12 @@ export default function ReceiveScreen({
     setCameraOpen(true);
 
     try {
+      if (shouldPreferImageCaptureFallback()) {
+        setCameraOpen(false);
+        fileRef.current?.click();
+        return;
+      }
+
       await ensureCameraAccess();
       await new Promise((resolve) => setTimeout(resolve, 150));
 
@@ -180,7 +186,7 @@ export default function ReceiveScreen({
         </button>
 
         <button onClick={openCameraQr} style={ghostBtn(isLight)}>
-          {t.openCamera}
+          {shouldPreferImageCaptureFallback() ? t.imageScan : t.openCamera}
         </button>
 
         <button onClick={() => fileRef.current?.click()} style={ghostBtn(isLight)}>
@@ -192,6 +198,7 @@ export default function ReceiveScreen({
         ref={fileRef}
         type="file"
         accept="image/*"
+        capture="environment"
         onChange={onPickImage}
         style={{ display: "none" }}
       />

@@ -779,7 +779,7 @@ export default function WalletShell() {
 
       <main className="wallet-main-shell">
         <div className="wallet-top-actions">
-          <button onClick={() => lockWallet()} style={secondaryButtonStyle(theme)}>
+          <button onClick={lockWallet} style={secondaryButtonStyle(theme)}>
             {t.lock}
           </button>
         </div>

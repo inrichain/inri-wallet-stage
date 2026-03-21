@@ -103,3 +103,22 @@ export async function startQrDecode({
   }
   throw lastError || new Error("Could not open camera");
 }
+
+
+export function isIOSDevice() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  const maxTouchPoints = (navigator as any).maxTouchPoints || 0;
+  return /iPhone|iPad|iPod/i.test(ua) || (platform === "MacIntel" && maxTouchPoints > 1);
+}
+
+export function isStandaloneWebApp() {
+  if (typeof window === "undefined") return false;
+  const standalone = (window.navigator as any)?.standalone;
+  return Boolean(standalone) || window.matchMedia?.("(display-mode: standalone)")?.matches === true;
+}
+
+export function shouldPreferImageCaptureFallback() {
+  return isIOSDevice() && isStandaloneWebApp();
+}

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { tr } from "../i18n/translations";
-import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, startQrDecode, stopVideoStream } from "../lib/camera";
+import { ensureCameraAccess, listVideoDevices, pickPreferredCamera, shouldPreferImageCaptureFallback, startQrDecode, stopVideoStream } from "../lib/camera";
 
 type Props = {
   open: boolean;
@@ -59,6 +59,10 @@ export default function WalletConnectQrScanner({
   async function prepareAndOpenCamera() {
     try {
       setCameraError("");
+      if (shouldPreferImageCaptureFallback()) {
+        fileRef.current?.click();
+        return;
+      }
       await ensureCameraAccess();
 
       const list = await listVideoDevices();
@@ -157,7 +161,7 @@ export default function WalletConnectQrScanner({
         }}
       >
         <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>{t("scanner_title")}</div>
-        <div style={{ color: isLight ? "#5f6b7d" : "#9aa4b5", marginBottom: 14, lineHeight: 1.5 }}>{t("scanner_hint")}</div>
+        <div style={{ color: isLight ? "#5f6b7d" : "#9aa4b5", marginBottom: 14, lineHeight: 1.5 }}>{shouldPreferImageCaptureFallback() ? `${t("scanner_hint")} On installed iPhone app, the camera may open through the system capture flow.` : t("scanner_hint")}</div>
 
         {cameras.length > 1 ? (
           <div style={{ marginBottom: 12 }}>
@@ -181,7 +185,7 @@ export default function WalletConnectQrScanner({
           <button onClick={handleClose} style={secondaryBtn(isLight)} disabled={connecting}>{t("scanner_close")}</button>
         </div>
 
-        <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} style={{ display: "none" }} />
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPickImage} style={{ display: "none" }} />
 
         {connecting ? <div style={{ marginTop: 12, color: "#3f7cff", fontSize: 13, fontWeight: 700 }}>Connecting WalletConnect...</div> : null}
         {cameraError ? <div style={{ marginTop: 12, color: "#ef4444", fontSize: 13, fontWeight: 700 }}>{cameraError}</div> : null}
