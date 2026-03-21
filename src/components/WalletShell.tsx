@@ -45,6 +45,7 @@ const CURRENT_WALLET_KEY = "inri_wallet_current_id";
 const LANG_KEY = "wallet_lang";
 const THEME_KEY = "wallet_theme";
 
+type View = "auth" | "wallet";
 
 type WalletVault = {
   id: string;
@@ -63,6 +64,7 @@ type UnlockedWallet = {
 
 export default function WalletShell() {
   const [tab, setTab] = useState<Tab>("dashboard");
+  const [view, setView] = useState<View>("auth");
   const [authMode, setAuthMode] = useState<AuthMode>("unlock");
 
   const [theme, setTheme] = useState<"dark" | "light">(
@@ -284,6 +286,7 @@ export default function WalletShell() {
       setCreatePassword("");
       setGeneratedSeed("");
       setConfirmSeedSaved(false);
+      setView("wallet");
       setTab("dashboard");
       showMessage(t.walletCreated);
     } catch {
@@ -349,6 +352,7 @@ export default function WalletShell() {
       setImportName("");
       setImportPassword("");
       setImportSeed("");
+      setView("wallet");
       setTab("dashboard");
       showMessage(t.walletImported);
     } catch {
@@ -387,6 +391,7 @@ export default function WalletShell() {
       });
 
       localStorage.setItem(CURRENT_WALLET_KEY, vault.id);
+      setView("wallet");
       setTab("dashboard");
       setUnlockPassword("");
       showMessage(t.unlocked);
@@ -402,8 +407,11 @@ export default function WalletShell() {
     setReauthOpen(false);
     setReauthPassword("");
     setReauthError("");
-    setUnlockedWallet(null);
-    setTab("dashboard");
+    setUnlockedWallet((current) => {
+      if (!current) return null;
+      return null;
+    });
+    setView("auth");
     setUnlockPassword("");
     showMessage(reason || t.locked);
   }, [t.locked]);
@@ -700,9 +708,7 @@ export default function WalletShell() {
     }
   };
 
-  const isLocked = !unlockedWallet;
-
-  if (isLocked) {
+  if (view === "auth") {
     return (
       <AuthPanel
         theme={theme}
@@ -773,7 +779,7 @@ export default function WalletShell() {
 
       <main className="wallet-main-shell">
         <div className="wallet-top-actions">
-          <button onClick={lockWallet} style={secondaryButtonStyle(theme)}>
+          <button onClick={() => lockWallet()} style={secondaryButtonStyle(theme)}>
             {t.lock}
           </button>
         </div>
