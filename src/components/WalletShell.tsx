@@ -21,6 +21,7 @@ import NetworksScreen from "../screens/NetworksScreen";
 import WalletConnectScreen from "../screens/WalletConnectScreen";
 import AssetManagerScreen from "../screens/AssetManagerScreen";
 import P2PScreen from "../screens/P2PScreen";
+import PoolScreen from "../screens/PoolScreen";
 import ToastViewport from "./ToastViewport";
 import WcSessionProposalModal from "./WcSessionProposalModal";
 import WcRequestModal from "./WcRequestModal";
@@ -691,6 +692,9 @@ export default function WalletShell() {
 
       case "p2p":
         return <P2PScreen theme={theme} lang={lang} setTab={setTab as any} address={address} privateKey={privateKey} />;
+
+      case "pool":
+        return <PoolScreen theme={theme} lang={lang} />;
 
       case "settings":
         return (
