@@ -22,6 +22,13 @@ import WalletConnectScreen from "../screens/WalletConnectScreen";
 import AssetManagerScreen from "../screens/AssetManagerScreen";
 import P2PScreen from "../screens/P2PScreen";
 import PoolScreen from "../screens/PoolScreen";
+import AccountsScreen from "../screens/AccountsScreen";
+import ContactsScreen from "../screens/ContactsScreen";
+import ConnectedSitesScreen from "../screens/ConnectedSitesScreen";
+import ApprovalsScreen from "../screens/ApprovalsScreen";
+import GovernanceScreen from "../screens/GovernanceScreen";
+import ClaimCenterScreen from "../screens/ClaimCenterScreen";
+import NotificationsScreen from "../screens/NotificationsScreen";
 import ToastViewport from "./ToastViewport";
 import WcSessionProposalModal from "./WcSessionProposalModal";
 import WcRequestModal from "./WcRequestModal";
@@ -695,6 +702,27 @@ export default function WalletShell() {
 
       case "pool":
         return <PoolScreen theme={theme} lang={lang} />;
+
+      case "accounts":
+        return <AccountsScreen theme={theme} lang={lang} />;
+
+      case "contacts":
+        return <ContactsScreen theme={theme} lang={lang} />;
+
+      case "sites":
+        return <ConnectedSitesScreen theme={theme} lang={lang} />;
+
+      case "approvals":
+        return <ApprovalsScreen theme={theme} lang={lang} />;
+
+      case "governance":
+        return <GovernanceScreen theme={theme} lang={lang} />;
+
+      case "claim":
+        return <ClaimCenterScreen theme={theme} lang={lang} />;
+
+      case "notifications":
+        return <NotificationsScreen theme={theme} lang={lang} />;
 
       case "settings":
         return (

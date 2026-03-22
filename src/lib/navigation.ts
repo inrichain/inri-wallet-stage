@@ -14,7 +14,14 @@ export type Tab =
   | "walletconnect"
   | "assets"
   | "p2p"
-  | "pool";
+  | "pool"
+  | "accounts"
+  | "contacts"
+  | "sites"
+  | "approvals"
+  | "governance"
+  | "claim"
+  | "notifications";
 
 export const MORE_TABS: Tab[] = [
   "more",
@@ -30,4 +37,11 @@ export const MORE_TABS: Tab[] = [
   "assets",
   "p2p",
   "pool",
+  "accounts",
+  "contacts",
+  "sites",
+  "approvals",
+  "governance",
+  "claim",
+  "notifications",
 ];
