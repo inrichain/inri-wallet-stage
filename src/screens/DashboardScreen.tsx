@@ -117,9 +117,6 @@ export default function DashboardScreen({ setTab, theme = "dark", lang = "en", a
           <ActionButton onClick={() => setTab("pool")} theme={theme} compact>Pool</ActionButton>
           <ActionButton onClick={() => setTab("p2p")} theme={theme} tone="ghost" compact>P2P</ActionButton>
         </div>
-        <div className="wallet-action-row" style={{ marginTop: 10 }}>
-          <ActionButton onClick={openWalletConnect} theme={theme} tone="ghost" compact>⌁ WalletConnect</ActionButton>
-        </div>
 
         {canInstall ? (
           <div className="wallet-action-row">
