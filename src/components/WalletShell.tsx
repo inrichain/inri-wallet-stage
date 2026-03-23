@@ -21,6 +21,7 @@ import NetworksScreen from "../screens/NetworksScreen";
 import WalletConnectScreen from "../screens/WalletConnectScreen";
 import AssetManagerScreen from "../screens/AssetManagerScreen";
 import P2PScreen from "../screens/P2PScreen";
+import PoolScreen from "../screens/PoolScreen";
 import ToastViewport from "./ToastViewport";
 import WcSessionProposalModal from "./WcSessionProposalModal";
 import WcRequestModal from "./WcRequestModal";
