@@ -14,37 +14,31 @@ const groups = [
       { id: "swap", title: "Swap", subtitle: "Token exchange flow", icon: "⇄" },
       { id: "bridge", title: "Bridge", subtitle: "Move assets across chains", icon: "⤴" },
       { id: "p2p", title: "P2P", subtitle: "Direct peer-to-peer trade flow", icon: "⇆" },
-      { id: "pool", title: "Pool", subtitle: "INRI mining pool module", icon: "▣" },
+      { id: "pool", title: "Pool", subtitle: "Mining pool module", icon: "◈" },
     ],
   },
   {
-    title: "Portfolio & ecosystem",
-    subtitle: "The modules that make the wallet feel like a full INRI super app.",
+    title: "Wallet",
+    subtitle: "Accounts, contacts, permissions and connections.",
     items: [
+      { id: "accounts", title: "Accounts", subtitle: "Manage local wallets", icon: "◫" },
+      { id: "contacts", title: "Contacts", subtitle: "Saved addresses and notes", icon: "☏" },
+      { id: "walletconnect", title: "WalletConnect", subtitle: "Pair, scan and manage sessions", icon: "⌁" },
+      { id: "connected-sites", title: "Connected Sites", subtitle: "Review dapp permissions", icon: "◎" },
+      { id: "approvals", title: "Approvals", subtitle: "Track token allowances", icon: "✓" },
+      { id: "networks", title: "Networks", subtitle: "Switch chains and manage RPCs", icon: "◉" },
+      { id: "assets", title: "Asset Manager", subtitle: "Logos for networks, tokens and dapps", icon: "◌" },
+    ],
+  },
+  {
+    title: "Ecosystem & app",
+    subtitle: "Modules that turn the wallet into the INRI super app.",
+    items: [
+      { id: "governance", title: "Governance", subtitle: "Proposals and voting", icon: "⚑" },
+      { id: "claim-center", title: "Claim Center", subtitle: "Airdrops and rewards", icon: "✦" },
+      { id: "notifications", title: "Notifications", subtitle: "Preference center", icon: "✉" },
       { id: "nfts", title: "NFTs", subtitle: "Collectibles and media", icon: "✦" },
       { id: "staking", title: "Staking", subtitle: "Earn and track positions", icon: "◆" },
-      { id: "governance", title: "Governance", subtitle: "Proposals and voting shell", icon: "◈" },
-      { id: "claim", title: "Claim Center", subtitle: "Airdrops, rewards and claims", icon: "◉" },
-    ],
-  },
-  {
-    title: "Wallet management",
-    subtitle: "Core wallet tools that should already exist before contracts are plugged in.",
-    items: [
-      { id: "accounts", title: "Accounts", subtitle: "Rename and organize vaults", icon: "☰" },
-      { id: "contacts", title: "Contacts", subtitle: "Address book for send and bridge", icon: "♡" },
-      { id: "walletconnect", title: "WalletConnect", subtitle: "Pair, scan and manage sessions", icon: "⌁" },
-      { id: "sites", title: "Connected Sites", subtitle: "Permissions and live sessions", icon: "◌" },
-      { id: "approvals", title: "Approvals", subtitle: "Approval manager shell", icon: "✓" },
-    ],
-  },
-  {
-    title: "System",
-    subtitle: "Network controls, assets and app-level settings.",
-    items: [
-      { id: "networks", title: "Networks", subtitle: "Switch chains and manage RPCs", icon: "◎" },
-      { id: "assets", title: "Asset Manager", subtitle: "Logos for networks, tokens and dapps", icon: "◌" },
-      { id: "notifications", title: "Notifications", subtitle: "Prepare push and local alerts", icon: "◐" },
       { id: "settings", title: "Settings", subtitle: "Theme, language, security and profile", icon: "⚙" },
     ],
   },
@@ -52,17 +46,15 @@ const groups = [
 
 export default function MoreScreen({ theme = "dark", setTab }: { theme?: "dark" | "light"; lang?: string; setTab: (tab: Tab) => void; }) {
   const isLight = theme === "light";
-
   return (
     <div className="wallet-screen-stack wallet-screen-mobile-tight">
       <ScreenCard theme={theme}>
-        <SectionTitle title="More" subtitle="Everything that should stay outside the main navigation lives here." theme={theme} />
+        <SectionTitle title="More" subtitle="Everything outside the main navigation lives here in one organized place." theme={theme} />
         <div className="wallet-action-row">
           <StatusPill theme={theme} tone="primary">Power center</StatusPill>
-          <StatusPill theme={theme}>Complete shell</StatusPill>
+          <StatusPill theme={theme}>Expanded</StatusPill>
         </div>
       </ScreenCard>
-
       {groups.map((group) => (
         <ScreenCard key={group.title} theme={theme}>
           <SectionTitle title={group.title} subtitle={group.subtitle} theme={theme} compact />

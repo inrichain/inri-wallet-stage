@@ -1,126 +1,35 @@
 import React, { useMemo, useState } from "react";
 import ScreenCard from "../components/ScreenCard";
 import SectionTitle from "../components/SectionTitle";
-import ActionButton from "../components/ActionButton";
-import EmptyState from "../components/EmptyState";
 import StatusPill from "../components/StatusPill";
 
 const KEY = "inri_wallet_contacts_v1";
-
-type ContactItem = {
-  id: string;
-  name: string;
-  address: string;
-  networkKey: string;
-  note?: string;
-  favorite?: boolean;
-  createdAt: number;
-};
-
-function readContacts(): ContactItem[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(KEY) || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeContacts(items: ContactItem[]) {
-  localStorage.setItem(KEY, JSON.stringify(items));
-}
+type Contact = { id: string; name: string; address: string; network: string; note: string; favorite: boolean };
+function loadContacts(): Contact[] { try { return JSON.parse(localStorage.getItem(KEY) || "[]") || []; } catch { return []; } }
+function saveContacts(items: Contact[]) { localStorage.setItem(KEY, JSON.stringify(items)); }
 
 export default function ContactsScreen({ theme = "dark" }: { theme?: "dark" | "light"; lang?: string }) {
-  const isLight = theme === "light";
-  const [items, setItems] = useState<ContactItem[]>(() => readContacts());
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [networkKey, setNetworkKey] = useState("inri");
-  const [note, setNote] = useState("");
-  const [query, setQuery] = useState("");
-
-  const filtered = useMemo(() => items.filter((item) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return [item.name, item.address, item.networkKey, item.note || ""].join(" ").toLowerCase().includes(q);
-  }), [items, query]);
-
-  function save() {
-    if (!name.trim() || !address.trim()) return;
-    const next: ContactItem = {
-      id: `contact-${Date.now()}`,
-      name: name.trim(),
-      address: address.trim(),
-      networkKey: networkKey.trim() || "inri",
-      note: note.trim(),
-      favorite: false,
-      createdAt: Date.now(),
-    };
-    const updated = [next, ...items];
-    setItems(updated);
-    writeContacts(updated);
-    setName("");
-    setAddress("");
-    setNote("");
+  const [items, setItems] = useState<Contact[]>(() => loadContacts());
+  const [form, setForm] = useState({ name: "", address: "", network: "INRI", note: "" });
+  const favorites = useMemo(() => items.filter((i) => i.favorite).length, [items]);
+  function add() {
+    if (!form.name.trim() || !form.address.trim()) return;
+    const next = [{ id: crypto.randomUUID(), ...form, favorite: false }, ...items];
+    setItems(next); saveContacts(next); setForm({ name: "", address: "", network: "INRI", note: "" });
   }
-
-  function remove(id: string) {
-    const updated = items.filter((item) => item.id !== id);
-    setItems(updated);
-    writeContacts(updated);
-  }
-
-  function toggleFavorite(id: string) {
-    const updated = items.map((item) => item.id === id ? { ...item, favorite: !item.favorite } : item);
-    setItems(updated);
-    writeContacts(updated);
-  }
-
+  function toggleFav(id: string) { const next = items.map((i) => i.id === id ? { ...i, favorite: !i.favorite } : i); setItems(next); saveContacts(next); }
+  function remove(id: string) { const next = items.filter((i) => i.id !== id); setItems(next); saveContacts(next); }
   return (
     <div className="wallet-screen-stack wallet-screen-mobile-tight">
+      <ScreenCard theme={theme}><SectionTitle title="Contacts" subtitle="Address book ready for send, bridge destinations and future quick actions." theme={theme} /><div className="wallet-action-row"><StatusPill theme={theme} tone="primary">{items.length} saved</StatusPill><StatusPill theme={theme}>{favorites} favorites</StatusPill></div></ScreenCard>
       <ScreenCard theme={theme}>
-        <SectionTitle title="Contacts" subtitle="Save trusted addresses now and connect real flows later." theme={theme} actions={<StatusPill theme={theme} tone="primary">Ready</StatusPill>} />
-        <div className="wallet-form-grid two-col">
-          <input value={name} onChange={(e) => setName(e.target.value)} className="wallet-ui-input" placeholder="Contact name" />
-          <input value={networkKey} onChange={(e) => setNetworkKey(e.target.value)} className="wallet-ui-input" placeholder="Network key" />
-        </div>
-        <div style={{ height: 10 }} />
-        <input value={address} onChange={(e) => setAddress(e.target.value)} className="wallet-ui-input" placeholder="Wallet address" />
-        <div style={{ height: 10 }} />
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} className="wallet-ui-textarea" placeholder="Private note" />
-        <div className="wallet-action-row" style={{ marginTop: 12 }}>
-          <ActionButton theme={theme} onClick={save}>Save contact</ActionButton>
-          <ActionButton theme={theme} tone="ghost" onClick={() => { setName(""); setAddress(""); setNote(""); }}>Clear</ActionButton>
-        </div>
+        <div className="wallet-form-grid-2"><input className="wallet-input" placeholder="Name" value={form.name} onChange={(e)=>setForm({...form,name:e.target.value})}/><input className="wallet-input" placeholder="Network" value={form.network} onChange={(e)=>setForm({...form,network:e.target.value})}/></div>
+        <input className="wallet-input" style={{marginTop:12}} placeholder="Address" value={form.address} onChange={(e)=>setForm({...form,address:e.target.value})}/>
+        <textarea className="wallet-input" style={{marginTop:12,minHeight:92}} placeholder="Note" value={form.note} onChange={(e)=>setForm({...form,note:e.target.value})}/>
+        <div className="wallet-action-row" style={{marginTop:12}}><button className="wallet-btn primary" onClick={add}>Add contact</button></div>
       </ScreenCard>
-
       <ScreenCard theme={theme}>
-        <SectionTitle title="Address book" subtitle="Use these contacts later in Send, Bridge and P2P flows." theme={theme} compact />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} className="wallet-ui-input" placeholder="Search contacts" />
-        <div style={{ height: 10 }} />
-        {!filtered.length ? (
-          <EmptyState theme={theme} title="No contacts yet" description="Create your first address book entry to make the wallet feel complete before smart contract hooks land." />
-        ) : (
-          <div style={{ display: "grid", gap: 10 }}>
-            {filtered.map((item) => (
-              <div key={item.id} className="wallet-list-row" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <div style={{ fontWeight: 900 }}>{item.name}</div>
-                    {item.favorite ? <StatusPill theme={theme} tone="success">Favorite</StatusPill> : null}
-                    <StatusPill theme={theme}>{item.networkKey}</StatusPill>
-                  </div>
-                  <div className="wallet-ui-subtle" style={{ marginTop: 4, wordBreak: "break-all" }}>{item.address}</div>
-                  {item.note ? <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>{item.note}</div> : null}
-                </div>
-                <div className="wallet-action-row" style={{ gap: 8, justifyContent: "flex-end" }}>
-                  <ActionButton theme={theme} tone="ghost" compact onClick={() => toggleFavorite(item.id)}>{item.favorite ? "Unfavorite" : "Favorite"}</ActionButton>
-                  <ActionButton theme={theme} tone="danger" compact onClick={() => remove(item.id)}>Remove</ActionButton>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {items.length === 0 ? <div className="wallet-empty-state"><div className="wallet-empty-state-title">No contacts yet</div><div className="wallet-empty-state-text">Add trusted addresses here to make sending and bridge destinations easier later.</div></div> : items.map((c, idx) => <div key={c.id} style={{padding:'14px 0', borderBottom: idx===items.length-1?'none':`1px solid ${theme==='light'?'#e8edf5':'#1b2230'}`}}><div style={{display:'flex',justifyContent:'space-between',gap:12}}><div style={{minWidth:0}}><div style={{fontWeight:900}}>{c.name}</div><div className="wallet-ui-subtle" style={{marginTop:4}}>{c.address}</div><div className="wallet-ui-subtle" style={{marginTop:4}}>{c.network}{c.note ? ` • ${c.note}` : ''}</div></div><div style={{display:'flex',gap:8}}><button className="wallet-btn secondary" onClick={()=>toggleFav(c.id)}>{c.favorite?'★':'☆'}</button><button className="wallet-btn secondary" onClick={()=>remove(c.id)}>Remove</button></div></div></div>)}
       </ScreenCard>
     </div>
   );

@@ -17,31 +17,31 @@ export type Tab =
   | "pool"
   | "accounts"
   | "contacts"
-  | "sites"
+  | "connected-sites"
   | "approvals"
   | "governance"
-  | "claim"
+  | "claim-center"
   | "notifications";
 
 export const MORE_TABS: Tab[] = [
   "more",
   "send",
   "receive",
-  "nfts",
   "swap",
   "bridge",
-  "staking",
-  "settings",
-  "networks",
-  "walletconnect",
-  "assets",
   "p2p",
   "pool",
+  "nfts",
+  "staking",
   "accounts",
   "contacts",
-  "sites",
+  "walletconnect",
+  "connected-sites",
   "approvals",
   "governance",
-  "claim",
+  "claim-center",
   "notifications",
+  "networks",
+  "assets",
+  "settings",
 ];

@@ -1,59 +1,16 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import ScreenCard from "../components/ScreenCard";
 import SectionTitle from "../components/SectionTitle";
-import EmptyState from "../components/EmptyState";
-import ActionButton from "../components/ActionButton";
 import StatusPill from "../components/StatusPill";
 
-const ACTIVITY_KEY = "wallet_activity_demo";
-
-function readApprovalActivity() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed.filter((item: any) => item?.method === "approve") : [];
-  } catch {
-    return [];
-  }
-}
+function readApprovals() { try { return (JSON.parse(localStorage.getItem("inri_wallet_activity_v1") || "[]") || []).filter((x:any)=> String(x.method||'').toLowerCase()==='approve'); } catch { return []; } }
 
 export default function ApprovalsScreen({ theme = "dark" }: { theme?: "dark" | "light"; lang?: string }) {
-  const [query, setQuery] = useState("");
-  const approvals = useMemo(() => readApprovalActivity(), []);
-  const filtered = useMemo(() => approvals.filter((item: any) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return [item.symbol, item.tokenAddress, item.to, item.from, item.hash].join(" ").toLowerCase().includes(q);
-  }), [approvals, query]);
-
+  const items = useMemo(() => readApprovals(), []);
   return (
     <div className="wallet-screen-stack wallet-screen-mobile-tight">
-      <ScreenCard theme={theme}>
-        <SectionTitle title="Approval manager" subtitle="A clean place to review token approvals now and wire revoke flows later." theme={theme} actions={<StatusPill theme={theme} tone="warning">Ready for revoke</StatusPill>} />
-        <div className="wallet-action-row">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} className="wallet-ui-input" placeholder="Search by token, spender or hash" style={{ flex: 1 }} />
-        </div>
-      </ScreenCard>
-
-      <ScreenCard theme={theme}>
-        <SectionTitle title="Recorded approvals" subtitle="Pulled from local wallet activity until direct onchain allowance indexing is added." theme={theme} compact />
-        {!filtered.length ? <EmptyState theme={theme} title="No approvals recorded" description="As approvals happen in Swap, Bridge and P2P, they can be surfaced here before full revoke tooling is attached." /> : (
-          <div style={{ display: "grid", gap: 10 }}>
-            {filtered.map((item: any, index: number) => (
-              <div key={`${item.hash || 'approve'}-${index}`} className="wallet-list-row">
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <div style={{ fontWeight: 900 }}>Approve {item.symbol || "token"}</div>
-                    <StatusPill theme={theme}>{item.networkKey || item.networkName || "network"}</StatusPill>
-                  </div>
-                  <div className="wallet-ui-subtle" style={{ marginTop: 4 }}>Spender: {item.to || "-"}</div>
-                  <div className="wallet-ui-subtle" style={{ marginTop: 4, wordBreak: "break-all" }}>Tx: {item.hash || "pending"}</div>
-                </div>
-                <ActionButton theme={theme} tone="ghost" compact disabled>Revoke later</ActionButton>
-              </div>
-            ))}
-          </div>
-        )}
-      </ScreenCard>
+      <ScreenCard theme={theme}><SectionTitle title="Approvals" subtitle="Review locally recorded token approvals. Revoke wiring can be connected later." theme={theme} /><div className="wallet-action-row"><StatusPill theme={theme} tone="primary">{items.length} tracked</StatusPill><StatusPill theme={theme}>Ready for revoke</StatusPill></div></ScreenCard>
+      <ScreenCard theme={theme}>{items.length===0?<div className="wallet-empty-state"><div className="wallet-empty-state-title">No approvals yet</div><div className="wallet-empty-state-text">Approvals from bridge, swap and dapps will appear here when saved to activity.</div></div>:items.map((item:any,idx:number)=><div key={item.hash || idx} style={{padding:'14px 0', borderBottom: idx===items.length-1?'none':`1px solid ${theme==='light'?'#e8edf5':'#1b2230'}`}}><div style={{fontWeight:800}}>{item.tokenSymbol || item.symbol || 'Token'} approval</div><div className="wallet-ui-subtle" style={{marginTop:4}}>{item.spender || item.contract || 'Unknown spender'}</div><div className="wallet-ui-subtle" style={{marginTop:4}}>{item.networkName || item.networkKey || 'Network not tagged'}</div></div>)}</ScreenCard>
     </div>
   );
 }

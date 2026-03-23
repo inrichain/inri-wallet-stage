@@ -709,7 +709,7 @@ export default function WalletShell() {
       case "contacts":
         return <ContactsScreen theme={theme} lang={lang} />;
 
-      case "sites":
+      case "connected-sites":
         return <ConnectedSitesScreen theme={theme} lang={lang} />;
 
       case "approvals":
@@ -718,7 +718,7 @@ export default function WalletShell() {
       case "governance":
         return <GovernanceScreen theme={theme} lang={lang} />;
 
-      case "claim":
+      case "claim-center":
         return <ClaimCenterScreen theme={theme} lang={lang} />;
 
       case "notifications":
