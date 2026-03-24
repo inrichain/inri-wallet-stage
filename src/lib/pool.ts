@@ -1,35 +1,8 @@
+import { getStoredNetwork } from "./network";
+
 export type PoolMode = "pplns" | "solo";
 export type PoolBlockStatus = "pending" | "confirmed" | "orphaned";
-
-export type PoolOverview = {
-  poolOnline: boolean;
-  nodeOnline: boolean;
-  feePercent: number;
-  feeWalletPercent: number;
-  feeWalletAddress: string;
-  poolHashrate: number;
-  networkHashrate: number;
-  networkDifficulty: number;
-  currentHeight: number;
-  activeMiners: number;
-  activeWorkers: number;
-  pendingBlocks: number;
-  confirmedBlocks: number;
-  orphanedBlocks: number;
-  luckPercent: number;
-  effortPercent: number;
-  minimumPayout: number;
-  chart: Array<{ ts: number; hashrate: number }>;
-  modes: Array<{ mode: PoolMode; hashrate: number; miners: number; workers: number }>;
-  stratum: {
-    host: string;
-    pplnsPort: number;
-    soloPort: number;
-    tlsPort?: number;
-    password: string;
-  };
-};
-
+export type PoolTrendPoint = { ts: number; poolHashrate: number; networkHashrate: number };
 export type PoolBlock = {
   id: string;
   height: number;
@@ -38,12 +11,10 @@ export type PoolBlock = {
   status: PoolBlockStatus;
   mode: PoolMode;
   confirmations: number;
-  luckPercent: number;
-  effortPercent: number;
+  effort: number;
   createdAt: number;
-  explorerUrl?: string;
+  txHash?: string;
 };
-
 export type PoolPayment = {
   id: string;
   address: string;
@@ -51,459 +22,273 @@ export type PoolPayment = {
   txHash: string;
   createdAt: number;
   mode: PoolMode;
-  txUrl?: string;
   isFeeWallet?: boolean;
 };
-
-export type PoolWorker = {
-  id: string;
-  name: string;
-  hashrate: number;
-  avg10m: number;
-  avg1h: number;
-  avg24h: number;
-  status: "online" | "offline";
-  lastSeenAt: number;
-  validShares: number;
-  invalidShares: number;
+export type PoolMinerRow = { address: string; hashrate: number; workers: number; paid: number; pending: number };
+export type PoolWorkerRow = { name: string; miner: string; hashrate: number; online: boolean; lastSeenAt: number };
+export type PoolOverview = {
+  poolStatus: "online" | "degraded" | "offline";
+  nodeStatus: "synced" | "syncing" | "offline";
+  feePercent: number;
+  feeWallet: string;
+  minPayout: number;
+  currentHeight: number;
+  poolHashrate: number;
+  networkHashrate: number;
+  difficulty: number;
+  activeMiners: number;
+  activeWorkers: number;
+  pplnsPort: number;
+  soloPort: number;
+  tlsPort?: number;
+  stratumHost: string;
+  trend: PoolTrendPoint[];
 };
-
 export type PoolMinerStats = {
   address: string;
   currentHashrate: number;
   avg10m: number;
   avg1h: number;
   avg24h: number;
-  pendingBalance: number;
+  pending: number;
   totalPaid: number;
-  lastPaymentAmount: number;
-  lastPaymentAt: number;
+  lastPaymentAt?: number;
   validShares: number;
   invalidShares: number;
   blocksFound: number;
-  payoutProgressPercent: number;
-  workersOnline: number;
-  workersOffline: number;
-  workers: PoolWorker[];
+  workers: PoolWorkerRow[];
   payments: PoolPayment[];
   blocks: PoolBlock[];
 };
-
-export type PoolTopMiner = {
-  address: string;
-  label: string;
-  hashrate: number;
-  avg24h: number;
-  workers: number;
-  mode: PoolMode | "mixed";
-  blocksFound: number;
-  efficiencyPercent: number;
-};
-
-export type PoolTopWorker = {
-  name: string;
-  miner: string;
-  hashrate: number;
-  avg24h: number;
-  status: "online" | "offline";
-};
-
-export type PoolTransparency = {
-  walletAddress: string;
-  feePercent: number;
-  payments: PoolPayment[];
-  blocks: PoolBlock[];
-};
-
 export type PoolSnapshot = {
   overview: PoolOverview;
   blocks: PoolBlock[];
   payments: PoolPayment[];
-  topMiners: PoolTopMiner[];
-  topWorkers: PoolTopWorker[];
-  miner?: PoolMinerStats | null;
-  transparency: PoolTransparency;
-  fetchedAt: number;
+  topMiners: PoolMinerRow[];
+  topWorkers: PoolWorkerRow[];
+  miner: PoolMinerStats | null;
 };
 
-const DEFAULT_BASE = (import.meta as any).env?.VITE_POOL_API_BASE || "/api/pool";
 const DEFAULT_FEE_WALLET = (import.meta as any).env?.VITE_POOL_FEE_WALLET || "0x119B51608D139342baB20bFF0654F275FFbbaAD0";
-const DEFAULT_EXPLORER = (import.meta as any).env?.VITE_POOL_EXPLORER_BASE || "https://explorer.inri.life";
+const DEFAULT_API_BASE = ((import.meta as any).env?.VITE_POOL_API_BASE || "").replace(/\/$/, "");
+const DEFAULT_EXPLORER_BASE = (import.meta as any).env?.VITE_POOL_EXPLORER_BASE || "https://explorer.inri.life";
 const DEFAULT_STRATUM_HOST = (import.meta as any).env?.VITE_POOL_STRATUM_HOST || "pool.inri.life";
-const DEFAULT_PPLNS_PORT = Number((import.meta as any).env?.VITE_POOL_PPLNS_PORT || 9009);
-const DEFAULT_SOLO_PORT = Number((import.meta as any).env?.VITE_POOL_SOLO_PORT || 9010);
-const DEFAULT_TLS_PORT = Number((import.meta as any).env?.VITE_POOL_TLS_PORT || 9443);
-const DEFAULT_POOL_FEE = Number((import.meta as any).env?.VITE_POOL_FEE_PERCENT || 2);
-const DEFAULT_MIN_PAYOUT = Number((import.meta as any).env?.VITE_POOL_MIN_PAYOUT || 5);
+const DEFAULT_PPLNS_PORT = Number((import.meta as any).env?.VITE_POOL_PPLNS_PORT || 3032);
+const DEFAULT_SOLO_PORT = Number((import.meta as any).env?.VITE_POOL_SOLO_PORT || 3033);
+const DEFAULT_TLS_PORT = Number((import.meta as any).env?.VITE_POOL_TLS_PORT || 3034);
+const DEFAULT_FEE_PERCENT = Number((import.meta as any).env?.VITE_POOL_FEE_PERCENT || 2);
+const DEFAULT_MIN_PAYOUT = Number((import.meta as any).env?.VITE_POOL_MIN_PAYOUT || 10);
 
-function shortAddress(address: string) {
-  if (!address) return "Unknown";
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+function shortHash(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  return hash;
 }
 
-function toNumber(value: any, fallback = 0) {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : fallback;
-}
-
-function ensureArray<T>(value: any): T[] {
-  return Array.isArray(value) ? value : [];
-}
-
-async function readJson(path: string) {
-  const response = await fetch(`${DEFAULT_BASE}${path}`, { headers: { Accept: "application/json" } });
-  if (!response.ok) {
-    throw new Error(`Pool API ${path} failed: ${response.status}`);
-  }
-  return response.json();
-}
-
-function normalizeOverview(data: any): PoolOverview {
-  const modes = ensureArray<any>(data?.modes).map((item) => ({
-    mode: (String(item?.mode || "pplns").toLowerCase() === "solo" ? "solo" : "pplns") as PoolMode,
-    hashrate: toNumber(item?.hashrate),
-    miners: toNumber(item?.miners),
-    workers: toNumber(item?.workers),
-  }));
-
-  const chart = ensureArray<any>(data?.chart || data?.hashrateChart).map((item, index) => ({
-    ts: toNumber(item?.ts || item?.timestamp, Date.now() - (19 - index) * 300000),
-    hashrate: toNumber(item?.hashrate || item?.value),
-  }));
-
-  return {
-    poolOnline: typeof data?.poolOnline === "boolean" ? data.poolOnline : String(data?.status || "online").toLowerCase() !== "offline",
-    nodeOnline: data?.nodeOnline ?? true,
-    feePercent: toNumber(data?.feePercent, DEFAULT_POOL_FEE),
-    feeWalletPercent: toNumber(data?.feeWalletPercent, 2),
-    feeWalletAddress: String(data?.feeWalletAddress || DEFAULT_FEE_WALLET),
-    poolHashrate: toNumber(data?.poolHashrate),
-    networkHashrate: toNumber(data?.networkHashrate),
-    networkDifficulty: toNumber(data?.networkDifficulty),
-    currentHeight: toNumber(data?.currentHeight),
-    activeMiners: toNumber(data?.activeMiners),
-    activeWorkers: toNumber(data?.activeWorkers),
-    pendingBlocks: toNumber(data?.pendingBlocks),
-    confirmedBlocks: toNumber(data?.confirmedBlocks),
-    orphanedBlocks: toNumber(data?.orphanedBlocks),
-    luckPercent: toNumber(data?.luckPercent),
-    effortPercent: toNumber(data?.effortPercent),
-    minimumPayout: toNumber(data?.minimumPayout, DEFAULT_MIN_PAYOUT),
-    chart: chart.length ? chart : buildMockOverview().chart,
-    modes: modes.length ? modes : buildMockOverview().modes,
-    stratum: {
-      host: String(data?.stratum?.host || DEFAULT_STRATUM_HOST),
-      pplnsPort: toNumber(data?.stratum?.pplnsPort, DEFAULT_PPLNS_PORT),
-      soloPort: toNumber(data?.stratum?.soloPort, DEFAULT_SOLO_PORT),
-      tlsPort: toNumber(data?.stratum?.tlsPort, DEFAULT_TLS_PORT),
-      password: String(data?.stratum?.password || "x"),
-    },
-  };
-}
-
-function normalizeBlock(data: any, index = 0): PoolBlock {
-  const miner = String(data?.miner || data?.address || DEFAULT_FEE_WALLET);
-  return {
-    id: String(data?.id || data?.height || `${Date.now()}-${index}`),
-    height: toNumber(data?.height, 1870000 - index),
-    miner,
-    reward: toNumber(data?.reward, 2),
-    status: ["pending", "confirmed", "orphaned"].includes(String(data?.status || "").toLowerCase()) ? String(data?.status).toLowerCase() as PoolBlockStatus : "confirmed",
-    mode: String(data?.mode || data?.type || "pplns").toLowerCase() === "solo" ? "solo" : "pplns",
-    confirmations: toNumber(data?.confirmations, 24),
-    luckPercent: toNumber(data?.luckPercent, 102),
-    effortPercent: toNumber(data?.effortPercent, 97),
-    createdAt: toNumber(data?.createdAt || data?.timestamp, Date.now() - index * 1800000),
-    explorerUrl: String(data?.explorerUrl || `${DEFAULT_EXPLORER}/block/${toNumber(data?.height, 1870000 - index)}`),
-  };
-}
-
-function normalizePayment(data: any, index = 0): PoolPayment {
-  const address = String(data?.address || DEFAULT_FEE_WALLET);
-  const txHash = String(data?.txHash || data?.hash || `0xmockpayment${index.toString(16).padStart(56, "0")}`);
-  return {
-    id: String(data?.id || txHash || `${Date.now()}-${index}`),
-    address,
-    amount: toNumber(data?.amount, 1.5),
-    txHash,
-    createdAt: toNumber(data?.createdAt || data?.timestamp, Date.now() - index * 2400000),
-    mode: String(data?.mode || data?.type || "pplns").toLowerCase() === "solo" ? "solo" : "pplns",
-    txUrl: String(data?.txUrl || `${DEFAULT_EXPLORER}/tx/${txHash}`),
-    isFeeWallet: Boolean(data?.isFeeWallet),
-  };
-}
-
-function normalizeWorker(data: any, index = 0): PoolWorker {
-  return {
-    id: String(data?.id || data?.name || `worker-${index}`),
-    name: String(data?.name || `rig-${index + 1}`),
-    hashrate: toNumber(data?.hashrate, 42000000),
-    avg10m: toNumber(data?.avg10m, 41500000),
-    avg1h: toNumber(data?.avg1h, 40100000),
-    avg24h: toNumber(data?.avg24h, 38600000),
-    status: String(data?.status || "online").toLowerCase() === "offline" ? "offline" : "online",
-    lastSeenAt: toNumber(data?.lastSeenAt || data?.lastSeen, Date.now() - index * 180000),
-    validShares: toNumber(data?.validShares, 1820),
-    invalidShares: toNumber(data?.invalidShares, 4),
-  };
-}
-
-function normalizeMiner(data: any, address: string): PoolMinerStats {
-  const workers = ensureArray<any>(data?.workers).map(normalizeWorker);
-  const payments = ensureArray<any>(data?.payments).map(normalizePayment);
-  const blocks = ensureArray<any>(data?.blocks).map(normalizeBlock);
-  return {
-    address,
-    currentHashrate: toNumber(data?.currentHashrate, workers.reduce((sum, worker) => sum + worker.hashrate, 0)),
-    avg10m: toNumber(data?.avg10m, workers.reduce((sum, worker) => sum + worker.avg10m, 0)),
-    avg1h: toNumber(data?.avg1h, workers.reduce((sum, worker) => sum + worker.avg1h, 0)),
-    avg24h: toNumber(data?.avg24h, workers.reduce((sum, worker) => sum + worker.avg24h, 0)),
-    pendingBalance: toNumber(data?.pendingBalance, 1.62),
-    totalPaid: toNumber(data?.totalPaid, 48.2),
-    lastPaymentAmount: toNumber(data?.lastPaymentAmount, payments[0]?.amount || 3.2),
-    lastPaymentAt: toNumber(data?.lastPaymentAt, payments[0]?.createdAt || Date.now() - 3600000),
-    validShares: toNumber(data?.validShares, workers.reduce((sum, worker) => sum + worker.validShares, 0)),
-    invalidShares: toNumber(data?.invalidShares, workers.reduce((sum, worker) => sum + worker.invalidShares, 0)),
-    blocksFound: toNumber(data?.blocksFound, blocks.length),
-    payoutProgressPercent: toNumber(data?.payoutProgressPercent, Math.min(100, (toNumber(data?.pendingBalance, 1.62) / DEFAULT_MIN_PAYOUT) * 100)),
-    workersOnline: toNumber(data?.workersOnline, workers.filter((worker) => worker.status === "online").length),
-    workersOffline: toNumber(data?.workersOffline, workers.filter((worker) => worker.status === "offline").length),
-    workers,
-    payments,
-    blocks,
-  };
-}
-
-function normalizeTopMiner(data: any, index = 0): PoolTopMiner {
-  const address = String(data?.address || `0x${String(index + 1).padStart(40, "0")}`);
-  return {
-    address,
-    label: String(data?.label || shortAddress(address)),
-    hashrate: toNumber(data?.hashrate, 120000000 + index * 8000000),
-    avg24h: toNumber(data?.avg24h, 115000000 + index * 7500000),
-    workers: toNumber(data?.workers, 2 + (index % 4)),
-    mode: data?.mode === "solo" ? "solo" : data?.mode === "pplns" ? "pplns" : "mixed",
-    blocksFound: toNumber(data?.blocksFound, 1 + (index % 3)),
-    efficiencyPercent: toNumber(data?.efficiencyPercent, 94 - index * 2),
-  };
-}
-
-function normalizeTopWorker(data: any, index = 0): PoolTopWorker {
-  return {
-    name: String(data?.name || `rig-${index + 1}`),
-    miner: String(data?.miner || `0x${String(index + 1).padStart(40, "0")}`),
-    hashrate: toNumber(data?.hashrate, 74000000 - index * 4000000),
-    avg24h: toNumber(data?.avg24h, 70500000 - index * 4200000),
-    status: String(data?.status || "online").toLowerCase() === "offline" ? "offline" : "online",
-  };
-}
-
-function buildMockOverview(): PoolOverview {
+function makeTrend(seed: number): PoolTrendPoint[] {
   const now = Date.now();
-  const chart = Array.from({ length: 20 }).map((_, index) => ({
-    ts: now - (19 - index) * 300000,
-    hashrate: 820000000 + Math.sin(index / 2) * 120000000 + index * 7000000,
+  return Array.from({ length: 18 }).map((_, idx) => {
+    const wave = Math.sin((idx + seed % 5) / 2.4) * 0.06;
+    const bump = ((seed % 17) / 100) * (idx / 18);
+    const poolHashrate = 3.15e14 * (1 + wave + bump) + idx * 2.4e12;
+    const networkHashrate = 8.6e15 * (1 + Math.cos(idx / 4.2) * 0.025);
+    return { ts: now - (17 - idx) * 300000, poolHashrate, networkHashrate };
+  });
+}
+
+function fallbackBlocks(seed: number): PoolBlock[] {
+  const baseHeight = 1286400 + (seed % 120);
+  return Array.from({ length: 10 }).map((_, idx) => {
+    const mode: PoolMode = idx % 4 === 0 ? "solo" : "pplns";
+    const status: PoolBlockStatus = idx === 0 ? "pending" : idx % 7 === 0 ? "orphaned" : "confirmed";
+    return {
+      id: `blk-${baseHeight - idx}`,
+      height: baseHeight - idx,
+      miner: idx % 3 === 0 ? DEFAULT_FEE_WALLET : `0x${(seed + idx).toString(16).padStart(40, "0").slice(-40)}`,
+      reward: 2,
+      status,
+      mode,
+      confirmations: status === "pending" ? 2 + idx : 40 + idx * 8,
+      effort: 88 + (idx * 9) % 36,
+      createdAt: Date.now() - idx * 1000 * 60 * 22,
+      txHash: `0x${(seed + idx * 77).toString(16).padStart(64, "0").slice(-64)}`,
+    };
+  });
+}
+
+function fallbackPayments(seed: number, minerAddress: string): PoolPayment[] {
+  return Array.from({ length: 14 }).map((_, idx) => {
+    const mine = idx % 5 === 0;
+    const fee = idx % 6 === 0;
+    return {
+      id: `pay-${idx}`,
+      address: fee ? DEFAULT_FEE_WALLET : mine ? minerAddress : `0x${(seed * 3 + idx).toString(16).padStart(40, "0").slice(-40)}`,
+      amount: Number((0.9 + (idx % 4) * 0.34).toFixed(4)),
+      txHash: `0x${(seed + idx * 123).toString(16).padStart(64, "0").slice(-64)}`,
+      createdAt: Date.now() - idx * 1000 * 60 * 55,
+      mode: idx % 4 === 0 ? "solo" : "pplns",
+      isFeeWallet: fee,
+    };
+  });
+}
+
+function fallbackTopMiners(seed: number): PoolMinerRow[] {
+  return Array.from({ length: 8 }).map((_, idx) => ({
+    address: idx === 0 ? DEFAULT_FEE_WALLET : `0x${(seed * 5 + idx).toString(16).padStart(40, "0").slice(-40)}`,
+    hashrate: 9.3e13 - idx * 7.2e12,
+    workers: 12 - idx,
+    paid: Number((93 - idx * 7.2).toFixed(2)),
+    pending: Number((4.6 - idx * 0.25).toFixed(3)),
   }));
-
-  return {
-    poolOnline: true,
-    nodeOnline: true,
-    feePercent: DEFAULT_POOL_FEE,
-    feeWalletPercent: 2,
-    feeWalletAddress: DEFAULT_FEE_WALLET,
-    poolHashrate: 986000000,
-    networkHashrate: 13700000000,
-    networkDifficulty: 6.48e12,
-    currentHeight: 1872458,
-    activeMiners: 138,
-    activeWorkers: 412,
-    pendingBlocks: 2,
-    confirmedBlocks: 1234,
-    orphanedBlocks: 7,
-    luckPercent: 104,
-    effortPercent: 96,
-    minimumPayout: DEFAULT_MIN_PAYOUT,
-    chart,
-    modes: [
-      { mode: "pplns", hashrate: 812000000, miners: 121, workers: 379 },
-      { mode: "solo", hashrate: 174000000, miners: 17, workers: 33 },
-    ],
-    stratum: {
-      host: DEFAULT_STRATUM_HOST,
-      pplnsPort: DEFAULT_PPLNS_PORT,
-      soloPort: DEFAULT_SOLO_PORT,
-      tlsPort: DEFAULT_TLS_PORT,
-      password: "x",
-    },
-  };
 }
 
-function buildMockBlocks(): PoolBlock[] {
-  return Array.from({ length: 12 }).map((_, index) =>
-    normalizeBlock(
-      {
-        height: 1872458 - index,
-        miner: index % 5 === 0 ? DEFAULT_FEE_WALLET : `0x${(index + 1).toString(16).padStart(40, "a")}`,
-        reward: 2 + (index % 3) * 0.14,
-        status: index % 7 === 0 ? "pending" : index % 11 === 0 ? "orphaned" : "confirmed",
-        mode: index % 4 === 0 ? "solo" : "pplns",
-        confirmations: 42 - index * 2,
-        luckPercent: 91 + index * 2,
-        effortPercent: 88 + index,
-        createdAt: Date.now() - index * 2700000,
-      },
-      index
-    )
-  );
+function fallbackTopWorkers(seed: number): PoolWorkerRow[] {
+  return Array.from({ length: 8 }).map((_, idx) => ({
+    name: `rig-${idx + 1}`,
+    miner: `0x${(seed * 7 + idx).toString(16).padStart(40, "0").slice(-40)}`,
+    hashrate: 1.8e13 - idx * 1.35e12,
+    online: idx !== 6,
+    lastSeenAt: Date.now() - idx * 1000 * 60 * 3,
+  }));
 }
 
-function buildMockPayments(address?: string): PoolPayment[] {
-  const seed = address || DEFAULT_FEE_WALLET;
-  return Array.from({ length: 12 }).map((_, index) =>
-    normalizePayment(
-      {
-        address: index < 4 && address ? address : index % 5 === 0 ? DEFAULT_FEE_WALLET : `0x${(index + 10).toString(16).padStart(40, "b")}`,
-        amount: 0.82 + index * 0.37,
-        txHash: `0x${String(index + 333).padStart(64, "c")}`,
-        createdAt: Date.now() - index * 3800000,
-        mode: index % 4 === 0 ? "solo" : "pplns",
-        isFeeWallet: index % 5 === 0,
-      },
-      index
-    )
-  );
-}
-
-function buildMockTopMiners(): PoolTopMiner[] {
-  return Array.from({ length: 8 }).map((_, index) => normalizeTopMiner({}, index));
-}
-
-function buildMockTopWorkers(): PoolTopWorker[] {
-  return Array.from({ length: 8 }).map((_, index) => normalizeTopWorker({}, index));
-}
-
-function buildMockMiner(address: string): PoolMinerStats {
+function fallbackMiner(seed: number, address: string): PoolMinerStats {
+  const payments = fallbackPayments(seed, address).filter((item) => item.address.toLowerCase() === address.toLowerCase()).slice(0, 5);
+  const blocks = fallbackBlocks(seed).filter((item) => item.miner.toLowerCase() === address.toLowerCase()).slice(0, 4);
   const workers = [
-    normalizeWorker({ name: "rig-main", hashrate: 58300000, avg10m: 57200000, avg1h: 56100000, avg24h: 54800000, validShares: 2841, invalidShares: 9 }, 0),
-    normalizeWorker({ name: "rig-backup", hashrate: 29100000, avg10m: 28400000, avg1h: 27600000, avg24h: 26100000, validShares: 1282, invalidShares: 3 }, 1),
-    normalizeWorker({ name: "gpu-rig-3", hashrate: 0, avg10m: 11800000, avg1h: 14900000, avg24h: 19100000, status: "offline", validShares: 642, invalidShares: 6 }, 2),
+    { name: `${address.slice(2, 6)}-alpha`, miner: address, hashrate: 1.45e13, online: true, lastSeenAt: Date.now() - 1000 * 55 },
+    { name: `${address.slice(2, 6)}-beta`, miner: address, hashrate: 1.16e13, online: true, lastSeenAt: Date.now() - 1000 * 120 },
+    { name: `${address.slice(2, 6)}-gamma`, miner: address, hashrate: 8.7e12, online: seed % 3 !== 0, lastSeenAt: Date.now() - 1000 * 350 },
   ];
-  const payments = buildMockPayments(address).filter((item) => item.address.toLowerCase() === address.toLowerCase()).slice(0, 5);
-  const blocks = buildMockBlocks().filter((block, index) => index % 6 === 0).slice(0, 3).map((block) => ({ ...block, miner: address }));
-  return normalizeMiner({
+  return {
+    address,
+    currentHashrate: workers.reduce((sum, item) => sum + item.hashrate, 0),
+    avg10m: 3.42e13,
+    avg1h: 3.18e13,
+    avg24h: 2.95e13,
+    pending: 6.8421,
+    totalPaid: 194.2264,
+    lastPaymentAt: payments[0]?.createdAt,
+    validShares: 184422,
+    invalidShares: 943,
+    blocksFound: blocks.length || 2,
     workers,
     payments,
     blocks,
-    pendingBalance: 3.44,
-    totalPaid: 86.12,
-    lastPaymentAmount: payments[0]?.amount || 3.28,
-    lastPaymentAt: payments[0]?.createdAt || Date.now() - 7200000,
-    blocksFound: 4,
-    payoutProgressPercent: 69,
-  }, address);
+  };
+}
+
+function fallbackSnapshot(address?: string): PoolSnapshot {
+  const minerAddress = address || DEFAULT_FEE_WALLET;
+  const seed = shortHash(minerAddress + new Date().toISOString().slice(0, 13));
+  const overview: PoolOverview = {
+    poolStatus: "online",
+    nodeStatus: "synced",
+    feePercent: DEFAULT_FEE_PERCENT,
+    feeWallet: DEFAULT_FEE_WALLET,
+    minPayout: DEFAULT_MIN_PAYOUT,
+    currentHeight: 1286400 + (seed % 100),
+    poolHashrate: 3.58e14,
+    networkHashrate: 8.97e15,
+    difficulty: 4.28e15,
+    activeMiners: 184,
+    activeWorkers: 642,
+    pplnsPort: DEFAULT_PPLNS_PORT,
+    soloPort: DEFAULT_SOLO_PORT,
+    tlsPort: DEFAULT_TLS_PORT,
+    stratumHost: DEFAULT_STRATUM_HOST,
+    trend: makeTrend(seed),
+  };
+  return {
+    overview,
+    blocks: fallbackBlocks(seed),
+    payments: fallbackPayments(seed, minerAddress),
+    topMiners: fallbackTopMiners(seed),
+    topWorkers: fallbackTopWorkers(seed),
+    miner: address ? fallbackMiner(seed, address) : null,
+  };
+}
+
+async function safeJson(url: string) {
+  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
 }
 
 export async function fetchPoolSnapshot(address?: string): Promise<PoolSnapshot> {
+  if (!DEFAULT_API_BASE) return fallbackSnapshot(address);
   try {
-    const [overviewRaw, blocksRaw, paymentsRaw, topMinersRaw, topWorkersRaw, minerRaw, feePaymentsRaw] = await Promise.all([
-      readJson("/overview"),
-      readJson("/blocks"),
-      readJson("/payments"),
-      readJson("/top-miners"),
-      readJson("/top-workers").catch(() => []),
-      address ? readJson(`/miner/${address}`) : Promise.resolve(null),
-      readJson("/fee-wallet/payments").catch(() => []),
+    const [overview, blocks, payments, topMiners, topWorkers, miner] = await Promise.all([
+      safeJson(`${DEFAULT_API_BASE}/api/pool/overview`),
+      safeJson(`${DEFAULT_API_BASE}/api/pool/blocks`),
+      safeJson(`${DEFAULT_API_BASE}/api/pool/payments`),
+      safeJson(`${DEFAULT_API_BASE}/api/pool/top-miners`),
+      safeJson(`${DEFAULT_API_BASE}/api/pool/top-workers`),
+      address ? safeJson(`${DEFAULT_API_BASE}/api/pool/miner/${address}`) : Promise.resolve(null),
     ]);
-
-    const overview = normalizeOverview(overviewRaw);
-    const blocks = ensureArray<any>(blocksRaw).map(normalizeBlock);
-    const payments = ensureArray<any>(paymentsRaw).map(normalizePayment);
-    const topMiners = ensureArray<any>(topMinersRaw).map(normalizeTopMiner);
-    const topWorkers = ensureArray<any>(topWorkersRaw).map(normalizeTopWorker);
-    const miner = address ? normalizeMiner(minerRaw || {}, address) : null;
-    const feePayments = ensureArray<any>(feePaymentsRaw).map((item, index) => normalizePayment({ ...item, isFeeWallet: true }, index));
-
-    return {
-      overview,
-      blocks,
-      payments,
-      topMiners,
-      topWorkers,
-      miner,
-      transparency: {
-        walletAddress: overview.feeWalletAddress,
-        feePercent: overview.feeWalletPercent,
-        payments: feePayments.length ? feePayments : payments.filter((item) => item.isFeeWallet || item.address.toLowerCase() === overview.feeWalletAddress.toLowerCase()).slice(0, 6),
-        blocks: blocks.filter((block) => block.miner.toLowerCase() === overview.feeWalletAddress.toLowerCase()).slice(0, 4),
-      },
-      fetchedAt: Date.now(),
-    };
+    return { overview, blocks, payments, topMiners, topWorkers, miner } as PoolSnapshot;
   } catch {
-    const overview = buildMockOverview();
-    const blocks = buildMockBlocks();
-    const payments = buildMockPayments(address);
-    return {
-      overview,
-      blocks,
-      payments,
-      topMiners: buildMockTopMiners(),
-      topWorkers: buildMockTopWorkers(),
-      miner: address ? buildMockMiner(address) : null,
-      transparency: {
-        walletAddress: overview.feeWalletAddress,
-        feePercent: overview.feeWalletPercent,
-        payments: payments.filter((item) => item.isFeeWallet || item.address.toLowerCase() === overview.feeWalletAddress.toLowerCase()).slice(0, 6),
-        blocks: blocks.filter((block) => block.miner.toLowerCase() === overview.feeWalletAddress.toLowerCase()).slice(0, 4),
-      },
-      fetchedAt: Date.now(),
-    };
+    return fallbackSnapshot(address);
   }
 }
 
 export function formatHashrate(value: number) {
-  if (value >= 1e15) return `${(value / 1e15).toFixed(2)} PH/s`;
-  if (value >= 1e12) return `${(value / 1e12).toFixed(2)} TH/s`;
-  if (value >= 1e9) return `${(value / 1e9).toFixed(2)} GH/s`;
-  if (value >= 1e6) return `${(value / 1e6).toFixed(2)} MH/s`;
-  if (value >= 1e3) return `${(value / 1e3).toFixed(2)} KH/s`;
-  return `${value.toFixed(0)} H/s`;
+  if (!Number.isFinite(value) || value <= 0) return "0 H/s";
+  const units = ["H/s", "KH/s", "MH/s", "GH/s", "TH/s", "PH/s", "EH/s"];
+  let unit = 0;
+  let current = value;
+  while (current >= 1000 && unit < units.length - 1) {
+    current /= 1000;
+    unit += 1;
+  }
+  return `${current >= 100 ? current.toFixed(0) : current >= 10 ? current.toFixed(1) : current.toFixed(2)} ${units[unit]}`;
 }
 
-export function formatCoin(value: number) {
-  return `${value.toFixed(4)} INRI`;
+export function formatINRI(value: number) {
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI`;
 }
 
-export function formatPercent(value: number) {
-  return `${value.toFixed(2)}%`;
+export function timeAgo(ts?: number) {
+  if (!ts) return "—";
+  const diff = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export function formatDifficulty(value: number) {
-  if (value >= 1e12) return `${(value / 1e12).toFixed(2)} T`;
-  if (value >= 1e9) return `${(value / 1e9).toFixed(2)} B`;
-  if (value >= 1e6) return `${(value / 1e6).toFixed(2)} M`;
-  return value.toFixed(0);
+export function shortAddress(address?: string) {
+  if (!address) return "—";
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-export function formatRelativeTime(timestamp: number) {
-  const diff = Date.now() - timestamp;
-  const minutes = Math.max(1, Math.floor(diff / 60000));
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+export function poolTxUrl(hash?: string) {
+  if (!hash) return "";
+  return `${DEFAULT_EXPLORER_BASE.replace(/\/$/, "")}/tx/${hash}`;
 }
 
-export function getBlockExplorerUrl(block: PoolBlock) {
-  return block.explorerUrl || `${DEFAULT_EXPLORER}/block/${block.height}`;
+export function poolAddressUrl(address?: string) {
+  if (!address) return "";
+  return `${DEFAULT_EXPLORER_BASE.replace(/\/$/, "")}/address/${address}`;
 }
 
-export function getTxExplorerUrl(payment: PoolPayment) {
-  return payment.txUrl || `${DEFAULT_EXPLORER}/tx/${payment.txHash}`;
+export function payoutProgress(minPending: number, pending: number) {
+  if (!minPending || minPending <= 0) return 1;
+  return Math.max(0, Math.min(1, pending / minPending));
 }
 
-export function buildMinerCommand(mode: PoolMode, address: string, workerName: string) {
-  const port = mode === "solo" ? DEFAULT_SOLO_PORT : DEFAULT_PPLNS_PORT;
-  const user = workerName ? `${address}.${workerName}` : address;
-  return `stratum+tcp://${DEFAULT_STRATUM_HOST}:${port} -u ${user} -p x`;
+export function getPoolMeta() {
+  const network = getStoredNetwork();
+  return {
+    feeWallet: DEFAULT_FEE_WALLET,
+    feePercent: DEFAULT_FEE_PERCENT,
+    apiBase: DEFAULT_API_BASE,
+    explorerBase: DEFAULT_EXPLORER_BASE,
+    host: DEFAULT_STRATUM_HOST,
+    pplnsPort: DEFAULT_PPLNS_PORT,
+    soloPort: DEFAULT_SOLO_PORT,
+    tlsPort: DEFAULT_TLS_PORT,
+    minPayout: DEFAULT_MIN_PAYOUT,
+    network,
+  };
 }

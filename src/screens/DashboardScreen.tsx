@@ -114,9 +114,12 @@ export default function DashboardScreen({ setTab, theme = "dark", lang = "en", a
         <div className="wallet-home-actions-grid wallet-home-actions-grid-single">
           <ActionButton onClick={() => setTab("send")} theme={theme} tone="primary" compact>{tr(lang, "dashboard_send")}</ActionButton>
           <ActionButton onClick={() => setTab("receive")} theme={theme} compact>{tr(lang, "dashboard_receive")}</ActionButton>
-          <ActionButton onClick={openWalletConnect} theme={theme} compact>⌁ WalletConnect</ActionButton>
+          <ActionButton onClick={() => setTab("pool")} theme={theme} compact>Pool</ActionButton>
           <ActionButton onClick={() => setTab("p2p")} theme={theme} tone="ghost" compact>P2P</ActionButton>
-          <ActionButton onClick={() => setTab("pool")} theme={theme} tone="ghost" compact>Pool</ActionButton>
+        </div>
+
+        <div className="wallet-action-row" style={{ marginTop: -4 }}>
+          <ActionButton onClick={openWalletConnect} theme={theme} compact tone="ghost">⌁ WalletConnect</ActionButton>
         </div>
 
         {canInstall ? (
