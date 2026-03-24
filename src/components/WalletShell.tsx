@@ -694,7 +694,7 @@ export default function WalletShell() {
         return <P2PScreen theme={theme} lang={lang} setTab={setTab as any} address={address} privateKey={privateKey} />;
 
       case "pool":
-        return <PoolScreen theme={theme} lang={lang} />;
+        return <PoolScreen theme={theme} lang={lang} address={address} />;
 
       case "settings":
         return (
