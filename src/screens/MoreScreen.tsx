@@ -14,7 +14,7 @@ const groups = [
       { id: "swap", title: "Swap", subtitle: "Token exchange flow", icon: "⇄" },
       { id: "bridge", title: "Bridge", subtitle: "Move assets across chains", icon: "⤴" },
       { id: "p2p", title: "P2P", subtitle: "Direct peer-to-peer trade flow", icon: "⇆" },
-      { id: "pool", title: "Pool", subtitle: "Real-time mining and payout panel", icon: "◈" },
+      { id: "pool", title: "Pool", subtitle: "Real-time INRI pool telemetry and My Mining", icon: "◈" },
     ],
   },
   {
