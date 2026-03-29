@@ -102,7 +102,6 @@ export default function WalletShell() {
   const [wcProposal, setWcProposal] = useState<any | null>(null);
   const [wcRequest, setWcRequest] = useState<any | null>(null);
   const [wcApproving, setWcApproving] = useState(false);
-  const [resumeFixActive, setResumeFixActive] = useState(false);
   const [resumeKey, setResumeKey] = useState(0);
 
   const t = {
@@ -199,6 +198,29 @@ export default function WalletShell() {
   }, [theme, lang]);
 
   useEffect(() => {
+    const bumpResume = () => {
+      if (document.visibilityState === "hidden") return;
+      window.setTimeout(() => {
+        setResumeKey((current) => current + 1);
+      }, 120);
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") bumpResume();
+    };
+
+    window.addEventListener("pageshow", bumpResume);
+    window.addEventListener("focus", bumpResume);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      window.removeEventListener("pageshow", bumpResume);
+      window.removeEventListener("focus", bumpResume);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
+  useEffect(() => {
     const sync = () => {
       const state = wcStoreGetState();
       setWcProposal(state.proposal);
@@ -207,39 +229,6 @@ export default function WalletShell() {
 
     sync();
     return wcStoreSubscribe(sync);
-  }, []);
-
-  useEffect(() => {
-    let timer: number | null = null;
-
-    const triggerResumeFix = () => {
-      window.dispatchEvent(new Event("wallet-force-close-overlays"));
-      setResumeFixActive(true);
-      setResumeKey((prev) => prev + 1);
-
-      if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(() => setResumeFixActive(false), 520);
-    };
-
-    const handleVisibility = () => {
-      if (!document.hidden) triggerResumeFix();
-    };
-
-    const handlePageShow = () => triggerResumeFix();
-    const handleFocus = () => {
-      if (document.visibilityState === "visible") triggerResumeFix();
-    };
-
-    window.addEventListener("pageshow", handlePageShow);
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      window.removeEventListener("pageshow", handlePageShow);
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibility);
-      if (timer) window.clearTimeout(timer);
-    };
   }, []);
 
   function ensureFavicon() {
@@ -749,6 +738,7 @@ export default function WalletShell() {
 
   if (view === "auth") {
     return (
+      <div key={`auth-${resumeKey}`}>
       <AuthPanel
         theme={theme}
         baseUrl={BASE}
@@ -796,13 +786,14 @@ export default function WalletShell() {
         onCreate={createWallet}
         onImport={importWallet}
       />
+      </div>
     );
   }
 
   return (
     <div
-      key={resumeKey}
-      className={`wallet-page-shell${resumeFixActive ? " wallet-resume-fix" : ""}`}
+      key={`wallet-${resumeKey}`}
+      className="wallet-page-shell"
       style={{
         background:
           theme === "light"
