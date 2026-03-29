@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import ActionButton from "../components/ActionButton";
 import LogoImage from "../components/LogoImage";
@@ -8,27 +8,31 @@ import StatusPill from "../components/StatusPill";
 import { getStoredNetwork } from "../lib/network";
 import {
   claimAllInriTx,
+  explainStakingError,
   formatDuration,
   formatInri,
   formatMultiplierFromBps,
   formatPercentFromBps,
   formatTimestamp,
+  getPlanFillPercent,
   INRI_STAKING_ADDRESS,
   loadStakingOverview,
+  MAX_PER_PLAN_INRI,
+  MIN_FIRST_STAKE_INRI,
   restakeRewardsTx,
   shortHash,
   stakeInriTx,
   stakingAddressUrl,
   stakingTxUrl,
+  summarizeStaking,
   timeUntilLabel,
   unstakeInriTx,
+  waitForStakingSync,
   type StakingOverview,
 } from "../lib/staking";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const ACTIVITY_KEY = "wallet_activity_demo";
-const MIN_FIRST_STAKE_INRI = 100;
-const MAX_PER_PLAN_INRI = 10000;
 
 type PendingAction = null | { type: "stake" | "claim" | "restake" | "unstake"; planId?: number };
 
@@ -50,9 +54,9 @@ export default function StakingScreen({
   const [selectedPlanId, setSelectedPlanId] = useState(0);
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [lastTxHash, setLastTxHash] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
 
   useEffect(() => {
@@ -61,53 +65,67 @@ export default function StakingScreen({
     return () => window.removeEventListener("wallet-network-updated", sync as EventListener);
   }, []);
 
+  const hasWallet = !!address && ethers.isAddress(address);
+  const wrongNetwork = networkKey !== "inri";
+  const canWrite = hasWallet && !!privateKey && !wrongNetwork;
+
+  const refreshOverview = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setLoading(true);
+      const next = await loadStakingOverview(address);
+      setOverview(next);
+      return next;
+    } catch (error: any) {
+      setMessage(explainStakingError(error, lang) || t.loadFailed);
+      return null;
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [address, lang, t.loadFailed]);
+
   useEffect(() => {
-    let alive = true;
+    let active = true;
 
     const load = async (silent = false) => {
-      try {
-        if (!silent) setMessage("");
-        const next = await loadStakingOverview(address);
-        if (!alive) return;
-        setOverview(next);
-      } catch (err: any) {
-        if (!alive) return;
-        setMessage(err?.shortMessage || err?.message || t.loadFailed);
-      }
+      const next = await refreshOverview(silent);
+      if (!active || !next) return;
     };
 
-    load();
-    const id = window.setInterval(() => load(true), 8000);
+    load(false);
+    const intervalId = window.setInterval(() => {
+      load(true);
+    }, 8000);
+
     return () => {
-      alive = false;
-      window.clearInterval(id);
+      active = false;
+      window.clearInterval(intervalId);
     };
-  }, [address, refreshKey, t.loadFailed]);
+  }, [refreshOverview]);
 
   useEffect(() => {
     if (!overview?.positions?.length) return;
-    const activePositions = overview.positions.filter((item) => item.principal > 0n);
+    const activePositions = overview.positions.filter((position) => position.principal > 0n);
     if (!activePositions.length) return;
 
-    const currentSelected = overview.positions.find((item) => item.id === selectedPlanId);
-    if (currentSelected && currentSelected.principal > 0n) return;
+    const current = overview.positions.find((position) => position.id === selectedPlanId);
+    if (current && current.principal > 0n) return;
 
-    const preferred = [...activePositions].sort((a, b) => (b.principal === a.principal ? 0 : b.principal > a.principal ? 1 : -1))[0];
-    if (preferred) setSelectedPlanId(preferred.id);
+    const main = [...activePositions].sort((a, b) => (b.principal > a.principal ? 1 : -1))[0];
+    if (main) setSelectedPlanId(main.id);
   }, [overview, selectedPlanId]);
 
-  const selectedPlan = useMemo(() => overview?.plans.find((item) => item.id === selectedPlanId) || overview?.plans[0] || null, [overview, selectedPlanId]);
-  const selectedPosition = useMemo(() => overview?.positions.find((item) => item.id === selectedPlanId) || null, [overview, selectedPlanId]);
-  const wrongNetwork = networkKey !== "inri";
-  const hasWallet = !!address && ethers.isAddress(address);
-  const canWrite = hasWallet && !!privateKey && !wrongNetwork;
-  const numericAmount = Number(amount || "0");
-  const validAmount = Number.isFinite(numericAmount) && numericAmount > 0;
+  const selectedPlan = useMemo(() => overview?.plans.find((plan) => plan.id === selectedPlanId) || overview?.plans[0] || null, [overview, selectedPlanId]);
+  const selectedPosition = useMemo(() => overview?.positions.find((position) => position.id === selectedPlanId) || null, [overview, selectedPlanId]);
+  const summary = useMemo(() => summarizeStaking(overview), [overview]);
   const walletBalanceInri = Number(overview ? ethers.formatEther(overview.walletBalance) : 0);
   const selectedPrincipalInri = Number(selectedPosition ? ethers.formatEther(selectedPosition.principal) : 0);
   const planRemainingInri = Math.max(0, MAX_PER_PLAN_INRI - selectedPrincipalInri);
   const minimumForSelectedPlan = selectedPosition && selectedPosition.principal > 0n ? 0 : MIN_FIRST_STAKE_INRI;
-  const maxStakeNowInri = Math.max(0, Math.min(walletBalanceInri, planRemainingInri));
+  const maxStakeNowInri = Math.max(0, Math.min(planRemainingInri, Math.max(0, walletBalanceInri - 0.02)));
+  const numericAmount = Number(amount || "0");
+  const validAmount = Number.isFinite(numericAmount) && numericAmount > 0;
+  const canClaim = !!overview?.pendingRewards && overview.pendingRewards > 0n && !!overview?.canClaim && canWrite;
+
   const validationMessage = !validAmount
     ? ""
     : numericAmount > walletBalanceInri
@@ -117,24 +135,17 @@ export default function StakingScreen({
         : numericAmount < minimumForSelectedPlan
           ? t.minimumFirstStake(MIN_FIRST_STAKE_INRI)
           : "";
-  const canStake = !!overview?.started && !overview?.newStakesPaused && !overview?.emergencyExitEnabled && validAmount && !validationMessage && numericAmount <= walletBalanceInri && numericAmount <= planRemainingInri && numericAmount >= minimumForSelectedPlan && canWrite;
-  const canClaim = !!overview?.pendingRewards && overview.pendingRewards > 0n && !!overview?.canClaim && canWrite;
-  const totalStaked = useMemo(() => (overview?.positions || []).reduce((sum, item) => sum + item.principal, 0n), [overview]);
-  const activePlansCount = useMemo(() => (overview?.positions || []).filter((item) => item.principal > 0n).length, [overview]);
-  const primaryPosition = useMemo(() => {
-    const active = (overview?.positions || []).filter((item) => item.principal > 0n);
-    if (!active.length) return null;
-    return [...active].sort((a, b) => (b.principal === a.principal ? 0 : b.principal > a.principal ? 1 : -1))[0];
-  }, [overview]);
-  const primaryPlanLabel = primaryPosition ? t.planName(Number(primaryPosition.id) + 1) : t.noActivePlan;
 
-  function triggerRefresh() {
-    setRefreshKey((value) => value + 1);
-  }
+  const canStake = !!overview?.started
+    && !overview?.newStakesPaused
+    && !overview?.emergencyExitEnabled
+    && validAmount
+    && !validationMessage
+    && canWrite;
 
   function showInfo(text: string) {
     setMessage(text);
-    window.setTimeout(() => setMessage(""), 3600);
+    window.setTimeout(() => setMessage(""), 3800);
   }
 
   function saveActivity(entry: any) {
@@ -157,15 +168,11 @@ export default function StakingScreen({
       setAmount("");
       return;
     }
-    setAmount(maxStakeNowInri.toFixed(4).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1"));
+    setAmount(maxStakeNowInri.toFixed(4).replace(/\.?0+$/, ""));
   }
 
   function ensureWriteAllowed() {
-    if (!hasWallet) {
-      showInfo(t.unlockRequired);
-      return false;
-    }
-    if (!privateKey) {
+    if (!hasWallet || !privateKey) {
       showInfo(t.unlockRequired);
       return false;
     }
@@ -176,8 +183,18 @@ export default function StakingScreen({
     return true;
   }
 
+  async function syncAfterTx(previous: StakingOverview | null) {
+    const synced = await waitForStakingSync(address, previous);
+    if (synced) {
+      setOverview(synced);
+    } else {
+      await refreshOverview(true);
+    }
+  }
+
   async function runStake() {
-    if (!ensureWriteAllowed() || !selectedPlan || !validAmount) return;
+    if (!ensureWriteAllowed() || !selectedPlan || !canStake) return;
+    const previous = overview;
     try {
       setBusy(true);
       setPendingAction({ type: "stake", planId: selectedPlan.id });
@@ -202,10 +219,10 @@ export default function StakingScreen({
         priority: "normal",
       });
       setAmount("");
-      setMessage(`${t.txSent} ${shortHash(result.hash)}`);
-      triggerRefresh();
-    } catch (err: any) {
-      setMessage(err?.shortMessage || err?.message || t.txFailed);
+      setMessage(`${t.txSent} ${shortHash(result.hash)} • ${t.syncing}`);
+      await syncAfterTx(previous);
+    } catch (error: any) {
+      setMessage(explainStakingError(error, lang));
     } finally {
       setBusy(false);
       setPendingAction(null);
@@ -214,6 +231,7 @@ export default function StakingScreen({
 
   async function runClaim() {
     if (!ensureWriteAllowed()) return;
+    const previous = overview;
     try {
       setBusy(true);
       setPendingAction({ type: "claim" });
@@ -237,10 +255,10 @@ export default function StakingScreen({
         feeNative: result.feeNative,
         priority: "normal",
       });
-      setMessage(`${t.txSent} ${shortHash(result.hash)}`);
-      triggerRefresh();
-    } catch (err: any) {
-      setMessage(err?.shortMessage || err?.message || t.txFailed);
+      setMessage(`${t.txSent} ${shortHash(result.hash)} • ${t.syncing}`);
+      await syncAfterTx(previous);
+    } catch (error: any) {
+      setMessage(explainStakingError(error, lang));
     } finally {
       setBusy(false);
       setPendingAction(null);
@@ -249,6 +267,7 @@ export default function StakingScreen({
 
   async function runRestake(planId: number) {
     if (!ensureWriteAllowed()) return;
+    const previous = overview;
     try {
       setBusy(true);
       setPendingAction({ type: "restake", planId });
@@ -272,10 +291,10 @@ export default function StakingScreen({
         feeNative: result.feeNative,
         priority: "normal",
       });
-      setMessage(`${t.txSent} ${shortHash(result.hash)}`);
-      triggerRefresh();
-    } catch (err: any) {
-      setMessage(err?.shortMessage || err?.message || t.txFailed);
+      setMessage(`${t.txSent} ${shortHash(result.hash)} • ${t.syncing}`);
+      await syncAfterTx(previous);
+    } catch (error: any) {
+      setMessage(explainStakingError(error, lang));
     } finally {
       setBusy(false);
       setPendingAction(null);
@@ -284,18 +303,19 @@ export default function StakingScreen({
 
   async function runUnstake(planId: number) {
     if (!ensureWriteAllowed()) return;
+    const previous = overview;
     try {
       setBusy(true);
       setPendingAction({ type: "unstake", planId });
       setMessage(t.unstakingNow);
       const result = await unstakeInriTx(privateKey, planId);
-      const planPosition = overview?.positions.find((item) => item.id === planId);
+      const position = overview?.positions.find((item) => item.id === planId);
       setLastTxHash(result.hash);
       saveActivity({
         hash: result.hash,
         method: "unstake",
         symbol: "INRI",
-        amount: planPosition ? formatInri(planPosition.principal, 6) : "0",
+        amount: position ? formatInri(position.principal, 6) : "0",
         to: address,
         from: INRI_STAKING_ADDRESS,
         createdAt: new Date().toISOString(),
@@ -308,15 +328,17 @@ export default function StakingScreen({
         feeNative: result.feeNative,
         priority: "normal",
       });
-      setMessage(`${t.txSent} ${shortHash(result.hash)}`);
-      triggerRefresh();
-    } catch (err: any) {
-      setMessage(err?.shortMessage || err?.message || t.txFailed);
+      setMessage(`${t.txSent} ${shortHash(result.hash)} • ${t.syncing}`);
+      await syncAfterTx(previous);
+    } catch (error: any) {
+      setMessage(explainStakingError(error, lang));
     } finally {
       setBusy(false);
       setPendingAction(null);
     }
   }
+
+  const mainPlanLabel = summary.mainPlanId === null ? t.none : t.planName(summary.mainPlanId + 1);
 
   return (
     <div className="wallet-screen-stack wallet-screen-mobile-tight">
@@ -340,6 +362,7 @@ export default function StakingScreen({
           subtitle={t.subtitle}
           actions={
             <div className="wallet-action-row">
+              {loading ? <StatusPill theme={theme} tone="warning">{t.loading}</StatusPill> : null}
               {overview?.started ? <StatusPill theme={theme} tone="success">{t.live}</StatusPill> : <StatusPill theme={theme} tone="warning">{t.notStarted}</StatusPill>}
               {overview?.newStakesPaused ? <StatusPill theme={theme} tone="warning">{t.paused}</StatusPill> : null}
               {overview?.emergencyExitEnabled ? <StatusPill theme={theme} tone="danger">{t.emergency}</StatusPill> : null}
@@ -363,6 +386,7 @@ export default function StakingScreen({
               </div>
               <div className="wallet-action-row" style={{ justifyContent: "flex-end" }}>
                 <ActionButton theme={theme} compact onClick={copyContract}>{t.copy}</ActionButton>
+                <ActionButton theme={theme} compact onClick={() => refreshOverview(false)}>{t.refresh}</ActionButton>
                 <a href={stakingAddressUrl()} target="_blank" rel="noreferrer" className="wallet-link-chip" style={{ minHeight: 38, padding: "9px 12px" }}>
                   {t.openContract}
                 </a>
@@ -370,19 +394,22 @@ export default function StakingScreen({
             </div>
           </div>
 
-          <div className="wallet-ui-grid-2 wallet-mobile-single-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
             <StatCard theme={theme} label={t.walletBalance} value={`${overview ? formatInri(overview.walletBalance) : "0"} INRI`} />
+            <StatCard theme={theme} label={t.totalStaked} value={`${formatInri(summary.totalStaked)} INRI`} />
+            <StatCard theme={theme} label={t.activePlansLabel} value={String(summary.activePlans)} />
+            <StatCard theme={theme} label={t.mainPlanLabel} value={mainPlanLabel} />
             <StatCard theme={theme} label={t.pendingRewards} value={`${overview ? formatInri(overview.pendingRewards) : "0"} INRI`} />
+            <StatCard theme={theme} label={t.planPendingLabel} value={`${formatInri(summary.totalPlanPending, 6)} INRI`} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
             <StatCard theme={theme} label={t.contractBalance} value={`${overview ? formatInri(overview.currentContractBalance) : "0"} INRI`} />
             <StatCard theme={theme} label={t.emissionDay} value={`${overview ? formatInri(overview.emissionPerDayCurrentEra) : "0"} INRI`} />
             <StatCard theme={theme} label={t.baseRewardsRemaining} value={`${overview ? formatInri(overview.baseRewardsRemaining) : "0"} INRI`} />
             <StatCard theme={theme} label={t.nextClaim} value={overview ? (overview.canClaim ? t.readyNow : formatTimestamp(overview.nextClaimAt)) : "-"} />
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-            <StatCard theme={theme} label={t.totalStakedLabel} value={`${formatInri(totalStaked)} INRI`} />
-            <StatCard theme={theme} label={t.activePlansLabel} value={String(activePlansCount)} />
-            <StatCard theme={theme} label={t.mainPlanLabel} value={primaryPlanLabel} />
+            <StatCard theme={theme} label={t.readSource} value={overview ? `${overview.readSource}` : "-"} />
+            <StatCard theme={theme} label={t.readBlock} value={overview ? `#${overview.readBlockNumber.toLocaleString()}` : "-"} />
           </div>
         </div>
       </ScreenCard>
@@ -396,26 +423,9 @@ export default function StakingScreen({
         </ScreenCard>
       ) : null}
 
-      {!hasWallet ? (
-        <ScreenCard theme={theme}>
-          <SectionTitle theme={theme} title={t.readOnlyTitle} subtitle={t.readOnlySubtitle} />
-        </ScreenCard>
-      ) : null}
-
       <ScreenCard theme={theme}>
         <SectionTitle theme={theme} title={t.depositTitle} subtitle={t.depositSubtitle} />
         <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-            <div className="wallet-ui-subtle">{t.amountHelp}</div>
-            <div className="wallet-action-row">
-              <ActionButton theme={theme} compact onClick={setMaxAmount} disabled={!overview || maxStakeNowInri <= 0}>{t.max}</ActionButton>
-              <ActionButton theme={theme} compact onClick={triggerRefresh}>{t.refresh}</ActionButton>
-              <ActionButton theme={theme} compact tone="primary" onClick={runClaim} disabled={!canClaim || busy}>
-                {busy && pendingAction?.type === "claim" ? t.processing : t.claimAll}
-              </ActionButton>
-            </div>
-          </div>
-
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <InfoRow theme={theme} label={t.minimumLabel} value={minimumForSelectedPlan > 0 ? `${minimumForSelectedPlan} INRI` : t.noMinimumNow} />
             <InfoRow theme={theme} label={t.maximumLabel} value={`${MAX_PER_PLAN_INRI.toLocaleString()} INRI`} />
@@ -436,43 +446,48 @@ export default function StakingScreen({
             </div>
           </div>
 
-          {selectedPlan ? (
-            <div style={{ border: `1px solid ${validationMessage ? "#ef4444" : isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 18, padding: 14, background: isLight ? "#f8fafc" : "#0b1120", display: "grid", gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff", fontSize: 18 }}>{t.selectedPlan(Number(selectedPlan.id) + 1)}</div>
-                  <div className="wallet-ui-subtle">{t.planLine(formatDuration(selectedPlan.duration), formatMultiplierFromBps(selectedPlan.multiplierBps), formatPercentFromBps(selectedPlan.penaltyBps))}</div>
+          <div className="wallet-action-row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <ActionButton theme={theme} compact onClick={setMaxAmount} disabled={!overview || maxStakeNowInri <= 0}>{t.max}</ActionButton>
+            <ActionButton theme={theme} compact tone="primary" onClick={runStake} disabled={!canStake || busy}>
+              {busy && pendingAction?.type === "stake" ? t.processing : t.stakeNow}
+            </ActionButton>
+            <ActionButton theme={theme} compact onClick={runClaim} disabled={!canClaim || busy}>
+              {busy && pendingAction?.type === "claim" ? t.processing : t.claimAll}
+            </ActionButton>
+          </div>
+
+          <div style={{ border: `1px solid ${validationMessage ? "#ef4444" : isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 18, padding: 14, background: isLight ? "#f8fafc" : "#0b1120", display: "grid", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff", fontSize: 18 }}>{selectedPlan ? t.selectedPlan(selectedPlan.id + 1) : t.none}</div>
+                <div className="wallet-ui-subtle">
+                  {selectedPlan ? t.planLine(formatDuration(selectedPlan.duration), formatMultiplierFromBps(selectedPlan.multiplierBps), formatPercentFromBps(selectedPlan.penaltyBps)) : "-"}
                 </div>
-                <ActionButton theme={theme} tone="primary" onClick={runStake} disabled={!canStake || busy}>
-                  {busy && pendingAction?.type === "stake" ? t.processing : t.stakeNow}
-                </ActionButton>
               </div>
-
-              <div className="wallet-action-row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <StatusPill theme={theme} tone="primary">{t.minimumChip(minimumForSelectedPlan > 0 ? `${minimumForSelectedPlan} INRI` : t.noMinimumShort)}</StatusPill>
-                <StatusPill theme={theme} tone="warning">{t.maximumChip(`${MAX_PER_PLAN_INRI.toLocaleString()} INRI`)}</StatusPill>
-                <StatusPill theme={theme} tone="success">{t.remainingChip(`${planRemainingInri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI`)}</StatusPill>
-                <StatusPill theme={theme} tone="neutral">{t.currentInPlanChip(`${selectedPosition ? formatInri(selectedPosition.principal) : "0"} INRI`)}</StatusPill>
-              </div>
-
-              <div className="wallet-ui-subtle">{t.gasHint}</div>
-
-              {validationMessage ? (
-                <div style={{ color: "#fca5a5", fontWeight: 800 }}>{validationMessage}</div>
-              ) : null}
+              <StatusPill theme={theme} tone="primary">{t.mainPlanSmall(mainPlanLabel)}</StatusPill>
             </div>
-          ) : null}
+
+            <div className="wallet-action-row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <StatusPill theme={theme} tone="warning">{t.minimumChip(minimumForSelectedPlan > 0 ? `${minimumForSelectedPlan} INRI` : t.noMinimumShort)}</StatusPill>
+              <StatusPill theme={theme} tone="primary">{t.maximumChip(`${MAX_PER_PLAN_INRI.toLocaleString()} INRI`)}</StatusPill>
+              <StatusPill theme={theme} tone="success">{t.remainingChip(`${planRemainingInri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI`)}</StatusPill>
+            </div>
+
+            <div className="wallet-ui-subtle">{t.gasHint}</div>
+            {validationMessage ? <div style={{ color: "#fca5a5", fontWeight: 800 }}>{validationMessage}</div> : null}
+          </div>
         </div>
       </ScreenCard>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 12 }}>
         {(overview?.plans || []).map((plan) => {
-          const position = overview?.positions.find((item) => item.id === plan.id);
+          const position = overview?.positions.find((item) => item.id === plan.id) || null;
           const isSelected = selectedPlanId === plan.id;
-          const stakeBusy = busy && pendingAction?.type === "stake" && pendingAction?.planId === plan.id;
+          const hasPrincipal = !!position && position.principal > 0n;
+          const fillPercent = getPlanFillPercent(position);
           const restakeBusy = busy && pendingAction?.type === "restake" && pendingAction?.planId === plan.id;
           const unstakeBusy = busy && pendingAction?.type === "unstake" && pendingAction?.planId === plan.id;
-          const hasPrincipal = !!position && position.principal > 0n;
+
           return (
             <ScreenCard
               key={plan.id}
@@ -485,10 +500,10 @@ export default function StakingScreen({
               <div style={{ display: "grid", gap: 12 }}>
                 <div className="wallet-section-head">
                   <div>
-                    <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff", fontSize: 21 }}>{t.planName(Number(plan.id) + 1)}</div>
+                    <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff", fontSize: 21 }}>{t.planName(plan.id + 1)}</div>
                     <div className="wallet-ui-subtle">{t.planDuration(formatDuration(plan.duration))}</div>
                   </div>
-                  {isSelected ? <StatusPill theme={theme} tone="primary">{t.selected}</StatusPill> : null}
+                  {hasPrincipal ? <StatusPill theme={theme} tone="success">{t.active}</StatusPill> : <StatusPill theme={theme} tone="warning">{t.empty}</StatusPill>}
                 </div>
 
                 <div style={{ display: "grid", gap: 8 }}>
@@ -500,7 +515,17 @@ export default function StakingScreen({
                   <InfoRow theme={theme} label={t.timeLeft} value={position?.unlockAt ? timeUntilLabel(position.unlockAt, !!overview?.emergencyExitEnabled) : "-"} />
                 </div>
 
-                <div className="wallet-action-row">
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, color: isLight ? "#64748b" : "#94a3b8" }}>
+                    <span>{t.stakedNow}</span>
+                    <span>{fillPercent.toFixed(fillPercent >= 10 ? 0 : 1)}%</span>
+                  </div>
+                  <div style={{ height: 9, borderRadius: 999, background: isLight ? "#e2e8f0" : "#172033", overflow: "hidden" }}>
+                    <div style={{ width: `${fillPercent}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg,#33c3ff 0%,#5a7cff 100%)" }} />
+                  </div>
+                </div>
+
+                <div className="wallet-action-row" style={{ gap: 8, flexWrap: "wrap" }}>
                   <ActionButton theme={theme} onClick={() => setSelectedPlanId(plan.id)} disabled={isSelected}>{isSelected ? t.selected : t.useForStake}</ActionButton>
                   <ActionButton theme={theme} onClick={() => runRestake(plan.id)} disabled={!canWrite || !overview?.pendingRewards || overview.pendingRewards <= 0n || busy}>
                     {restakeBusy ? t.processing : t.restakeHere}
@@ -548,168 +573,178 @@ function InfoRow({ theme, label, value, mono = false }: { theme: "dark" | "light
 }
 
 function getText(lang: string) {
-  const pt = String(lang || "").toLowerCase().startsWith("pt");
+  const pt = lang.toLowerCase().startsWith("pt");
   if (pt) {
     return {
       title: "Staking INRI",
-      subtitle: "Contrato oficial de staking conectado dentro da carteira.",
-      live: "Ao vivo",
-      notStarted: "Não iniciado",
-      paused: "Novos stakes pausados",
-      emergency: "Saída de emergência",
-      era: (n: number) => `Era ${n || 0}`,
-      contractLabel: "Contrato oficial",
+      subtitle: "Leitura mais forte do stake já feito e atualização depois da transação.",
+      live: "AO VIVO",
+      loading: "CARREGANDO",
+      notStarted: "NÃO INICIADO",
+      paused: "PAUSADO",
+      emergency: "EMERGÊNCIA",
+      era: (value: number) => `ERA ${value || 0}`,
+      contractLabel: "Contrato de staking",
       copy: "Copiar",
-      openContract: "Abrir contrato",
+      refresh: "Atualizar",
+      openContract: "Contrato",
+      openExplorer: "Explorer",
       walletBalance: "Saldo da wallet",
-      pendingRewards: "Recompensas pendentes",
+      totalStaked: "Seu total em staking",
+      activePlansLabel: "Planos ativos",
+      mainPlanLabel: "Plano principal",
+      pendingRewards: "Rewards prontos",
+      planPendingLabel: "Pendentes nos planos",
       contractBalance: "Saldo do contrato",
       emissionDay: "Emissão por dia",
-      baseRewardsRemaining: "Base restante",
+      baseRewardsRemaining: "Rewards restantes",
       nextClaim: "Próximo claim",
-    totalStakedLabel: "Seu total em staking",
-    activePlansLabel: "Planos ativos",
-    mainPlanLabel: "Plano principal",
+      readSource: "Leitura RPC",
+      readBlock: "Bloco lido",
       readyNow: "Liberado agora",
-      switchWarningTitle: "Rede errada para staking",
-      switchWarningBody: "Troque a rede ativa para INRI. A leitura do contrato continua, mas stake, claim, restake e unstake ficam bloqueados fora da INRI.",
-      readOnlyTitle: "Modo leitura",
-      readOnlySubtitle: "Desbloqueie uma wallet para stake, claim, restake e unstake direto daqui.",
-      depositTitle: "Depositar no staking",
-      depositSubtitle: "Escolha um plano, digite o valor em INRI e envie direto para o contrato.",
-      amountHelp: "Veja abaixo o mínimo, o máximo e o espaço restante do plano selecionado.",
-      minimumLabel: "Mínimo neste plano",
+      switchWarningTitle: "Troque para a rede INRI",
+      switchWarningBody: "A escrita do staking só funciona com a rede INRI selecionada.",
+      depositTitle: "Entrar ou aumentar stake",
+      depositSubtitle: "O contrato exige mínimo inicial e máximo por plano.",
+      minimumLabel: "Mínimo agora",
       maximumLabel: "Máximo por plano",
       remainingLabel: "Espaço restante no plano",
       walletAvailableLabel: "Disponível na wallet",
+      amountPlaceholder: "Digite o valor em INRI",
+      max: "Max",
+      stakeNow: "Stake now",
+      claimAll: "Claim all",
+      processing: "Processando...",
+      selectedPlan: (plan: number) => `Plano ${plan}`,
+      planLine: (duration: string, mult: string, penalty: string) => `${duration} • ${mult} • multa ${penalty}`,
+      minimumChip: (value: string) => `Mínimo ${value}`,
+      maximumChip: (value: string) => `Máximo ${value}`,
+      remainingChip: (value: string) => `Restante ${value}`,
       noMinimumNow: "Sem mínimo adicional",
       noMinimumShort: "sem mínimo",
-      minimumChip: (value: string) => `Mínimo ${value}` ,
-      maximumChip: (value: string) => `Máximo ${value}` ,
-      remainingChip: (value: string) => `Restante ${value}` ,
-      gasHint: "Dica: deixe um pouco de INRI livre na wallet para a taxa da rede ao fazer stake.",
-      minimumFirstStake: (value: number) => `Primeiro depósito neste plano deve ser no mínimo ${value} INRI.`,
-      planMaxReached: (value: string) => `Esse plano só aceita mais ${value} INRI antes de atingir o máximo.`,
-      balanceTooLow: "Saldo insuficiente na wallet para esse valor.",
-      max: "Max",
-      refresh: "Atualizar",
-      claimAll: "Claim all",
-      amountPlaceholder: "0.00",
-      selectedPlan: (n: number) => `Plano ${n}`,
-      planLine: (duration: string, multiplier: string, penalty: string) => `${duration} • boost ${multiplier} • multa ${penalty}`,
-      stakeNow: "Stake agora",
-      processing: "Processando...",
+      gasHint: "O botão Max já deixa uma pequena sobra para gas.",
+      selected: "Selecionado",
+      active: "Ativo",
+      empty: "Vazio",
+      planName: (plan: number) => `Plano ${plan}`,
+      planDuration: (value: string) => `Duração ${value}`,
       multiplier: "Multiplicador",
-      earlyExitPenalty: "Multa por saída antecipada",
-      yourPrincipal: "Seu principal",
-      planPending: "Pendente deste plano",
+      earlyExitPenalty: "Multa saída antecipada",
+      yourPrincipal: "Seu stake",
+      planPending: "Pendente neste plano",
       unlockAt: "Unlock em",
       timeLeft: "Tempo restante",
-      penaltyDisabled: "Multa desativada",
-      planName: (n: number) => `Plano ${n}`,
-      planDuration: (text: string) => `Duração ${text}`,
-      selected: "Selecionado",
-      useForStake: "Usar neste plano",
+      stakedNow: "Ocupação do plano",
+      useForStake: "Usar",
       restakeHere: "Restake aqui",
       unstake: "Unstake",
       programInfoTitle: "Informações do programa",
-      programInfoSubtitle: "Dados on-chain lidos do contrato conectado na wallet.",
-      programStartedAt: "Programa começou em",
-      programEndsAt: "Programa termina em",
+      programInfoSubtitle: "Dados lidos direto do contrato.",
+      programStartedAt: "Início",
+      programEndsAt: "Fim",
       contractAddressFull: "Endereço do contrato",
-      contractCopied: "Endereço do contrato copiado.",
-      copyFailed: "Não foi possível copiar.",
-      unlockRequired: "Desbloqueie a wallet para continuar.",
-      switchToInri: "Troque para a rede INRI antes de assinar.",
+      unlockRequired: "Desbloqueie a wallet para assinar.",
+      switchToInri: "Troque para a rede INRI.",
+      contractCopied: "Contrato copiado.",
+      copyFailed: "Falha ao copiar.",
       stakingNow: "Enviando stake...",
       claimingNow: "Enviando claim...",
       restakingNow: "Enviando restake...",
       unstakingNow: "Enviando unstake...",
-      txSent: "Transação enviada:",
-      txFailed: "A transação falhou.",
-      openExplorer: "Abrir no Explorer",
-      loadFailed: "Não foi possível carregar o staking.",
+      syncing: "sincronizando staking...",
+      txSent: "Tx enviada:",
+      loadFailed: "Falha ao carregar staking.",
+      balanceTooLow: "Saldo insuficiente para esse valor.",
+      planMaxReached: (value: string) => `Esse plano só aceita mais ${value} INRI.`,
+      minimumFirstStake: (value: number) => `Primeiro stake nesse plano: mínimo de ${value} INRI.`,
+      mainPlanSmall: (value: string) => `Principal: ${value}`,
+      none: "Nenhum",
     };
   }
 
   return {
     title: "INRI Staking",
-    subtitle: "Official staking contract connected inside the wallet.",
-    live: "Live",
-    notStarted: "Not started",
-    paused: "New stakes paused",
-    emergency: "Emergency exit",
-    era: (n: number) => `Era ${n || 0}`,
-    contractLabel: "Official contract",
+    subtitle: "Stronger reading for existing stake and better post-transaction refresh.",
+    live: "LIVE",
+    loading: "LOADING",
+    notStarted: "NOT STARTED",
+    paused: "PAUSED",
+    emergency: "EMERGENCY",
+    era: (value: number) => `ERA ${value || 0}`,
+    contractLabel: "Staking contract",
     copy: "Copy",
-    openContract: "Open contract",
+    refresh: "Refresh",
+    openContract: "Contract",
+    openExplorer: "Explorer",
     walletBalance: "Wallet balance",
-    pendingRewards: "Pending rewards",
-    contractBalance: "Contract balance",
-    emissionDay: "Emission per day",
-    baseRewardsRemaining: "Base rewards left",
-    nextClaim: "Next claim",
-    totalStakedLabel: "Your total staked",
+    totalStaked: "Your total staked",
     activePlansLabel: "Active plans",
     mainPlanLabel: "Main plan",
+    pendingRewards: "Rewards ready",
+    planPendingLabel: "Pending in plans",
+    contractBalance: "Contract balance",
+    emissionDay: "Emission per day",
+    baseRewardsRemaining: "Rewards remaining",
+    nextClaim: "Next claim",
+    readSource: "Read source",
+    readBlock: "Read block",
     readyNow: "Ready now",
-    switchWarningTitle: "Wrong network for staking",
-    switchWarningBody: "Switch the active network to INRI. Contract reads still work, but stake, claim, restake and unstake are blocked outside INRI.",
-    readOnlyTitle: "Read-only mode",
-    readOnlySubtitle: "Unlock a wallet to stake, claim, restake and unstake directly from here.",
-    depositTitle: "Deposit into staking",
-    depositSubtitle: "Choose a plan, enter the INRI amount and send it directly to the contract.",
-    amountHelp: "See the minimum, maximum and remaining room for the selected plan below.",
-    minimumLabel: "Minimum on this plan",
+    switchWarningTitle: "Switch to INRI network",
+    switchWarningBody: "Staking writes only work when INRI is the selected network.",
+    depositTitle: "Enter or increase stake",
+    depositSubtitle: "The contract uses a first minimum and a max per plan.",
+    minimumLabel: "Minimum now",
     maximumLabel: "Maximum per plan",
     remainingLabel: "Remaining room on plan",
     walletAvailableLabel: "Available in wallet",
-    noMinimumNow: "No extra minimum",
-    noMinimumShort: "no minimum",
-    minimumChip: (value: string) => `Minimum ${value}` ,
-    maximumChip: (value: string) => `Maximum ${value}` ,
-    remainingChip: (value: string) => `Remaining ${value}` ,
-    gasHint: "Tip: keep a little INRI free in the wallet for network gas when staking.",
-    minimumFirstStake: (value: number) => `First deposit on this plan must be at least ${value} INRI.`,
-    planMaxReached: (value: string) => `This plan only has room for ${value} INRI before hitting the max.`,
-    balanceTooLow: "Wallet balance is too low for this amount.",
+    amountPlaceholder: "Enter amount in INRI",
     max: "Max",
-    refresh: "Refresh",
-    claimAll: "Claim all",
-    amountPlaceholder: "0.00",
-    selectedPlan: (n: number) => `Plan ${n}`,
-    planLine: (duration: string, multiplier: string, penalty: string) => `${duration} • boost ${multiplier} • penalty ${penalty}`,
     stakeNow: "Stake now",
+    claimAll: "Claim all",
     processing: "Processing...",
+    selectedPlan: (plan: number) => `Plan ${plan}`,
+    planLine: (duration: string, mult: string, penalty: string) => `${duration} • ${mult} • penalty ${penalty}`,
+    minimumChip: (value: string) => `Min ${value}`,
+    maximumChip: (value: string) => `Max ${value}`,
+    remainingChip: (value: string) => `Left ${value}`,
+    noMinimumNow: "No extra minimum",
+    noMinimumShort: "no min",
+    gasHint: "Max already keeps a small gas buffer.",
+    selected: "Selected",
+    active: "Active",
+    empty: "Empty",
+    planName: (plan: number) => `Plan ${plan}`,
+    planDuration: (value: string) => `Duration ${value}`,
     multiplier: "Multiplier",
     earlyExitPenalty: "Early exit penalty",
-    yourPrincipal: "Your principal",
-    planPending: "Pending for this plan",
+    yourPrincipal: "Your stake",
+    planPending: "Pending on this plan",
     unlockAt: "Unlock at",
     timeLeft: "Time left",
-    penaltyDisabled: "Penalty disabled",
-    planName: (n: number) => `Plan ${n}`,
-    planDuration: (text: string) => `Duration ${text}`,
-    selected: "Selected",
-    useForStake: "Use for stake",
+    stakedNow: "Plan fill",
+    useForStake: "Use",
     restakeHere: "Restake here",
     unstake: "Unstake",
-    programInfoTitle: "Program information",
-    programInfoSubtitle: "On-chain data loaded from the contract connected in the wallet.",
-    programStartedAt: "Program started at",
-    programEndsAt: "Program ends at",
+    programInfoTitle: "Program info",
+    programInfoSubtitle: "Read directly from the contract.",
+    programStartedAt: "Started at",
+    programEndsAt: "Ends at",
     contractAddressFull: "Contract address",
-    contractCopied: "Contract address copied.",
-    copyFailed: "Could not copy.",
-    unlockRequired: "Unlock the wallet to continue.",
-    switchToInri: "Switch to the INRI network before signing.",
+    unlockRequired: "Unlock the wallet to sign.",
+    switchToInri: "Switch to the INRI network.",
+    contractCopied: "Contract copied.",
+    copyFailed: "Copy failed.",
     stakingNow: "Sending stake...",
     claimingNow: "Sending claim...",
     restakingNow: "Sending restake...",
     unstakingNow: "Sending unstake...",
-    txSent: "Transaction sent:",
-    txFailed: "Transaction failed.",
-    openExplorer: "Open in Explorer",
-    loadFailed: "Could not load staking.",
+    syncing: "syncing staking...",
+    txSent: "Tx sent:",
+    loadFailed: "Failed to load staking.",
+    balanceTooLow: "Insufficient wallet balance for this amount.",
+    planMaxReached: (value: string) => `This plan only has ${value} INRI left.`,
+    minimumFirstStake: (value: number) => `First stake on this plan requires at least ${value} INRI.`,
+    mainPlanSmall: (value: string) => `Main: ${value}`,
+    none: "None",
   };
 }
