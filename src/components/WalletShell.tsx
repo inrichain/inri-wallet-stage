@@ -676,7 +676,7 @@ export default function WalletShell() {
         return <BridgeScreen theme={theme} lang={lang} address={address} privateKey={privateKey} />;
 
       case "staking":
-        return <StakingScreen theme={theme} lang={lang} />;
+        return <StakingScreen theme={theme} lang={lang} address={address} privateKey={privateKey} />;
 
       case "more":
         return <MoreScreen theme={theme} lang={lang} setTab={setTab as any} />;
