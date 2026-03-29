@@ -77,12 +77,24 @@ export default function StakingScreen({
     };
 
     load();
-    const id = window.setInterval(() => load(true), 12000);
+    const id = window.setInterval(() => load(true), 8000);
     return () => {
       alive = false;
       window.clearInterval(id);
     };
   }, [address, refreshKey, t.loadFailed]);
+
+  useEffect(() => {
+    if (!overview?.positions?.length) return;
+    const activePositions = overview.positions.filter((item) => item.principal > 0n);
+    if (!activePositions.length) return;
+
+    const currentSelected = overview.positions.find((item) => item.id === selectedPlanId);
+    if (currentSelected && currentSelected.principal > 0n) return;
+
+    const preferred = [...activePositions].sort((a, b) => (b.principal === a.principal ? 0 : b.principal > a.principal ? 1 : -1))[0];
+    if (preferred) setSelectedPlanId(preferred.id);
+  }, [overview, selectedPlanId]);
 
   const selectedPlan = useMemo(() => overview?.plans.find((item) => item.id === selectedPlanId) || overview?.plans[0] || null, [overview, selectedPlanId]);
   const selectedPosition = useMemo(() => overview?.positions.find((item) => item.id === selectedPlanId) || null, [overview, selectedPlanId]);
@@ -107,6 +119,14 @@ export default function StakingScreen({
           : "";
   const canStake = !!overview?.started && !overview?.newStakesPaused && !overview?.emergencyExitEnabled && validAmount && !validationMessage && numericAmount <= walletBalanceInri && numericAmount <= planRemainingInri && numericAmount >= minimumForSelectedPlan && canWrite;
   const canClaim = !!overview?.pendingRewards && overview.pendingRewards > 0n && !!overview?.canClaim && canWrite;
+  const totalStaked = useMemo(() => (overview?.positions || []).reduce((sum, item) => sum + item.principal, 0n), [overview]);
+  const activePlansCount = useMemo(() => (overview?.positions || []).filter((item) => item.principal > 0n).length, [overview]);
+  const primaryPosition = useMemo(() => {
+    const active = (overview?.positions || []).filter((item) => item.principal > 0n);
+    if (!active.length) return null;
+    return [...active].sort((a, b) => (b.principal === a.principal ? 0 : b.principal > a.principal ? 1 : -1))[0];
+  }, [overview]);
+  const primaryPlanLabel = primaryPosition ? t.planName(Number(primaryPosition.id) + 1) : t.noActivePlan;
 
   function triggerRefresh() {
     setRefreshKey((value) => value + 1);
@@ -358,6 +378,12 @@ export default function StakingScreen({
             <StatCard theme={theme} label={t.baseRewardsRemaining} value={`${overview ? formatInri(overview.baseRewardsRemaining) : "0"} INRI`} />
             <StatCard theme={theme} label={t.nextClaim} value={overview ? (overview.canClaim ? t.readyNow : formatTimestamp(overview.nextClaimAt)) : "-"} />
           </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+            <StatCard theme={theme} label={t.totalStakedLabel} value={`${formatInri(totalStaked)} INRI`} />
+            <StatCard theme={theme} label={t.activePlansLabel} value={String(activePlansCount)} />
+            <StatCard theme={theme} label={t.mainPlanLabel} value={primaryPlanLabel} />
+          </div>
         </div>
       </ScreenCard>
 
@@ -426,6 +452,7 @@ export default function StakingScreen({
                 <StatusPill theme={theme} tone="primary">{t.minimumChip(minimumForSelectedPlan > 0 ? `${minimumForSelectedPlan} INRI` : t.noMinimumShort)}</StatusPill>
                 <StatusPill theme={theme} tone="warning">{t.maximumChip(`${MAX_PER_PLAN_INRI.toLocaleString()} INRI`)}</StatusPill>
                 <StatusPill theme={theme} tone="success">{t.remainingChip(`${planRemainingInri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI`)}</StatusPill>
+                <StatusPill theme={theme} tone="neutral">{t.currentInPlanChip(`${selectedPosition ? formatInri(selectedPosition.principal) : "0"} INRI`)}</StatusPill>
               </div>
 
               <div className="wallet-ui-subtle">{t.gasHint}</div>
@@ -540,6 +567,9 @@ function getText(lang: string) {
       emissionDay: "Emissão por dia",
       baseRewardsRemaining: "Base restante",
       nextClaim: "Próximo claim",
+    totalStakedLabel: "Seu total em staking",
+    activePlansLabel: "Planos ativos",
+    mainPlanLabel: "Plano principal",
       readyNow: "Liberado agora",
       switchWarningTitle: "Rede errada para staking",
       switchWarningBody: "Troque a rede ativa para INRI. A leitura do contrato continua, mas stake, claim, restake e unstake ficam bloqueados fora da INRI.",
@@ -619,6 +649,9 @@ function getText(lang: string) {
     emissionDay: "Emission per day",
     baseRewardsRemaining: "Base rewards left",
     nextClaim: "Next claim",
+    totalStakedLabel: "Your total staked",
+    activePlansLabel: "Active plans",
+    mainPlanLabel: "Main plan",
     readyNow: "Ready now",
     switchWarningTitle: "Wrong network for staking",
     switchWarningBody: "Switch the active network to INRI. Contract reads still work, but stake, claim, restake and unstake are blocked outside INRI.",
