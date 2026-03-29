@@ -102,6 +102,8 @@ export default function WalletShell() {
   const [wcProposal, setWcProposal] = useState<any | null>(null);
   const [wcRequest, setWcRequest] = useState<any | null>(null);
   const [wcApproving, setWcApproving] = useState(false);
+  const [resumeFixActive, setResumeFixActive] = useState(false);
+  const [resumeKey, setResumeKey] = useState(0);
 
   const t = {
     authSubtitle: tr(lang, "auth_subtitle"),
@@ -205,6 +207,39 @@ export default function WalletShell() {
 
     sync();
     return wcStoreSubscribe(sync);
+  }, []);
+
+  useEffect(() => {
+    let timer: number | null = null;
+
+    const triggerResumeFix = () => {
+      window.dispatchEvent(new Event("wallet-force-close-overlays"));
+      setResumeFixActive(true);
+      setResumeKey((prev) => prev + 1);
+
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => setResumeFixActive(false), 520);
+    };
+
+    const handleVisibility = () => {
+      if (!document.hidden) triggerResumeFix();
+    };
+
+    const handlePageShow = () => triggerResumeFix();
+    const handleFocus = () => {
+      if (document.visibilityState === "visible") triggerResumeFix();
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (timer) window.clearTimeout(timer);
+    };
   }, []);
 
   function ensureFavicon() {
@@ -468,40 +503,6 @@ export default function WalletShell() {
       }
     };
   }, [lockWallet, markActivity, security.autoLockEnabled, security.lockOnHidden, unlockedWallet]);
-
-  useEffect(() => {
-    const recoverUi = () => {
-      setReauthOpen(false);
-      setReauthPassword("");
-      setReauthError("");
-      setWcApproving(false);
-    };
-
-    const handlePageShow = () => {
-      recoverUi();
-      markActivity();
-      window.dispatchEvent(new Event("wallet-network-updated"));
-    };
-
-    const handleVisibility = () => {
-      if (document.hidden) {
-        recoverUi();
-        return;
-      }
-      recoverUi();
-      markActivity();
-    };
-
-    window.addEventListener("pageshow", handlePageShow);
-    window.addEventListener("focus", handlePageShow);
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      window.removeEventListener("pageshow", handlePageShow);
-      window.removeEventListener("focus", handlePageShow);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [markActivity]);
 
   async function runSensitiveAction(action: (overridePrivateKey?: string) => Promise<void>) {
     if (!security.requirePasswordForSensitiveActions) {
@@ -800,7 +801,8 @@ export default function WalletShell() {
 
   return (
     <div
-      className="wallet-page-shell"
+      key={resumeKey}
+      className={`wallet-page-shell${resumeFixActive ? " wallet-resume-fix" : ""}`}
       style={{
         background:
           theme === "light"
