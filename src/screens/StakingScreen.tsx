@@ -58,12 +58,19 @@ export default function StakingScreen({
   const [message, setMessage] = useState("");
   const [lastTxHash, setLastTxHash] = useState("");
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [planTouched, setPlanTouched] = useState(false);
 
   useEffect(() => {
     const sync = () => setNetworkKey(getStoredNetwork().key);
     window.addEventListener("wallet-network-updated", sync as EventListener);
     return () => window.removeEventListener("wallet-network-updated", sync as EventListener);
   }, []);
+
+  useEffect(() => {
+    setPlanTouched(false);
+    setSelectedPlanId(0);
+    setAmount("");
+  }, [address]);
 
   const hasWallet = !!address && ethers.isAddress(address);
   const wrongNetwork = networkKey !== "inri";
@@ -103,16 +110,19 @@ export default function StakingScreen({
   }, [refreshOverview]);
 
   useEffect(() => {
-    if (!overview?.positions?.length) return;
+    if (planTouched || !overview?.positions?.length) return;
     const activePositions = overview.positions.filter((position) => position.principal > 0n);
     if (!activePositions.length) return;
 
-    const current = overview.positions.find((position) => position.id === selectedPlanId);
-    if (current && current.principal > 0n) return;
+    const main = [...activePositions].sort((a, b) => {
+      if (a.principal === b.principal) return a.id - b.id;
+      return b.principal > a.principal ? 1 : -1;
+    })[0];
 
-    const main = [...activePositions].sort((a, b) => (b.principal > a.principal ? 1 : -1))[0];
-    if (main) setSelectedPlanId(main.id);
-  }, [overview, selectedPlanId]);
+    if (main && main.id !== selectedPlanId) {
+      setSelectedPlanId(main.id);
+    }
+  }, [overview, planTouched, selectedPlanId]);
 
   const selectedPlan = useMemo(() => overview?.plans.find((plan) => plan.id === selectedPlanId) || overview?.plans[0] || null, [overview, selectedPlanId]);
   const selectedPosition = useMemo(() => overview?.positions.find((position) => position.id === selectedPlanId) || null, [overview, selectedPlanId]);
@@ -125,6 +135,8 @@ export default function StakingScreen({
   const numericAmount = Number(amount || "0");
   const validAmount = Number.isFinite(numericAmount) && numericAmount > 0;
   const canClaim = !!overview?.pendingRewards && overview.pendingRewards > 0n && !!overview?.canClaim && canWrite;
+  const nextClaimLabel = overview ? (overview.canClaim ? t.readyNow : formatTimestamp(overview.nextClaimAt)) : "-";
+  const nextClaimCountdown = overview ? (overview.canClaim ? t.readyNow : timeUntilLabel(overview.nextClaimAt, false)) : "-";
 
   const validationMessage = !validAmount
     ? ""
@@ -407,7 +419,7 @@ export default function StakingScreen({
             <StatCard theme={theme} label={t.contractBalance} value={`${overview ? formatInri(overview.currentContractBalance) : "0"} INRI`} />
             <StatCard theme={theme} label={t.emissionDay} value={`${overview ? formatInri(overview.emissionPerDayCurrentEra) : "0"} INRI`} />
             <StatCard theme={theme} label={t.baseRewardsRemaining} value={`${overview ? formatInri(overview.baseRewardsRemaining) : "0"} INRI`} />
-            <StatCard theme={theme} label={t.nextClaim} value={overview ? (overview.canClaim ? t.readyNow : formatTimestamp(overview.nextClaimAt)) : "-"} />
+            <StatCard theme={theme} label={t.nextClaim} value={nextClaimLabel} />
             <StatCard theme={theme} label={t.readSource} value={overview ? `${overview.readSource}` : "-"} />
             <StatCard theme={theme} label={t.readBlock} value={overview ? `#${overview.readBlockNumber.toLocaleString()}` : "-"} />
           </div>
@@ -422,6 +434,29 @@ export default function StakingScreen({
           </div>
         </ScreenCard>
       ) : null}
+
+      <ScreenCard theme={theme}>
+        <SectionTitle theme={theme} title={t.dailyClaimTitle} subtitle={t.dailyClaimSubtitle} />
+        <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <InfoRow theme={theme} label={t.pendingRewards} value={`${overview ? formatInri(overview.pendingRewards, 6) : "0"} INRI`} />
+            <InfoRow theme={theme} label={t.nextClaim} value={nextClaimLabel} />
+            <InfoRow theme={theme} label={t.claimCooldownLabel} value={nextClaimCountdown} />
+            <InfoRow theme={theme} label={t.claimStatusLabel} value={overview ? (overview.canClaim ? t.claimReadyNow : t.claimWaiting) : "-"} />
+          </div>
+
+          <div className="wallet-action-row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <ActionButton theme={theme} compact tone="primary" onClick={runClaim} disabled={!canClaim || busy}>
+              {busy && pendingAction?.type === "claim" ? t.processing : t.claimDaily}
+            </ActionButton>
+            <StatusPill theme={theme} tone={overview?.canClaim ? "success" : "warning"}>
+              {overview?.canClaim ? t.claimReadyNow : t.claimWaiting}
+            </StatusPill>
+          </div>
+
+          <div className="wallet-ui-subtle">{t.dailyWithdrawNote}</div>
+        </div>
+      </ScreenCard>
 
       <ScreenCard theme={theme}>
         <SectionTitle theme={theme} title={t.depositTitle} subtitle={t.depositSubtitle} />
@@ -452,7 +487,7 @@ export default function StakingScreen({
               {busy && pendingAction?.type === "stake" ? t.processing : t.stakeNow}
             </ActionButton>
             <ActionButton theme={theme} compact onClick={runClaim} disabled={!canClaim || busy}>
-              {busy && pendingAction?.type === "claim" ? t.processing : t.claimAll}
+              {busy && pendingAction?.type === "claim" ? t.processing : t.claimDaily}
             </ActionButton>
           </div>
 
@@ -526,7 +561,7 @@ export default function StakingScreen({
                 </div>
 
                 <div className="wallet-action-row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <ActionButton theme={theme} onClick={() => setSelectedPlanId(plan.id)} disabled={isSelected}>{isSelected ? t.selected : t.useForStake}</ActionButton>
+                  <ActionButton theme={theme} onClick={() => { setPlanTouched(true); setSelectedPlanId(plan.id); }} disabled={isSelected}>{isSelected ? t.selected : t.useForStake}</ActionButton>
                   <ActionButton theme={theme} onClick={() => runRestake(plan.id)} disabled={!canWrite || !overview?.pendingRewards || overview.pendingRewards <= 0n || busy}>
                     {restakeBusy ? t.processing : t.restakeHere}
                   </ActionButton>
@@ -577,7 +612,7 @@ function getText(lang: string) {
   if (pt) {
     return {
       title: "Staking INRI",
-      subtitle: "Leitura mais forte do stake já feito e atualização depois da transação.",
+      subtitle: "Leitura mais forte do stake já feito, troca de plano sem travar e saque diário mais claro.",
       live: "AO VIVO",
       loading: "CARREGANDO",
       notStarted: "NÃO INICIADO",
@@ -598,7 +633,14 @@ function getText(lang: string) {
       contractBalance: "Saldo do contrato",
       emissionDay: "Emissão por dia",
       baseRewardsRemaining: "Rewards restantes",
-      nextClaim: "Próximo claim",
+      nextClaim: "Próximo saque",
+      dailyClaimTitle: "Saque diário de rewards",
+      dailyClaimSubtitle: "O contrato libera o saque geral uma vez por dia quando houver rewards.",
+      claimCooldownLabel: "Cooldown atual",
+      claimStatusLabel: "Status do saque",
+      claimReadyNow: "Saque liberado agora",
+      claimWaiting: "Aguardando cooldown",
+      dailyWithdrawNote: "Esse botão saca todos os rewards disponíveis do staking de uma vez, respeitando o cooldown de 1 dia do contrato.",
       readSource: "Leitura RPC",
       readBlock: "Bloco lido",
       readyNow: "Liberado agora",
@@ -614,6 +656,7 @@ function getText(lang: string) {
       max: "Max",
       stakeNow: "Stake now",
       claimAll: "Claim all",
+      claimDaily: "Sacar rewards diários",
       processing: "Processando...",
       selectedPlan: (plan: number) => `Plano ${plan}`,
       planLine: (duration: string, mult: string, penalty: string) => `${duration} • ${mult} • multa ${penalty}`,
@@ -630,12 +673,13 @@ function getText(lang: string) {
       planDuration: (value: string) => `Duração ${value}`,
       multiplier: "Multiplicador",
       earlyExitPenalty: "Multa saída antecipada",
+      penaltyDisabled: "Sem multa agora",
       yourPrincipal: "Seu stake",
       planPending: "Pendente neste plano",
       unlockAt: "Unlock em",
       timeLeft: "Tempo restante",
       stakedNow: "Ocupação do plano",
-      useForStake: "Usar",
+      useForStake: "Usar neste plano",
       restakeHere: "Restake aqui",
       unstake: "Unstake",
       programInfoTitle: "Informações do programa",
@@ -664,7 +708,7 @@ function getText(lang: string) {
 
   return {
     title: "INRI Staking",
-    subtitle: "Stronger reading for existing stake and better post-transaction refresh.",
+    subtitle: "Stronger reading for existing stake, plan switching without locking, and clearer daily withdrawal.",
     live: "LIVE",
     loading: "LOADING",
     notStarted: "NOT STARTED",
@@ -685,7 +729,14 @@ function getText(lang: string) {
     contractBalance: "Contract balance",
     emissionDay: "Emission per day",
     baseRewardsRemaining: "Rewards remaining",
-    nextClaim: "Next claim",
+    nextClaim: "Next withdrawal",
+    dailyClaimTitle: "Daily rewards withdrawal",
+    dailyClaimSubtitle: "The contract releases the global claim once per day when rewards are available.",
+    claimCooldownLabel: "Current cooldown",
+    claimStatusLabel: "Withdrawal status",
+    claimReadyNow: "Withdrawal ready now",
+    claimWaiting: "Waiting for cooldown",
+    dailyWithdrawNote: "This button withdraws all rewards currently available from staking at once, respecting the contract's 1-day cooldown.",
     readSource: "Read source",
     readBlock: "Read block",
     readyNow: "Ready now",
@@ -701,6 +752,7 @@ function getText(lang: string) {
     max: "Max",
     stakeNow: "Stake now",
     claimAll: "Claim all",
+    claimDaily: "Daily claim",
     processing: "Processing...",
     selectedPlan: (plan: number) => `Plan ${plan}`,
     planLine: (duration: string, mult: string, penalty: string) => `${duration} • ${mult} • penalty ${penalty}`,
@@ -717,12 +769,13 @@ function getText(lang: string) {
     planDuration: (value: string) => `Duration ${value}`,
     multiplier: "Multiplier",
     earlyExitPenalty: "Early exit penalty",
+    penaltyDisabled: "No penalty now",
     yourPrincipal: "Your stake",
     planPending: "Pending on this plan",
     unlockAt: "Unlock at",
     timeLeft: "Time left",
     stakedNow: "Plan fill",
-    useForStake: "Use",
+    useForStake: "Use this plan",
     restakeHere: "Restake here",
     unstake: "Unstake",
     programInfoTitle: "Program info",
