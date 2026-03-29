@@ -469,6 +469,40 @@ export default function WalletShell() {
     };
   }, [lockWallet, markActivity, security.autoLockEnabled, security.lockOnHidden, unlockedWallet]);
 
+  useEffect(() => {
+    const recoverUi = () => {
+      setReauthOpen(false);
+      setReauthPassword("");
+      setReauthError("");
+      setWcApproving(false);
+    };
+
+    const handlePageShow = () => {
+      recoverUi();
+      markActivity();
+      window.dispatchEvent(new Event("wallet-network-updated"));
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        recoverUi();
+        return;
+      }
+      recoverUi();
+      markActivity();
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("focus", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("focus", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [markActivity]);
+
   async function runSensitiveAction(action: (overridePrivateKey?: string) => Promise<void>) {
     if (!security.requirePasswordForSensitiveActions) {
       await action();
