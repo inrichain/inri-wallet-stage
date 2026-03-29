@@ -1,232 +1,59 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import ActionButton from "../components/ActionButton";
+import LogoImage from "../components/LogoImage";
 import ScreenCard from "../components/ScreenCard";
 import SectionTitle from "../components/SectionTitle";
 import StatusPill from "../components/StatusPill";
-import { tr } from "../i18n/translations";
-import {
-  EXPLORER_ADDRESS_URL,
-  EXPLORER_TX_URL,
-  getProvider,
-} from "../lib/inri";
 import { getStoredNetwork } from "../lib/network";
+import {
+  claimAllInriTx,
+  formatDuration,
+  formatInri,
+  formatMultiplierFromBps,
+  formatPercentFromBps,
+  formatTimestamp,
+  INRI_STAKING_ADDRESS,
+  loadStakingOverview,
+  restakeRewardsTx,
+  shortHash,
+  stakeInriTx,
+  stakingAddressUrl,
+  stakingTxUrl,
+  timeUntilLabel,
+  unstakeInriTx,
+  type StakingOverview,
+} from "../lib/staking";
 
-const STAKING_ADDRESS = "0xbE7eB939065Fa28d9d81Ab7842e0b615F02e26c9";
-const ZERO = "0x0000000000000000000000000000000000000000";
-const ABI = [
-  "function owner() view returns (address)",
-  "function started() view returns (bool)",
-  "function newStakesPaused() view returns (bool)",
-  "function emergencyExitEnabled() view returns (bool)",
-  "function startTime() view returns (uint256)",
-  "function programEnd() view returns (uint256)",
-  "function baseRewardsRemaining() view returns (uint256)",
-  "function currentContractBalance() view returns (uint256)",
-  "function currentEra() view returns (uint256)",
-  "function emissionPerDayCurrentEra() view returns (uint256)",
-  "function pendingRewardsOf(address user) view returns (uint256)",
-  "function canClaim(address user) view returns (bool)",
-  "function nextClaimAt(address user) view returns (uint256)",
-  "function getPlanConfig(uint8 planId) view returns (uint256 duration, uint256 multiplierBps, uint256 penaltyBps)",
-  "function positionOf(address user, uint8 planId) view returns (uint256 principal, uint256 weight, uint256 unlockAt, uint256 rewardDebt, uint256 pendingRewards, bool active)",
-  "function stake(uint8 planId) payable",
-  "function claimAll()",
-  "function restakeToPlan(uint8 planId)",
-  "function unstake(uint8 planId)",
-] as const;
-
-type PlanConfig = {
-  id: number;
-  duration: bigint;
-  multiplierBps: bigint;
-  penaltyBps: bigint;
-};
-
-type PositionInfo = {
-  id: number;
-  principal: bigint;
-  weight: bigint;
-  unlockAt: bigint;
-  rewardDebt: bigint;
-  pendingRewards: bigint;
-  active: boolean;
-};
-
-type Overview = {
-  owner: string;
-  started: boolean;
-  newStakesPaused: boolean;
-  emergencyExitEnabled: boolean;
-  startTime: bigint;
-  programEnd: bigint;
-  baseRewardsRemaining: bigint;
-  currentContractBalance: bigint;
-  currentEra: bigint;
-  emissionPerDayCurrentEra: bigint;
-  pendingRewards: bigint;
-  canClaim: boolean;
-  nextClaimAt: bigint;
-  walletBalance: bigint;
-  plans: PlanConfig[];
-  positions: PositionInfo[];
-};
+const BASE = import.meta.env.BASE_URL || "/";
+const ACTIVITY_KEY = "wallet_activity_demo";
+const MIN_FIRST_STAKE_INRI = 100;
+const MAX_PER_PLAN_INRI = 10000;
 
 type PendingAction = null | { type: "stake" | "claim" | "restake" | "unstake"; planId?: number };
-
-function getContract(runner?: ethers.ContractRunner) {
-  return new ethers.Contract(STAKING_ADDRESS, ABI, runner || getProvider("inri"));
-}
-
-function formatAmount(value: bigint, digits = 4) {
-  const n = Number(ethers.formatEther(value));
-  if (!Number.isFinite(n)) return "0";
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  });
-}
-
-function formatBpsPercent(bps: bigint) {
-  const value = Number(bps) / 100;
-  return `${value.toFixed(value % 1 === 0 ? 0 : 2)}%`;
-}
-
-function formatMultiplier(bps: bigint) {
-  return `${(Number(bps) / 10000).toFixed(2)}x`;
-}
-
-function formatDuration(seconds: bigint) {
-  const days = Math.round(Number(seconds) / 86400);
-  return `${days} days`;
-}
-
-function formatDate(ts: bigint) {
-  if (!ts) return "-";
-  return new Date(Number(ts) * 1000).toLocaleString();
-}
-
-function timeLeftLabel(unlockAt: bigint, emergencyExitEnabled: boolean) {
-  if (emergencyExitEnabled) return "Penalty disabled";
-  if (!unlockAt) return "-";
-  const diff = Number(unlockAt) * 1000 - Date.now();
-  if (diff <= 0) return "Unlocked";
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor((diff % 86400000) / 3600000);
-  if (days > 0) return `${days}d ${hours}h`;
-  const minutes = Math.floor((diff % 3600000) / 60000);
-  return `${hours}h ${minutes}m`;
-}
-
-async function readOverview(address?: string): Promise<Overview> {
-  const provider = getProvider("inri");
-  const contract = getContract(provider);
-  const user = address && ethers.isAddress(address) ? address : ZERO;
-
-  const header = await Promise.all([
-    contract.owner(),
-    contract.started(),
-    contract.newStakesPaused(),
-    contract.emergencyExitEnabled(),
-    contract.startTime(),
-    contract.programEnd(),
-    contract.baseRewardsRemaining(),
-    contract.currentContractBalance(),
-    contract.currentEra(),
-    contract.emissionPerDayCurrentEra(),
-    contract.pendingRewardsOf(user),
-    contract.canClaim(user),
-    contract.nextClaimAt(user),
-    address && ethers.isAddress(address) ? provider.getBalance(address) : Promise.resolve(0n),
-  ]);
-
-  const plans = await Promise.all([0, 1, 2].map(async (id) => {
-    const result = await contract.getPlanConfig(id);
-    return {
-      id,
-      duration: BigInt(result[0]),
-      multiplierBps: BigInt(result[1]),
-      penaltyBps: BigInt(result[2]),
-    } as PlanConfig;
-  }));
-
-  const positions = await Promise.all([0, 1, 2].map(async (id) => {
-    const result = await contract.positionOf(user, id);
-    return {
-      id,
-      principal: BigInt(result[0]),
-      weight: BigInt(result[1]),
-      unlockAt: BigInt(result[2]),
-      rewardDebt: BigInt(result[3]),
-      pendingRewards: BigInt(result[4]),
-      active: Boolean(result[5]),
-    } as PositionInfo;
-  }));
-
-  return {
-    owner: String(header[0]),
-    started: Boolean(header[1]),
-    newStakesPaused: Boolean(header[2]),
-    emergencyExitEnabled: Boolean(header[3]),
-    startTime: BigInt(header[4]),
-    programEnd: BigInt(header[5]),
-    baseRewardsRemaining: BigInt(header[6]),
-    currentContractBalance: BigInt(header[7]),
-    currentEra: BigInt(header[8]),
-    emissionPerDayCurrentEra: BigInt(header[9]),
-    pendingRewards: BigInt(header[10]),
-    canClaim: Boolean(header[11]),
-    nextClaimAt: BigInt(header[12]),
-    walletBalance: BigInt(header[13]),
-    plans,
-    positions,
-  };
-}
-
-async function sendTx(privateKey: string, method: "stake" | "claimAll" | "restakeToPlan" | "unstake", planId?: number, amount?: string) {
-  const signer = new ethers.Wallet(privateKey, getProvider("inri"));
-  const contract = getContract(signer);
-  let tx;
-
-  if (method === "stake") {
-    tx = await contract.stake(planId || 0, { value: ethers.parseEther(amount || "0") });
-  } else if (method === "claimAll") {
-    tx = await contract.claimAll();
-  } else if (method === "restakeToPlan") {
-    tx = await contract.restakeToPlan(planId || 0);
-  } else {
-    tx = await contract.unstake(planId || 0);
-  }
-
-  const receipt = await tx.wait();
-  return {
-    hash: tx.hash as string,
-    ok: receipt?.status === 1,
-  };
-}
 
 export default function StakingScreen({
   theme = "dark",
   lang = "en",
-  address = "",
-  privateKey = "",
+  address,
+  privateKey,
 }: {
   theme?: "dark" | "light";
   lang?: string;
-  address?: string;
-  privateKey?: string;
+  address: string;
+  privateKey: string;
 }) {
   const isLight = theme === "light";
+  const t = getText(lang);
   const [networkKey, setNetworkKey] = useState(getStoredNetwork().key);
-  const [overview, setOverview] = useState<Overview | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState(0);
+  const [overview, setOverview] = useState<StakingOverview | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState(0);
   const [amount, setAmount] = useState("");
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [lastTxHash, setLastTxHash] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
-  const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
-  const [lastHash, setLastHash] = useState("");
 
   useEffect(() => {
     const sync = () => setNetworkKey(getStoredNetwork().key);
@@ -234,111 +61,237 @@ export default function StakingScreen({
     return () => window.removeEventListener("wallet-network-updated", sync as EventListener);
   }, []);
 
-  async function load() {
-    try {
-      setLoading(true);
-      setError("");
-      const next = await readOverview(address);
-      setOverview(next);
-    } catch (err: any) {
-      setError(err?.shortMessage || err?.message || "Failed to load staking contract");
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let alive = true;
+
+    const load = async (silent = false) => {
+      try {
+        if (!silent) setMessage("");
+        const next = await loadStakingOverview(address);
+        if (!alive) return;
+        setOverview(next);
+      } catch (err: any) {
+        if (!alive) return;
+        setMessage(err?.shortMessage || err?.message || t.loadFailed);
+      }
+    };
+
+    load();
+    const id = window.setInterval(() => load(true), 12000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [address, refreshKey, t.loadFailed]);
+
+  const selectedPlan = useMemo(() => overview?.plans.find((item) => item.id === selectedPlanId) || overview?.plans[0] || null, [overview, selectedPlanId]);
+  const selectedPosition = useMemo(() => overview?.positions.find((item) => item.id === selectedPlanId) || null, [overview, selectedPlanId]);
+  const wrongNetwork = networkKey !== "inri";
+  const hasWallet = !!address && ethers.isAddress(address);
+  const canWrite = hasWallet && !!privateKey && !wrongNetwork;
+  const numericAmount = Number(amount || "0");
+  const validAmount = Number.isFinite(numericAmount) && numericAmount > 0;
+  const walletBalanceInri = Number(overview ? ethers.formatEther(overview.walletBalance) : 0);
+  const selectedPrincipalInri = Number(selectedPosition ? ethers.formatEther(selectedPosition.principal) : 0);
+  const planRemainingInri = Math.max(0, MAX_PER_PLAN_INRI - selectedPrincipalInri);
+  const minimumForSelectedPlan = selectedPosition && selectedPosition.principal > 0n ? 0 : MIN_FIRST_STAKE_INRI;
+  const maxStakeNowInri = Math.max(0, Math.min(walletBalanceInri, planRemainingInri));
+  const validationMessage = !validAmount
+    ? ""
+    : numericAmount > walletBalanceInri
+      ? t.balanceTooLow
+      : numericAmount > planRemainingInri
+        ? t.planMaxReached(planRemainingInri.toLocaleString(undefined, { maximumFractionDigits: 4 }))
+        : numericAmount < minimumForSelectedPlan
+          ? t.minimumFirstStake(MIN_FIRST_STAKE_INRI)
+          : "";
+  const canStake = !!overview?.started && !overview?.newStakesPaused && !overview?.emergencyExitEnabled && validAmount && !validationMessage && numericAmount <= walletBalanceInri && numericAmount <= planRemainingInri && numericAmount >= minimumForSelectedPlan && canWrite;
+  const canClaim = !!overview?.pendingRewards && overview.pendingRewards > 0n && !!overview?.canClaim && canWrite;
+
+  function triggerRefresh() {
+    setRefreshKey((value) => value + 1);
   }
 
-  useEffect(() => {
-    load();
-    const id = window.setInterval(load, 12000);
-    return () => window.clearInterval(id);
-  }, [address]);
-
-  const wrongNetwork = networkKey !== "inri";
-  const canWrite = !!privateKey && !!address && !wrongNetwork;
-  const chosenPlan = useMemo(() => overview?.plans.find((item) => item.id === selectedPlan) || null, [overview, selectedPlan]);
-
   function showInfo(text: string) {
-    setInfo(text);
-    window.setTimeout(() => setInfo(""), 3200);
+    setMessage(text);
+    window.setTimeout(() => setMessage(""), 3600);
+  }
+
+  function saveActivity(entry: any) {
+    const current = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]");
+    localStorage.setItem(ACTIVITY_KEY, JSON.stringify([entry, ...current]));
   }
 
   async function copyContract() {
     try {
-      await navigator.clipboard.writeText(STAKING_ADDRESS);
-      showInfo("Contract copied");
+      await navigator.clipboard.writeText(INRI_STAKING_ADDRESS);
+      showInfo(t.contractCopied);
     } catch {
-      showInfo("Copy failed");
+      showInfo(t.copyFailed);
     }
   }
 
-  async function onStake() {
-    if (!canWrite || !chosenPlan) return;
-    const numeric = Number(amount || "0");
-    if (!Number.isFinite(numeric) || numeric < 100) {
-      showInfo("Minimum stake is 100 INRI");
+  function setMaxAmount() {
+    if (!overview) return;
+    if (maxStakeNowInri <= 0) {
+      setAmount("");
       return;
     }
+    setAmount(maxStakeNowInri.toFixed(4).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1"));
+  }
+
+  function ensureWriteAllowed() {
+    if (!hasWallet) {
+      showInfo(t.unlockRequired);
+      return false;
+    }
+    if (!privateKey) {
+      showInfo(t.unlockRequired);
+      return false;
+    }
+    if (wrongNetwork) {
+      showInfo(t.switchToInri);
+      return false;
+    }
+    return true;
+  }
+
+  async function runStake() {
+    if (!ensureWriteAllowed() || !selectedPlan || !validAmount) return;
     try {
       setBusy(true);
-      setPendingAction({ type: "stake", planId: chosenPlan.id });
-      const tx = await sendTx(privateKey, "stake", chosenPlan.id, amount);
-      setLastHash(tx.hash);
+      setPendingAction({ type: "stake", planId: selectedPlan.id });
+      setMessage(t.stakingNow);
+      const result = await stakeInriTx(privateKey, selectedPlan.id, amount);
+      setLastTxHash(result.hash);
+      saveActivity({
+        hash: result.hash,
+        method: "stake",
+        symbol: "INRI",
+        amount,
+        to: INRI_STAKING_ADDRESS,
+        from: address,
+        createdAt: new Date().toISOString(),
+        status: result.status,
+        networkKey: "inri",
+        networkName: "INRI",
+        chainId: 3777,
+        gasUsed: result.gasUsed,
+        gasPriceGwei: result.gasPriceGwei,
+        feeNative: result.feeNative,
+        priority: "normal",
+      });
       setAmount("");
-      showInfo(tx.ok ? "Stake confirmed" : "Stake failed");
-      await load();
+      setMessage(`${t.txSent} ${shortHash(result.hash)}`);
+      triggerRefresh();
     } catch (err: any) {
-      setError(err?.shortMessage || err?.message || "Stake failed");
+      setMessage(err?.shortMessage || err?.message || t.txFailed);
     } finally {
       setBusy(false);
       setPendingAction(null);
     }
   }
 
-  async function onClaim() {
-    if (!canWrite) return;
+  async function runClaim() {
+    if (!ensureWriteAllowed()) return;
     try {
       setBusy(true);
       setPendingAction({ type: "claim" });
-      const tx = await sendTx(privateKey, "claimAll");
-      setLastHash(tx.hash);
-      showInfo(tx.ok ? "Claim confirmed" : "Claim failed");
-      await load();
+      setMessage(t.claimingNow);
+      const result = await claimAllInriTx(privateKey);
+      setLastTxHash(result.hash);
+      saveActivity({
+        hash: result.hash,
+        method: "claim",
+        symbol: "INRI",
+        amount: overview ? formatInri(overview.pendingRewards, 6) : "0",
+        to: address,
+        from: INRI_STAKING_ADDRESS,
+        createdAt: new Date().toISOString(),
+        status: result.status,
+        networkKey: "inri",
+        networkName: "INRI",
+        chainId: 3777,
+        gasUsed: result.gasUsed,
+        gasPriceGwei: result.gasPriceGwei,
+        feeNative: result.feeNative,
+        priority: "normal",
+      });
+      setMessage(`${t.txSent} ${shortHash(result.hash)}`);
+      triggerRefresh();
     } catch (err: any) {
-      setError(err?.shortMessage || err?.message || "Claim failed");
+      setMessage(err?.shortMessage || err?.message || t.txFailed);
     } finally {
       setBusy(false);
       setPendingAction(null);
     }
   }
 
-  async function onRestake(planId: number) {
-    if (!canWrite) return;
+  async function runRestake(planId: number) {
+    if (!ensureWriteAllowed()) return;
     try {
       setBusy(true);
       setPendingAction({ type: "restake", planId });
-      const tx = await sendTx(privateKey, "restakeToPlan", planId);
-      setLastHash(tx.hash);
-      showInfo(tx.ok ? "Restake confirmed" : "Restake failed");
-      await load();
+      setMessage(t.restakingNow);
+      const result = await restakeRewardsTx(privateKey, planId);
+      setLastTxHash(result.hash);
+      saveActivity({
+        hash: result.hash,
+        method: "restake",
+        symbol: "INRI",
+        amount: overview ? formatInri(overview.pendingRewards, 6) : "0",
+        to: INRI_STAKING_ADDRESS,
+        from: address,
+        createdAt: new Date().toISOString(),
+        status: result.status,
+        networkKey: "inri",
+        networkName: "INRI",
+        chainId: 3777,
+        gasUsed: result.gasUsed,
+        gasPriceGwei: result.gasPriceGwei,
+        feeNative: result.feeNative,
+        priority: "normal",
+      });
+      setMessage(`${t.txSent} ${shortHash(result.hash)}`);
+      triggerRefresh();
     } catch (err: any) {
-      setError(err?.shortMessage || err?.message || "Restake failed");
+      setMessage(err?.shortMessage || err?.message || t.txFailed);
     } finally {
       setBusy(false);
       setPendingAction(null);
     }
   }
 
-  async function onUnstake(planId: number) {
-    if (!canWrite) return;
+  async function runUnstake(planId: number) {
+    if (!ensureWriteAllowed()) return;
     try {
       setBusy(true);
       setPendingAction({ type: "unstake", planId });
-      const tx = await sendTx(privateKey, "unstake", planId);
-      setLastHash(tx.hash);
-      showInfo(tx.ok ? "Unstake confirmed" : "Unstake failed");
-      await load();
+      setMessage(t.unstakingNow);
+      const result = await unstakeInriTx(privateKey, planId);
+      const planPosition = overview?.positions.find((item) => item.id === planId);
+      setLastTxHash(result.hash);
+      saveActivity({
+        hash: result.hash,
+        method: "unstake",
+        symbol: "INRI",
+        amount: planPosition ? formatInri(planPosition.principal, 6) : "0",
+        to: address,
+        from: INRI_STAKING_ADDRESS,
+        createdAt: new Date().toISOString(),
+        status: result.status,
+        networkKey: "inri",
+        networkName: "INRI",
+        chainId: 3777,
+        gasUsed: result.gasUsed,
+        gasPriceGwei: result.gasPriceGwei,
+        feeNative: result.feeNative,
+        priority: "normal",
+      });
+      setMessage(`${t.txSent} ${shortHash(result.hash)}`);
+      triggerRefresh();
     } catch (err: any) {
-      setError(err?.shortMessage || err?.message || "Unstake failed");
+      setMessage(err?.shortMessage || err?.message || t.txFailed);
     } finally {
       setBusy(false);
       setPendingAction(null);
@@ -346,187 +299,384 @@ export default function StakingScreen({
   }
 
   return (
-    <div style={{ display: "grid", gap: 14 }}>
+    <div className="wallet-screen-stack wallet-screen-mobile-tight">
+      {message ? (
+        <ScreenCard theme={theme}>
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ color: isLight ? "#0f172a" : "#e2e8f0", fontWeight: 800, wordBreak: "break-word" }}>{message}</div>
+            {lastTxHash ? (
+              <a href={stakingTxUrl(lastTxHash)} target="_blank" rel="noreferrer" className="wallet-link-chip">
+                {t.openExplorer} {shortHash(lastTxHash)}
+              </a>
+            ) : null}
+          </div>
+        </ScreenCard>
+      ) : null}
+
       <ScreenCard theme={theme}>
         <SectionTitle
           theme={theme}
-          title={tr(lang, "staking_title")}
-          subtitle="Live INRI staking connected to the official contract."
+          title={t.title}
+          subtitle={t.subtitle}
           actions={
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <ActionButton theme={theme} tone="secondary" compact onClick={copyContract}>Copy contract</ActionButton>
-              <a href={`${EXPLORER_ADDRESS_URL}${STAKING_ADDRESS}`} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
-                <ActionButton theme={theme} tone="ghost" compact>Open explorer</ActionButton>
-              </a>
-              <ActionButton theme={theme} tone="secondary" compact onClick={() => load()}>Refresh</ActionButton>
+            <div className="wallet-action-row">
+              {overview?.started ? <StatusPill theme={theme} tone="success">{t.live}</StatusPill> : <StatusPill theme={theme} tone="warning">{t.notStarted}</StatusPill>}
+              {overview?.newStakesPaused ? <StatusPill theme={theme} tone="warning">{t.paused}</StatusPill> : null}
+              {overview?.emergencyExitEnabled ? <StatusPill theme={theme} tone="danger">{t.emergency}</StatusPill> : null}
+              {overview ? <StatusPill theme={theme} tone="primary">{t.era(Number(overview.currentEra || 0n))}</StatusPill> : null}
             </div>
           }
         />
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
-          <StatusPill theme={theme} tone={overview?.started ? "success" : "warning"}>{overview?.started ? "Program started" : "Not started"}</StatusPill>
-          <StatusPill theme={theme} tone={wrongNetwork ? "danger" : "primary"}>{wrongNetwork ? "Switch to INRI" : "INRI network"}</StatusPill>
-          <StatusPill theme={theme} tone={overview?.newStakesPaused ? "warning" : "neutral"}>{overview?.newStakesPaused ? "New stakes paused" : "New stakes open"}</StatusPill>
-          <StatusPill theme={theme} tone={overview?.emergencyExitEnabled ? "danger" : "neutral"}>{overview?.emergencyExitEnabled ? "Emergency exit on" : "Normal mode"}</StatusPill>
-        </div>
+        <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+              <LogoImage src={`${BASE}token-inri.png`} alt="INRI" kind="token" label="INRI" size={44} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: isLight ? "#64748b" : "#94a3b8" }}>{t.contractLabel}</div>
+                <div style={{ fontSize: 28, lineHeight: 1.05, fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff" }}>INRI</div>
+              </div>
+            </div>
+            <div style={{ marginLeft: "auto", minWidth: 0, display: "grid", gap: 8 }}>
+              <div className="wallet-mini-stat" style={{ background: isLight ? "#f8fafc" : "#0f172a", color: isLight ? "#475569" : "#cbd5e1" }}>
+                <span style={{ fontWeight: 800 }}>{shortHash(INRI_STAKING_ADDRESS)}</span>
+              </div>
+              <div className="wallet-action-row" style={{ justifyContent: "flex-end" }}>
+                <ActionButton theme={theme} compact onClick={copyContract}>{t.copy}</ActionButton>
+                <a href={stakingAddressUrl()} target="_blank" rel="noreferrer" className="wallet-link-chip" style={{ minHeight: 38, padding: "9px 12px" }}>
+                  {t.openContract}
+                </a>
+              </div>
+            </div>
+          </div>
 
-        {info ? <div style={{ marginTop: 12, color: isLight ? "#2753b0" : "#8fb2ff", fontWeight: 700 }}>{info}</div> : null}
-        {error ? <div style={{ marginTop: 12, color: "#ff7b7b", fontWeight: 700 }}>{error}</div> : null}
+          <div className="wallet-ui-grid-2 wallet-mobile-single-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+            <StatCard theme={theme} label={t.walletBalance} value={`${overview ? formatInri(overview.walletBalance) : "0"} INRI`} />
+            <StatCard theme={theme} label={t.pendingRewards} value={`${overview ? formatInri(overview.pendingRewards) : "0"} INRI`} />
+            <StatCard theme={theme} label={t.contractBalance} value={`${overview ? formatInri(overview.currentContractBalance) : "0"} INRI`} />
+            <StatCard theme={theme} label={t.emissionDay} value={`${overview ? formatInri(overview.emissionPerDayCurrentEra) : "0"} INRI`} />
+            <StatCard theme={theme} label={t.baseRewardsRemaining} value={`${overview ? formatInri(overview.baseRewardsRemaining) : "0"} INRI`} />
+            <StatCard theme={theme} label={t.nextClaim} value={overview ? (overview.canClaim ? t.readyNow : formatTimestamp(overview.nextClaimAt)) : "-"} />
+          </div>
+        </div>
       </ScreenCard>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-        <MetricCard theme={theme} label="Wallet balance" value={overview ? `${formatAmount(overview.walletBalance)} INRI` : loading ? "Loading..." : "-"} />
-        <MetricCard theme={theme} label="Pending rewards" value={overview ? `${formatAmount(overview.pendingRewards)} INRI` : loading ? "Loading..." : "-"} />
-        <MetricCard theme={theme} label="Contract balance" value={overview ? `${formatAmount(overview.currentContractBalance)} INRI` : loading ? "Loading..." : "-"} />
-        <MetricCard theme={theme} label="Rewards remaining" value={overview ? `${formatAmount(overview.baseRewardsRemaining)} INRI` : loading ? "Loading..." : "-"} />
-        <MetricCard theme={theme} label="Current era" value={overview ? String(overview.currentEra) : loading ? "Loading..." : "-"} />
-        <MetricCard theme={theme} label="Emission / day" value={overview ? `${formatAmount(overview.emissionPerDayCurrentEra)} INRI` : loading ? "Loading..." : "-"} />
-      </div>
+      {wrongNetwork ? (
+        <ScreenCard theme={theme}>
+          <div style={{ display: "grid", gap: 8 }}>
+            <StatusPill theme={theme} tone="warning">{t.switchWarningTitle}</StatusPill>
+            <div className="wallet-ui-subtle">{t.switchWarningBody}</div>
+          </div>
+        </ScreenCard>
+      ) : null}
+
+      {!hasWallet ? (
+        <ScreenCard theme={theme}>
+          <SectionTitle theme={theme} title={t.readOnlyTitle} subtitle={t.readOnlySubtitle} />
+        </ScreenCard>
+      ) : null}
 
       <ScreenCard theme={theme}>
-        <SectionTitle
-          theme={theme}
-          title="Stake INRI"
-          subtitle="Choose a plan, type the amount, and send the transaction directly from the wallet."
-        />
+        <SectionTitle theme={theme} title={t.depositTitle} subtitle={t.depositSubtitle} />
+        <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div className="wallet-ui-subtle">{t.amountHelp}</div>
+            <div className="wallet-action-row">
+              <ActionButton theme={theme} compact onClick={setMaxAmount} disabled={!overview || maxStakeNowInri <= 0}>{t.max}</ActionButton>
+              <ActionButton theme={theme} compact onClick={triggerRefresh}>{t.refresh}</ActionButton>
+              <ActionButton theme={theme} compact tone="primary" onClick={runClaim} disabled={!canClaim || busy}>
+                {busy && pendingAction?.type === "claim" ? t.processing : t.claimAll}
+              </ActionButton>
+            </div>
+          </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginTop: 14 }}>
-          {(overview?.plans || []).map((plan) => {
-            const active = selectedPlan === plan.id;
-            return (
-              <button
-                key={plan.id}
-                onClick={() => setSelectedPlan(plan.id)}
-                style={{
-                  textAlign: "left",
-                  border: `1px solid ${active ? "#3f7cff" : isLight ? "#dbe2f0" : "#252b39"}`,
-                  borderRadius: 18,
-                  background: active ? (isLight ? "#eef4ff" : "rgba(63,124,255,.14)") : (isLight ? "#ffffff" : "#121621"),
-                  padding: 16,
-                  cursor: "pointer",
-                  color: isLight ? "#10131a" : "#ffffff",
-                }}
-              >
-                <div style={{ fontWeight: 900, fontSize: 18 }}>Plan {plan.id + 1}</div>
-                <div style={{ marginTop: 8, color: isLight ? "#5b6578" : "#97a0b3" }}>{formatDuration(plan.duration)}</div>
-                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <StatusPill theme={theme} tone="primary">{formatMultiplier(plan.multiplierBps)}</StatusPill>
-                  <StatusPill theme={theme} tone="warning">Penalty {formatBpsPercent(plan.penaltyBps)}</StatusPill>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <InfoRow theme={theme} label={t.minimumLabel} value={minimumForSelectedPlan > 0 ? `${minimumForSelectedPlan} INRI` : t.noMinimumNow} />
+            <InfoRow theme={theme} label={t.maximumLabel} value={`${MAX_PER_PLAN_INRI.toLocaleString()} INRI`} />
+            <InfoRow theme={theme} label={t.remainingLabel} value={`${planRemainingInri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI`} />
+            <InfoRow theme={theme} label={t.walletAvailableLabel} value={`${walletBalanceInri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI`} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
+            <input
+              className={`wallet-ui-input ${isLight ? "light" : ""}`}
+              placeholder={t.amountPlaceholder}
+              value={amount}
+              onChange={(event) => setAmount(event.target.value.replace(/,/g, "."))}
+              inputMode="decimal"
+            />
+            <div className="wallet-mini-stat" style={{ background: isLight ? "#f8fafc" : "#0f172a", color: isLight ? "#334155" : "#cbd5e1", justifyContent: "center" }}>
+              INRI
+            </div>
+          </div>
+
+          {selectedPlan ? (
+            <div style={{ border: `1px solid ${validationMessage ? "#ef4444" : isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 18, padding: 14, background: isLight ? "#f8fafc" : "#0b1120", display: "grid", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff", fontSize: 18 }}>{t.selectedPlan(Number(selectedPlan.id) + 1)}</div>
+                  <div className="wallet-ui-subtle">{t.planLine(formatDuration(selectedPlan.duration), formatMultiplierFromBps(selectedPlan.multiplierBps), formatPercentFromBps(selectedPlan.penaltyBps))}</div>
                 </div>
-              </button>
-            );
-          })}
-        </div>
+                <ActionButton theme={theme} tone="primary" onClick={runStake} disabled={!canStake || busy}>
+                  {busy && pendingAction?.type === "stake" ? t.processing : t.stakeNow}
+                </ActionButton>
+              </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, marginTop: 16 }}>
-          <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount in INRI"
-            style={{
-              minWidth: 0,
-              width: "100%",
-              borderRadius: 14,
-              border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-              background: isLight ? "#ffffff" : "#0f1520",
-              color: isLight ? "#10131a" : "#ffffff",
-              padding: "0 14px",
-              minHeight: 44,
-              outline: "none",
-            }}
-          />
-          <ActionButton theme={theme} tone="secondary" onClick={() => setAmount(overview ? Number(ethers.formatEther(overview.walletBalance)).toFixed(4) : "0")}>Max</ActionButton>
-          <ActionButton theme={theme} tone="primary" disabled={busy || !canWrite || !overview?.started || overview?.newStakesPaused} onClick={onStake}>
-            {pendingAction?.type === "stake" ? "Staking..." : "Stake now"}
-          </ActionButton>
-        </div>
+              <div className="wallet-action-row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <StatusPill theme={theme} tone="primary">{t.minimumChip(minimumForSelectedPlan > 0 ? `${minimumForSelectedPlan} INRI` : t.noMinimumShort)}</StatusPill>
+                <StatusPill theme={theme} tone="warning">{t.maximumChip(`${MAX_PER_PLAN_INRI.toLocaleString()} INRI`)}</StatusPill>
+                <StatusPill theme={theme} tone="success">{t.remainingChip(`${planRemainingInri.toLocaleString(undefined, { maximumFractionDigits: 4 })} INRI`)}</StatusPill>
+              </div>
 
-        <div style={{ marginTop: 12, color: isLight ? "#5b6578" : "#97a0b3", lineHeight: 1.6 }}>
-          Contract: <span style={{ fontWeight: 700 }}>{STAKING_ADDRESS}</span><br />
-          User: <span style={{ fontWeight: 700 }}>{address || "Wallet locked"}</span><br />
-          Next claim: <span style={{ fontWeight: 700 }}>{overview ? formatDate(overview.nextClaimAt) : "-"}</span>
-        </div>
+              <div className="wallet-ui-subtle">{t.gasHint}</div>
 
-        <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <ActionButton theme={theme} tone="primary" disabled={busy || !canWrite || !overview?.canClaim || !overview?.pendingRewards} onClick={onClaim}>
-            {pendingAction?.type === "claim" ? "Claiming..." : "Claim all rewards"}
-          </ActionButton>
-          {!canWrite ? (
-            <StatusPill theme={theme} tone="warning">Unlock wallet on INRI to send transactions</StatusPill>
+              {validationMessage ? (
+                <div style={{ color: "#fca5a5", fontWeight: 800 }}>{validationMessage}</div>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </ScreenCard>
 
-      <div style={{ display: "grid", gap: 12 }}>
-        {(overview?.positions || []).map((position) => {
-          const plan = overview?.plans.find((item) => item.id === position.id);
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+        {(overview?.plans || []).map((plan) => {
+          const position = overview?.positions.find((item) => item.id === plan.id);
+          const isSelected = selectedPlanId === plan.id;
+          const stakeBusy = busy && pendingAction?.type === "stake" && pendingAction?.planId === plan.id;
+          const restakeBusy = busy && pendingAction?.type === "restake" && pendingAction?.planId === plan.id;
+          const unstakeBusy = busy && pendingAction?.type === "unstake" && pendingAction?.planId === plan.id;
+          const hasPrincipal = !!position && position.principal > 0n;
           return (
-            <ScreenCard key={position.id} theme={theme}>
-              <SectionTitle
-                theme={theme}
-                title={`Plan ${position.id + 1} position`}
-                subtitle={plan ? `${formatDuration(plan.duration)} • ${formatMultiplier(plan.multiplierBps)} weight` : ""}
-                actions={
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <StatusPill theme={theme} tone={position.active ? "success" : "neutral"}>{position.active ? "Active" : "Empty"}</StatusPill>
-                    <StatusPill theme={theme} tone={position.unlockAt && Number(position.unlockAt) * 1000 > Date.now() && !overview.emergencyExitEnabled ? "warning" : "success"}>
-                      {timeLeftLabel(position.unlockAt, overview.emergencyExitEnabled)}
-                    </StatusPill>
+            <ScreenCard
+              key={plan.id}
+              theme={theme}
+              style={{
+                border: `1px solid ${isSelected ? "#3f7cff" : isLight ? "#dbe2f0" : "#252b39"}`,
+                boxShadow: isSelected ? "0 14px 32px rgba(63,124,255,.16)" : undefined,
+              }}
+            >
+              <div style={{ display: "grid", gap: 12 }}>
+                <div className="wallet-section-head">
+                  <div>
+                    <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff", fontSize: 21 }}>{t.planName(Number(plan.id) + 1)}</div>
+                    <div className="wallet-ui-subtle">{t.planDuration(formatDuration(plan.duration))}</div>
                   </div>
-                }
-              />
+                  {isSelected ? <StatusPill theme={theme} tone="primary">{t.selected}</StatusPill> : null}
+                </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 14 }}>
-                <MiniStat theme={theme} label="Principal" value={`${formatAmount(position.principal)} INRI`} />
-                <MiniStat theme={theme} label="Weight" value={formatAmount(position.weight)} />
-                <MiniStat theme={theme} label="Pending" value={`${formatAmount(position.pendingRewards)} INRI`} />
-                <MiniStat theme={theme} label="Unlock at" value={formatDate(position.unlockAt)} />
-              </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <InfoRow theme={theme} label={t.multiplier} value={formatMultiplierFromBps(plan.multiplierBps)} />
+                  <InfoRow theme={theme} label={t.earlyExitPenalty} value={overview?.emergencyExitEnabled ? t.penaltyDisabled : formatPercentFromBps(plan.penaltyBps)} />
+                  <InfoRow theme={theme} label={t.yourPrincipal} value={`${position ? formatInri(position.principal) : "0"} INRI`} />
+                  <InfoRow theme={theme} label={t.planPending} value={`${position ? formatInri(position.pendingRewards, 6) : "0"} INRI`} />
+                  <InfoRow theme={theme} label={t.unlockAt} value={position?.unlockAt ? formatTimestamp(position.unlockAt) : "-"} />
+                  <InfoRow theme={theme} label={t.timeLeft} value={position?.unlockAt ? timeUntilLabel(position.unlockAt, !!overview?.emergencyExitEnabled) : "-"} />
+                </div>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-                <ActionButton theme={theme} tone="secondary" disabled={busy || !canWrite || !overview.pendingRewards} onClick={() => onRestake(position.id)}>
-                  {pendingAction?.type === "restake" && pendingAction.planId === position.id ? "Restaking..." : "Restake rewards here"}
-                </ActionButton>
-                <ActionButton theme={theme} tone="danger" disabled={busy || !canWrite || !position.active} onClick={() => onUnstake(position.id)}>
-                  {pendingAction?.type === "unstake" && pendingAction.planId === position.id ? "Unstaking..." : "Unstake plan"}
-                </ActionButton>
+                <div className="wallet-action-row">
+                  <ActionButton theme={theme} onClick={() => setSelectedPlanId(plan.id)} disabled={isSelected}>{isSelected ? t.selected : t.useForStake}</ActionButton>
+                  <ActionButton theme={theme} onClick={() => runRestake(plan.id)} disabled={!canWrite || !overview?.pendingRewards || overview.pendingRewards <= 0n || busy}>
+                    {restakeBusy ? t.processing : t.restakeHere}
+                  </ActionButton>
+                  <ActionButton theme={theme} tone={hasPrincipal ? "danger" : "secondary"} onClick={() => runUnstake(plan.id)} disabled={!canWrite || !hasPrincipal || busy}>
+                    {unstakeBusy ? t.processing : t.unstake}
+                  </ActionButton>
+                </div>
               </div>
             </ScreenCard>
           );
         })}
       </div>
 
-      {lastHash ? (
-        <ScreenCard theme={theme}>
-          <SectionTitle theme={theme} title="Last transaction" subtitle="Latest staking transaction sent from the wallet." />
-          <div style={{ marginTop: 12, color: isLight ? "#10131a" : "#ffffff", fontWeight: 700, wordBreak: "break-all" }}>{lastHash}</div>
-          <div style={{ marginTop: 12 }}>
-            <a href={`${EXPLORER_TX_URL}${lastHash}`} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
-              <ActionButton theme={theme} tone="ghost">Open transaction on explorer</ActionButton>
-            </a>
-          </div>
-        </ScreenCard>
-      ) : null}
+      <ScreenCard theme={theme}>
+        <SectionTitle theme={theme} title={t.programInfoTitle} subtitle={t.programInfoSubtitle} />
+        <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+          <InfoRow theme={theme} label={t.programStartedAt} value={overview ? formatTimestamp(overview.startTime) : "-"} />
+          <InfoRow theme={theme} label={t.programEndsAt} value={overview ? formatTimestamp(overview.programEnd) : "-"} />
+          <InfoRow theme={theme} label={t.contractAddressFull} value={INRI_STAKING_ADDRESS} mono />
+        </div>
+      </ScreenCard>
     </div>
   );
 }
 
-function MetricCard({ theme = "dark", label, value }: { theme?: "dark" | "light"; label: string; value: string }) {
+function StatCard({ theme, label, value }: { theme: "dark" | "light"; label: string; value: string }) {
   const isLight = theme === "light";
   return (
-    <ScreenCard theme={theme}>
-      <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginBottom: 6 }}>{label}</div>
-      <div style={{ color: isLight ? "#10131a" : "#ffffff", fontWeight: 900, fontSize: 20, lineHeight: 1.25 }}>{value}</div>
-    </ScreenCard>
+    <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 18, padding: 14, background: isLight ? "#f8fafc" : "#0b1120", display: "grid", gap: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".02em", textTransform: "uppercase", color: isLight ? "#64748b" : "#94a3b8" }}>{label}</div>
+      <div style={{ color: isLight ? "#0f172a" : "#ffffff", fontWeight: 900, fontSize: 22, wordBreak: "break-word" }}>{value}</div>
+    </div>
   );
 }
 
-function MiniStat({ theme = "dark", label, value }: { theme?: "dark" | "light"; label: string; value: string }) {
+function InfoRow({ theme, label, value, mono = false }: { theme: "dark" | "light"; label: string; value: string; mono?: boolean }) {
   const isLight = theme === "light";
   return (
-    <div style={{ border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, borderRadius: 16, padding: 14, background: isLight ? "#f8fbff" : "#0f1520" }}>
-      <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginBottom: 6 }}>{label}</div>
-      <div style={{ color: isLight ? "#10131a" : "#ffffff", fontWeight: 800, lineHeight: 1.35, wordBreak: "break-word" }}>{value}</div>
+    <div style={{ border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 14, padding: "12px 14px", background: isLight ? "#f8fafc" : "#0b1120" }}>
+      <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".02em", textTransform: "uppercase", color: isLight ? "#64748b" : "#94a3b8", marginBottom: 6 }}>{label}</div>
+      <div style={{ color: isLight ? "#0f172a" : "#e2e8f0", wordBreak: mono ? "break-all" : "break-word", fontFamily: mono ? "ui-monospace, SFMono-Regular, Menlo, monospace" : "inherit", fontSize: 14 }}>{value || "-"}</div>
     </div>
   );
+}
+
+function getText(lang: string) {
+  const pt = String(lang || "").toLowerCase().startsWith("pt");
+  if (pt) {
+    return {
+      title: "Staking INRI",
+      subtitle: "Contrato oficial de staking conectado dentro da carteira.",
+      live: "Ao vivo",
+      notStarted: "Não iniciado",
+      paused: "Novos stakes pausados",
+      emergency: "Saída de emergência",
+      era: (n: number) => `Era ${n || 0}`,
+      contractLabel: "Contrato oficial",
+      copy: "Copiar",
+      openContract: "Abrir contrato",
+      walletBalance: "Saldo da wallet",
+      pendingRewards: "Recompensas pendentes",
+      contractBalance: "Saldo do contrato",
+      emissionDay: "Emissão por dia",
+      baseRewardsRemaining: "Base restante",
+      nextClaim: "Próximo claim",
+      readyNow: "Liberado agora",
+      switchWarningTitle: "Rede errada para staking",
+      switchWarningBody: "Troque a rede ativa para INRI. A leitura do contrato continua, mas stake, claim, restake e unstake ficam bloqueados fora da INRI.",
+      readOnlyTitle: "Modo leitura",
+      readOnlySubtitle: "Desbloqueie uma wallet para stake, claim, restake e unstake direto daqui.",
+      depositTitle: "Depositar no staking",
+      depositSubtitle: "Escolha um plano, digite o valor em INRI e envie direto para o contrato.",
+      amountHelp: "Veja abaixo o mínimo, o máximo e o espaço restante do plano selecionado.",
+      minimumLabel: "Mínimo neste plano",
+      maximumLabel: "Máximo por plano",
+      remainingLabel: "Espaço restante no plano",
+      walletAvailableLabel: "Disponível na wallet",
+      noMinimumNow: "Sem mínimo adicional",
+      noMinimumShort: "sem mínimo",
+      minimumChip: (value: string) => `Mínimo ${value}` ,
+      maximumChip: (value: string) => `Máximo ${value}` ,
+      remainingChip: (value: string) => `Restante ${value}` ,
+      gasHint: "Dica: deixe um pouco de INRI livre na wallet para a taxa da rede ao fazer stake.",
+      minimumFirstStake: (value: number) => `Primeiro depósito neste plano deve ser no mínimo ${value} INRI.`,
+      planMaxReached: (value: string) => `Esse plano só aceita mais ${value} INRI antes de atingir o máximo.`,
+      balanceTooLow: "Saldo insuficiente na wallet para esse valor.",
+      max: "Max",
+      refresh: "Atualizar",
+      claimAll: "Claim all",
+      amountPlaceholder: "0.00",
+      selectedPlan: (n: number) => `Plano ${n}`,
+      planLine: (duration: string, multiplier: string, penalty: string) => `${duration} • boost ${multiplier} • multa ${penalty}`,
+      stakeNow: "Stake agora",
+      processing: "Processando...",
+      multiplier: "Multiplicador",
+      earlyExitPenalty: "Multa por saída antecipada",
+      yourPrincipal: "Seu principal",
+      planPending: "Pendente deste plano",
+      unlockAt: "Unlock em",
+      timeLeft: "Tempo restante",
+      penaltyDisabled: "Multa desativada",
+      planName: (n: number) => `Plano ${n}`,
+      planDuration: (text: string) => `Duração ${text}`,
+      selected: "Selecionado",
+      useForStake: "Usar neste plano",
+      restakeHere: "Restake aqui",
+      unstake: "Unstake",
+      programInfoTitle: "Informações do programa",
+      programInfoSubtitle: "Dados on-chain lidos do contrato conectado na wallet.",
+      programStartedAt: "Programa começou em",
+      programEndsAt: "Programa termina em",
+      contractAddressFull: "Endereço do contrato",
+      contractCopied: "Endereço do contrato copiado.",
+      copyFailed: "Não foi possível copiar.",
+      unlockRequired: "Desbloqueie a wallet para continuar.",
+      switchToInri: "Troque para a rede INRI antes de assinar.",
+      stakingNow: "Enviando stake...",
+      claimingNow: "Enviando claim...",
+      restakingNow: "Enviando restake...",
+      unstakingNow: "Enviando unstake...",
+      txSent: "Transação enviada:",
+      txFailed: "A transação falhou.",
+      openExplorer: "Abrir no Explorer",
+      loadFailed: "Não foi possível carregar o staking.",
+    };
+  }
+
+  return {
+    title: "INRI Staking",
+    subtitle: "Official staking contract connected inside the wallet.",
+    live: "Live",
+    notStarted: "Not started",
+    paused: "New stakes paused",
+    emergency: "Emergency exit",
+    era: (n: number) => `Era ${n || 0}`,
+    contractLabel: "Official contract",
+    copy: "Copy",
+    openContract: "Open contract",
+    walletBalance: "Wallet balance",
+    pendingRewards: "Pending rewards",
+    contractBalance: "Contract balance",
+    emissionDay: "Emission per day",
+    baseRewardsRemaining: "Base rewards left",
+    nextClaim: "Next claim",
+    readyNow: "Ready now",
+    switchWarningTitle: "Wrong network for staking",
+    switchWarningBody: "Switch the active network to INRI. Contract reads still work, but stake, claim, restake and unstake are blocked outside INRI.",
+    readOnlyTitle: "Read-only mode",
+    readOnlySubtitle: "Unlock a wallet to stake, claim, restake and unstake directly from here.",
+    depositTitle: "Deposit into staking",
+    depositSubtitle: "Choose a plan, enter the INRI amount and send it directly to the contract.",
+    amountHelp: "See the minimum, maximum and remaining room for the selected plan below.",
+    minimumLabel: "Minimum on this plan",
+    maximumLabel: "Maximum per plan",
+    remainingLabel: "Remaining room on plan",
+    walletAvailableLabel: "Available in wallet",
+    noMinimumNow: "No extra minimum",
+    noMinimumShort: "no minimum",
+    minimumChip: (value: string) => `Minimum ${value}` ,
+    maximumChip: (value: string) => `Maximum ${value}` ,
+    remainingChip: (value: string) => `Remaining ${value}` ,
+    gasHint: "Tip: keep a little INRI free in the wallet for network gas when staking.",
+    minimumFirstStake: (value: number) => `First deposit on this plan must be at least ${value} INRI.`,
+    planMaxReached: (value: string) => `This plan only has room for ${value} INRI before hitting the max.`,
+    balanceTooLow: "Wallet balance is too low for this amount.",
+    max: "Max",
+    refresh: "Refresh",
+    claimAll: "Claim all",
+    amountPlaceholder: "0.00",
+    selectedPlan: (n: number) => `Plan ${n}`,
+    planLine: (duration: string, multiplier: string, penalty: string) => `${duration} • boost ${multiplier} • penalty ${penalty}`,
+    stakeNow: "Stake now",
+    processing: "Processing...",
+    multiplier: "Multiplier",
+    earlyExitPenalty: "Early exit penalty",
+    yourPrincipal: "Your principal",
+    planPending: "Pending for this plan",
+    unlockAt: "Unlock at",
+    timeLeft: "Time left",
+    penaltyDisabled: "Penalty disabled",
+    planName: (n: number) => `Plan ${n}`,
+    planDuration: (text: string) => `Duration ${text}`,
+    selected: "Selected",
+    useForStake: "Use for stake",
+    restakeHere: "Restake here",
+    unstake: "Unstake",
+    programInfoTitle: "Program information",
+    programInfoSubtitle: "On-chain data loaded from the contract connected in the wallet.",
+    programStartedAt: "Program started at",
+    programEndsAt: "Program ends at",
+    contractAddressFull: "Contract address",
+    contractCopied: "Contract address copied.",
+    copyFailed: "Could not copy.",
+    unlockRequired: "Unlock the wallet to continue.",
+    switchToInri: "Switch to the INRI network before signing.",
+    stakingNow: "Sending stake...",
+    claimingNow: "Sending claim...",
+    restakingNow: "Sending restake...",
+    unstakingNow: "Sending unstake...",
+    txSent: "Transaction sent:",
+    txFailed: "Transaction failed.",
+    openExplorer: "Open in Explorer",
+    loadFailed: "Could not load staking.",
+  };
 }
