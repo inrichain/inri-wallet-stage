@@ -59,6 +59,27 @@ export default function Header({
     };
   }, []);
 
+  useEffect(() => {
+    const closeMenus = () => setNetworkOpen(false);
+    const handleVisibility = () => {
+      if (document.hidden) {
+        setNetworkOpen(false);
+      }
+    };
+
+    window.addEventListener("pageshow", closeMenus);
+    window.addEventListener("blur", closeMenus);
+    window.addEventListener("resize", closeMenus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("pageshow", closeMenus);
+      window.removeEventListener("blur", closeMenus);
+      window.removeEventListener("resize", closeMenus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
+
   const filteredNetworks = useMemo(() => {
     const q = networkQuery.trim().toLowerCase();
     const items = getAllNetworks();
