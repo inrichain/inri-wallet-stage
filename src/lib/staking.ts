@@ -1,9 +1,11 @@
 import { ethers } from "ethers";
-import { EXPLORER_ADDRESS_URL, EXPLORER_TX_URL, getProvider } from "./inri";
+import { EXPLORER_ADDRESS_URL, EXPLORER_TX_URL, fallbackProvider, getProvider } from "./inri";
 
 export const INRI_STAKING_ADDRESS = "0xbE7eB939065Fa28d9d81Ab7842e0b615F02e26c9";
 export const INRI_NETWORK_KEY = "inri";
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+export const MIN_FIRST_STAKE_INRI = 100;
+export const MAX_PER_PLAN_INRI = 10_000;
 
 export const INRI_STAKING_ABI = [
   "function owner() view returns (address)",
@@ -66,6 +68,15 @@ export type StakingOverview = {
   nextClaimAt: bigint;
   plans: StakingPlanConfig[];
   positions: StakingPosition[];
+  readBlockNumber: number;
+  readSource: string;
+};
+
+export type StakingSummary = {
+  totalStaked: bigint;
+  totalPlanPending: bigint;
+  activePlans: number;
+  mainPlanId: number | null;
 };
 
 export type StakingTxResult = {
@@ -76,8 +87,25 @@ export type StakingTxResult = {
   status: "confirmed" | "failed";
 };
 
-export function getStakingProvider() {
+type ProviderSnapshot = {
+  provider: ethers.JsonRpcProvider;
+  label: string;
+  blockNumber: number;
+};
+
+function getPrimaryProvider() {
   return getProvider(INRI_NETWORK_KEY);
+}
+
+function getReadProviderEntries(): Array<{ provider: ethers.JsonRpcProvider; label: string }> {
+  return [
+    { provider: getPrimaryProvider(), label: "rpc.inri.life" },
+    { provider: fallbackProvider, label: "rpc-chain.inri.life" },
+  ];
+}
+
+export function getStakingProvider() {
+  return getPrimaryProvider();
 }
 
 export function getStakingContract(providerOrSigner: ethers.ContractRunner = getStakingProvider()) {
@@ -140,8 +168,68 @@ export function timeUntilLabel(unlockAt: bigint | number, emergencyExitEnabled =
   return `${hours}h ${minutes}m`;
 }
 
-export async function loadStakingOverview(walletAddress?: string): Promise<StakingOverview> {
-  const provider = getStakingProvider();
+export function summarizeStaking(overview: StakingOverview | null): StakingSummary {
+  if (!overview) {
+    return { totalStaked: 0n, totalPlanPending: 0n, activePlans: 0, mainPlanId: null };
+  }
+
+  let totalStaked = 0n;
+  let totalPlanPending = 0n;
+  let activePlans = 0;
+  let mainPlanId: number | null = null;
+  let mainPlanPrincipal = 0n;
+
+  for (const position of overview.positions) {
+    totalStaked += position.principal;
+    totalPlanPending += position.pendingRewards;
+    if (position.principal > 0n) {
+      activePlans += 1;
+      if (position.principal > mainPlanPrincipal) {
+        mainPlanPrincipal = position.principal;
+        mainPlanId = position.id;
+      }
+    }
+  }
+
+  return { totalStaked, totalPlanPending, activePlans, mainPlanId };
+}
+
+export function getPlanFillPercent(position: StakingPosition | null | undefined) {
+  if (!position || position.principal <= 0n) return 0;
+  const pct = (Number(ethers.formatEther(position.principal)) / MAX_PER_PLAN_INRI) * 100;
+  return Math.max(0, Math.min(100, pct));
+}
+
+function snapshotKey(overview: StakingOverview | null | undefined) {
+  if (!overview) return "none";
+  return JSON.stringify({
+    pendingRewards: overview.pendingRewards.toString(),
+    positions: overview.positions.map((position) => ({
+      id: position.id,
+      principal: position.principal.toString(),
+      pendingRewards: position.pendingRewards.toString(),
+      unlockAt: position.unlockAt.toString(),
+      active: position.active,
+    })),
+  });
+}
+
+async function resolveProviderSnapshots(): Promise<ProviderSnapshot[]> {
+  const results = await Promise.allSettled(
+    getReadProviderEntries().map(async ({ provider, label }) => ({
+      provider,
+      label,
+      blockNumber: await provider.getBlockNumber(),
+    }))
+  );
+
+  return results
+    .filter((item): item is PromiseFulfilledResult<ProviderSnapshot> => item.status === "fulfilled")
+    .map((item) => item.value)
+    .sort((a, b) => b.blockNumber - a.blockNumber);
+}
+
+async function loadOverviewWithProvider(provider: ethers.JsonRpcProvider, label: string, blockNumber: number, walletAddress?: string): Promise<StakingOverview> {
   const contract = getStakingContract(provider);
   const user = walletAddress && ethers.isAddress(walletAddress) ? walletAddress : ZERO_ADDRESS;
 
@@ -211,11 +299,71 @@ export async function loadStakingOverview(walletAddress?: string): Promise<Staki
     walletBalance: BigInt(header[15]),
     plans,
     positions,
+    readBlockNumber: blockNumber,
+    readSource: label,
   };
 }
 
+export async function loadStakingOverview(walletAddress?: string): Promise<StakingOverview> {
+  const snapshots = await resolveProviderSnapshots();
+  if (!snapshots.length) {
+    throw new Error("INRI RPC unavailable");
+  }
+
+  const attempts = await Promise.allSettled(
+    snapshots.map((snapshot) => loadOverviewWithProvider(snapshot.provider, snapshot.label, snapshot.blockNumber, walletAddress))
+  );
+
+  const successful = attempts
+    .filter((item): item is PromiseFulfilledResult<StakingOverview> => item.status === "fulfilled")
+    .map((item) => item.value);
+
+  if (!successful.length) {
+    const firstRejected = attempts.find((item) => item.status === "rejected") as PromiseRejectedResult | undefined;
+    throw firstRejected?.reason || new Error("Failed to load staking overview");
+  }
+
+  successful.sort((a, b) => {
+    const aSummary = summarizeStaking(a);
+    const bSummary = summarizeStaking(b);
+    const aUser = aSummary.totalStaked + a.pendingRewards + aSummary.totalPlanPending;
+    const bUser = bSummary.totalStaked + b.pendingRewards + bSummary.totalPlanPending;
+    if (aUser !== bUser) return bUser > aUser ? 1 : -1;
+    if (a.readBlockNumber !== b.readBlockNumber) return b.readBlockNumber - a.readBlockNumber;
+    return Number(b.currentContractBalance - a.currentContractBalance);
+  });
+
+  return successful[0];
+}
+
+export async function waitForStakingSync(walletAddress: string | undefined, previousOverview?: StakingOverview | null, attempts = 12, delayMs = 1500) {
+  const prevBlock = previousOverview?.readBlockNumber || 0;
+  const prevSnapshot = snapshotKey(previousOverview);
+  let latest = previousOverview || null;
+
+  for (let index = 0; index < attempts; index += 1) {
+    if (index > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+    }
+
+    try {
+      const next = await loadStakingOverview(walletAddress);
+      latest = next;
+      const changedSnapshot = snapshotKey(next) !== prevSnapshot;
+      const newerBlock = next.readBlockNumber > prevBlock;
+      if (changedSnapshot || newerBlock) {
+        return next;
+      }
+    } catch {
+      // keep trying
+    }
+  }
+
+  return latest;
+}
+
 function makeSigner(privateKey: string) {
-  return new ethers.Wallet(privateKey, getStakingProvider());
+  return new ethers.Wallet(privateKey, getPrimaryProvider());
 }
 
 async function waitForTx(txPromise: Promise<any>): Promise<StakingTxResult> {
@@ -236,6 +384,41 @@ async function waitForTx(txPromise: Promise<any>): Promise<StakingTxResult> {
     feeNative: feeWei !== 0n ? ethers.formatEther(feeWei) : "0",
     status: receipt?.status === 1 ? "confirmed" : "failed",
   };
+}
+
+export function explainStakingError(error: any, lang: string = "en") {
+  const pt = lang.toLowerCase().startsWith("pt");
+  const raw = String(error?.shortMessage || error?.reason || error?.message || "");
+  const upper = raw.toUpperCase();
+
+  if (upper.includes("BELOW_MIN_STAKE")) {
+    return pt ? `Primeiro stake do plano: mínimo de ${MIN_FIRST_STAKE_INRI} INRI.` : `First stake on this plan requires at least ${MIN_FIRST_STAKE_INRI} INRI.`;
+  }
+  if (upper.includes("MAX_PER_PLAN")) {
+    return pt ? `Limite máximo por plano: ${MAX_PER_PLAN_INRI.toLocaleString()} INRI.` : `Maximum per plan is ${MAX_PER_PLAN_INRI.toLocaleString()} INRI.`;
+  }
+  if (upper.includes("NO_REWARDS")) {
+    return pt ? "Você ainda não tem rewards para claim ou restake." : "You do not have rewards available yet.";
+  }
+  if (upper.includes("NO_POSITION")) {
+    return pt ? "Você ainda não tem stake ativo nesse plano." : "You do not have an active position on this plan.";
+  }
+  if (upper.includes("CLAIM_COOLDOWN")) {
+    return pt ? "Claim ainda em cooldown. Aguarde o próximo horário liberado." : "Claim is still on cooldown.";
+  }
+  if (upper.includes("NEW_STAKES_PAUSED")) {
+    return pt ? "Novos stakes estão pausados no contrato." : "New stakes are currently paused.";
+  }
+  if (upper.includes("EMERGENCY_EXIT")) {
+    return pt ? "Modo de emergência ativo. Apenas saída é permitida." : "Emergency mode is enabled. Only exit is allowed.";
+  }
+  if (upper.includes("INSUFFICIENT_FUNDS")) {
+    return pt ? "Saldo insuficiente para stake + gas." : "Insufficient balance for stake plus gas.";
+  }
+  if (upper.includes("BAD_PLAN")) {
+    return pt ? "Plano inválido." : "Invalid plan.";
+  }
+  return raw || (pt ? "Transação falhou." : "Transaction failed.");
 }
 
 export async function stakeInriTx(privateKey: string, planId: number, amountInri: string) {
