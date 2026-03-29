@@ -66,20 +66,7 @@ export default function ActivityScreen({ theme = "dark", lang = "en", address }:
             const isOutgoing = item.from?.toLowerCase() === address.toLowerCase();
             const txHash = item.hash || "";
             const itemNetwork = allNetworks.find((entry) => entry.key === resolveActivityNetworkKey(item) || Number(entry.chainId) === Number(item.chainId)) || activeNetwork;
-            const title =
-              item.method === "approve"
-                ? `Approve ${item.symbol || "token"}`
-                : item.method === "stake"
-                ? `Stake ${item.symbol || "INRI"}`
-                : item.method === "claim"
-                ? `Claim ${item.symbol || "INRI"}`
-                : item.method === "restake"
-                ? `Restake ${item.symbol || "INRI"}`
-                : item.method === "unstake"
-                ? `Unstake ${item.symbol || "INRI"}`
-                : isOutgoing
-                ? tr(lang, "activity_sent")
-                : tr(lang, "activity_received");
+            const title = item.method === "approve" ? `Approve ${item.symbol || "token"}` : isOutgoing ? tr(lang, "activity_sent") : tr(lang, "activity_received");
             return (
               <ScreenCard key={item.hash || index} theme={theme}>
                 <div className="wallet-section-head">
