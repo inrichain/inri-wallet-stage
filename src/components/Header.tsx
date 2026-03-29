@@ -48,35 +48,16 @@ export default function Header({
     window.addEventListener("storage", syncNetwork);
     window.addEventListener("wallet-network-updated", syncNetwork as EventListener);
     window.addEventListener("wallet-avatar-updated", syncAvatar as EventListener);
+    window.addEventListener("wallet-force-close-overlays", closeMenu as EventListener);
     window.addEventListener("click", closeMenu);
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("storage", syncNetwork);
       window.removeEventListener("wallet-network-updated", syncNetwork as EventListener);
       window.removeEventListener("wallet-avatar-updated", syncAvatar as EventListener);
+      window.removeEventListener("wallet-force-close-overlays", closeMenu as EventListener);
       window.removeEventListener("click", closeMenu);
       window.removeEventListener("resize", onResize);
-    };
-  }, []);
-
-  useEffect(() => {
-    const closeMenus = () => setNetworkOpen(false);
-    const handleVisibility = () => {
-      if (document.hidden) {
-        setNetworkOpen(false);
-      }
-    };
-
-    window.addEventListener("pageshow", closeMenus);
-    window.addEventListener("blur", closeMenus);
-    window.addEventListener("resize", closeMenus);
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      window.removeEventListener("pageshow", closeMenus);
-      window.removeEventListener("blur", closeMenus);
-      window.removeEventListener("resize", closeMenus);
-      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
