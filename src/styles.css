@@ -1055,3 +1055,18 @@ img{max-width:100%}
     min-height:42px;
   }
 }
+
+
+.wallet-resume-fix,
+.wallet-resume-fix .wallet-surface,
+.wallet-resume-fix .wallet-bottom-nav,
+.wallet-resume-fix .wallet-network-overlay,
+.wallet-resume-fix .wallet-network-popover,
+.wallet-resume-fix .wallet-network-drawer{
+  -webkit-backdrop-filter:none !important;
+  backdrop-filter:none !important;
+}
+.wallet-resume-fix{
+  transform:translateZ(0);
+  will-change:transform;
+}
