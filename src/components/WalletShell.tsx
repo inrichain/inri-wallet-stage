@@ -6,7 +6,6 @@ import Header from "./Header";
 import BottomNav from "./BottomNav";
 import AuthPanel, { type AuthMode } from "./AuthPanel";
 import ReauthModal from "./ReauthModal";
-import TransactionConfirmModal, { type TxConfirmSection } from "./TransactionConfirmModal";
 import DashboardScreen from "../screens/DashboardScreen";
 import SendScreen from "../screens/SendScreen";
 import ReceiveScreen from "../screens/ReceiveScreen";
@@ -25,6 +24,8 @@ import P2PScreen from "../screens/P2PScreen";
 import PoolScreen from "../screens/PoolScreen";
 import ToastViewport from "./ToastViewport";
 import WcSessionProposalModal from "./WcSessionProposalModal";
+import WcRequestModal from "./WcRequestModal";
+import TransactionConfirmModal, { type TransactionConfirmItem } from "./TransactionConfirmModal";
 import {
   approveSessionProposal,
   rejectSessionProposal,
@@ -34,10 +35,9 @@ import {
 import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
 import { buildWcRequestDetails } from "../lib/wcRequestDetails";
-import { resolveDappAsset } from "../lib/assets";
 import { isValidSeedPhrase, normalizeSeed } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
-import { installDesktopEthereumProvider, type SensitiveRequestArgs } from "../lib/desktopProvider";
+import { installDesktopEthereumProvider } from "../lib/desktopProvider";
 import { getInriNetwork, getStoredNetwork, saveStoredNetwork } from "../lib/network";
 import type { AppToastPayload, AppToastType } from "../lib/ui";
 import type { Tab } from "../lib/navigation";
@@ -63,6 +63,14 @@ type UnlockedWallet = {
   name: string;
   address: string;
   privateKey: string;
+};
+
+type DesktopApprovalState = null | {
+  method: string;
+  params: any;
+  chainId: string;
+  origin: string;
+  name: string;
 };
 
 export default function WalletShell() {
@@ -100,14 +108,14 @@ export default function WalletShell() {
 
   const autoLockTimerRef = useRef<number | null>(null);
   const pendingSensitiveActionRef = useRef<null | ((overridePrivateKey?: string) => Promise<void>)>(null);
-  const pendingSiteRequestRef = useRef<null | { args: SensitiveRequestArgs; resolve: (value: any) => void; reject: (reason?: any) => void }>(null);
+  const desktopApproveResolveRef = useRef<null | ((value: any) => void)>(null);
+  const desktopApproveRejectRef = useRef<null | ((reason?: any) => void)>(null);
 
   const [wcProposal, setWcProposal] = useState<any | null>(null);
+  const [desktopApproval, setDesktopApproval] = useState<DesktopApprovalState>(null);
+  const [desktopApproving, setDesktopApproving] = useState(false);
   const [wcRequest, setWcRequest] = useState<any | null>(null);
   const [wcApproving, setWcApproving] = useState(false);
-  const [siteRequest, setSiteRequest] = useState<any | null>(null);
-  const [siteApproving, setSiteApproving] = useState(false);
-  const [resumeTick, setResumeTick] = useState(0);
 
   const t = {
     authSubtitle: tr(lang, "auth_subtitle"),
@@ -142,37 +150,6 @@ export default function WalletShell() {
     walletAlreadyExists: tr(lang, "auth_wallet_already_exists"),
   };
 
-
-
-  useEffect(() => {
-    const recoverUi = () => {
-      setReauthOpen(false);
-      setReauthPassword("");
-      setReauthError("");
-      setWcProposal(null);
-      setWcRequest(null);
-      setWcApproving(false);
-      setSiteRequest(null);
-      setSiteApproving(false);
-      pendingSiteRequestRef.current = null;
-      setResumeTick((value) => value + 1);
-      window.dispatchEvent(new Event("wallet-close-overlays"));
-    };
-
-    const onVisibility = () => {
-      if (!document.hidden) window.setTimeout(recoverUi, 60);
-    };
-
-    window.addEventListener("focus", recoverUi);
-    window.addEventListener("pageshow", recoverUi as EventListener);
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      window.removeEventListener("focus", recoverUi);
-      window.removeEventListener("pageshow", recoverUi as EventListener);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -574,9 +551,6 @@ export default function WalletShell() {
 
   const activeAddress = unlockedWallet?.address || currentWalletMeta?.address || "";
 
-  const wcRequestModalConfig = useMemo(() => buildRequestModalConfig(wcRequest, lang), [wcRequest, lang]);
-  const siteRequestModalConfig = useMemo(() => buildRequestModalConfig(siteRequest, lang), [siteRequest, lang]);
-
   useEffect(() => {
     if (!activeAddress) return;
 
@@ -593,16 +567,14 @@ export default function WalletShell() {
       getPrivateKey: () => unlockedWallet.privateKey,
       requireSensitiveApproval: async (args) => {
         return await new Promise((resolve, reject) => {
-          pendingSiteRequestRef.current = { args, resolve, reject };
-          setSiteRequest({
+          desktopApproveResolveRef.current = resolve;
+          desktopApproveRejectRef.current = reject;
+          setDesktopApproval({
             method: args.method,
             params: args.params,
             chainId: `eip155:${Number(getStoredNetwork().chainId || 3777)}`,
-            peerMetadata: {
-              name: args.siteName || "Connected site",
-              url: args.origin || "",
-              icons: [],
-            },
+            origin: window.location.origin || "browser",
+            name: document.title || window.location.hostname || "Browser",
           });
         });
       },
@@ -685,53 +657,116 @@ export default function WalletShell() {
     }
   }
 
-  async function onApproveSiteRequest() {
-    if (!unlockedWallet || !pendingSiteRequestRef.current || siteApproving) {
-      return;
+  const desktopApprovalView = useMemo(() => {
+    if (!desktopApproval) return null;
+    const details = buildWcRequestDetails({
+      method: desktopApproval.method,
+      params: desktopApproval.params,
+      chainId: desktopApproval.chainId,
+      peerMetadata: {
+        name: desktopApproval.name,
+        url: desktopApproval.origin,
+        icons: [],
+      },
+    }, lang);
+
+    const items: TransactionConfirmItem[] = [
+      { label: "Requested by", value: details.dappName || desktopApproval.origin },
+      { label: "Method", value: details.displayMethod || details.methodLabel || desktopApproval.method },
+      { label: "Network", value: details.networkName },
+      { label: "Chain", value: details.chainLabel },
+    ];
+
+    if (details.kind === "transaction") {
+      items.push(
+        { label: "To", value: details.to || "-", mono: true },
+        { label: "Value", value: details.valueNative || "0" },
+        { label: "Estimated fee", value: details.estimatedFeeNative || "-" },
+      );
+      if (details.analysis?.action) items.push({ label: "Decoded action", value: details.analysis.action });
+      if (details.analysis?.spender) items.push({ label: "Spender", value: details.analysis.spender, mono: true });
+      if (details.analysis?.amountLabel) items.push({ label: "Amount", value: details.analysis.amountLabel });
+    } else if (details.kind === "typedData") {
+      items.push(
+        { label: "Domain", value: details.summary?.domainName || "-" },
+        { label: "Primary type", value: details.summary?.primaryType || "-" },
+      );
+    } else if (details.kind === "message") {
+      items.push({ label: "Preview", value: details.preview || "-" });
+    } else if (details.kind === "networkSwitch") {
+      items.push({ label: "Requested network", value: details.requestedNetwork || "-" });
+    } else if (details.kind === "networkAdd") {
+      items.push(
+        { label: "Requested network", value: details.requestedNetwork || "-" },
+        { label: "RPC", value: details.requestedRpc || "-", mono: true },
+      );
     }
 
-    setSiteApproving(true);
-    setSiteRequest(null);
+    return {
+      title:
+        details.kind === "transaction"
+          ? "Review transaction"
+          : details.kind === "typedData"
+            ? "Review typed data"
+            : details.kind === "message"
+              ? "Review message"
+              : details.kind === "networkSwitch"
+                ? "Review network switch"
+                : details.kind === "networkAdd"
+                  ? "Review custom network"
+                  : "Review request",
+      subtitle: details.subtitle,
+      badge: details.kind === "transaction" ? "Contract interaction" : details.kind === "typedData" ? "Typed data" : details.kind === "message" ? "Signature" : "Security check",
+      items,
+      warnings: details.riskItems?.length ? details.riskItems.slice(0, 4) : [],
+      confirmLabel:
+        details.kind === "transaction"
+          ? "Approve transaction"
+          : details.kind === "typedData"
+            ? "Sign typed data"
+            : details.kind === "message"
+              ? "Sign message"
+              : details.kind === "networkSwitch"
+                ? "Switch network"
+                : details.kind === "networkAdd"
+                  ? "Add network"
+                  : "Approve",
+    };
+  }, [desktopApproval, lang]);
+
+  async function approveDesktopRequest() {
+    if (!desktopApproval || !unlockedWallet || desktopApproving) return;
+    setDesktopApproving(true);
     try {
       await runSensitiveAction(async (overridePrivateKey?: string) => {
-        const current = pendingSiteRequestRef.current;
-        if (!current) return;
-        try {
-          const result = await handleRequestMethod({
-            method: current.args.method,
-            params: current.args.params,
-            address: unlockedWallet.address,
-            privateKey: overridePrivateKey || unlockedWallet.privateKey,
-            chainId: `eip155:${Number(getStoredNetwork().chainId || 3777)}`,
-          });
-          current.resolve(result);
-          showMessage(tr(lang, "shell_request_approved"));
-        } catch (err: any) {
-          console.error(err);
-          current.reject(err);
-          showMessage(err?.message || tr(lang, "shell_request_approve_failed"));
-        } finally {
-          pendingSiteRequestRef.current = null;
-          setSiteRequest(null);
-          setSiteApproving(false);
-        }
+        const result = await handleRequestMethod({
+          method: desktopApproval.method,
+          params: desktopApproval.params,
+          address: unlockedWallet.address,
+          privateKey: overridePrivateKey || unlockedWallet.privateKey,
+          chainId: desktopApproval.chainId,
+        });
+        desktopApproveResolveRef.current?.(result);
+        desktopApproveResolveRef.current = null;
+        desktopApproveRejectRef.current = null;
+        setDesktopApproval(null);
+        setDesktopApproving(false);
       });
-    } catch (err) {
-      setSiteApproving(false);
+    } catch (error) {
+      desktopApproveRejectRef.current?.(error);
+      desktopApproveResolveRef.current = null;
+      desktopApproveRejectRef.current = null;
+      setDesktopApproval(null);
+      setDesktopApproving(false);
     }
   }
 
-  function onRejectSiteRequest() {
-    const current = pendingSiteRequestRef.current;
-    pendingSiteRequestRef.current = null;
-    setSiteRequest(null);
-    setSiteApproving(false);
-    if (current) {
-      const error: any = new Error("User rejected the request");
-      error.code = 4001;
-      current.reject(error);
-    }
-    showMessage(tr(lang, "shell_request_rejected"));
+  function rejectDesktopRequest() {
+    desktopApproveRejectRef.current?.(new Error("User rejected the request"));
+    desktopApproveResolveRef.current = null;
+    desktopApproveRejectRef.current = null;
+    setDesktopApproval(null);
+    setDesktopApproving(false);
   }
 
   const renderTab = () => {
@@ -854,7 +889,6 @@ export default function WalletShell() {
 
   return (
     <div
-      key={`resume-${resumeTick}`}
       className="wallet-page-shell"
       style={{
         background:
@@ -891,44 +925,28 @@ export default function WalletShell() {
         onReject={onRejectProposal}
       />
 
-      <TransactionConfirmModal
-        open={!!wcRequest && !!wcRequestModalConfig}
+      <WcRequestModal
+        open={!!wcRequest}
         theme={theme}
-        title={wcRequestModalConfig?.title || "Confirm request"}
-        subtitle={wcRequestModalConfig?.subtitle}
-        actionLabel={wcRequestModalConfig?.actionLabel}
-        category={wcRequestModalConfig?.category}
-        networkName={wcRequestModalConfig?.networkName}
-        networkLogo={wcRequestModalConfig?.networkLogo}
-        riskLabel={wcRequestModalConfig?.riskLabel}
-        riskTone={(wcRequestModalConfig?.riskTone as any) || "medium"}
-        sections={wcRequestModalConfig?.sections || []}
-        warnings={wcRequestModalConfig?.warnings || []}
-        advancedContent={wcRequestModalConfig?.advancedContent}
-        confirmLabel={wcRequestModalConfig?.confirmLabel || "Confirm"}
-        confirmBusy={wcApproving}
-        onConfirm={onApproveRequest}
-        onCancel={onRejectRequest}
+        lang={lang}
+        request={wcRequest}
+        approving={wcApproving}
+        onApprove={onApproveRequest}
+        onReject={onRejectRequest}
       />
 
       <TransactionConfirmModal
-        open={!!siteRequest && !!siteRequestModalConfig}
+        open={!!desktopApproval && !!desktopApprovalView}
         theme={theme}
-        title={siteRequestModalConfig?.title || "Confirm request"}
-        subtitle={siteRequestModalConfig?.subtitle}
-        actionLabel={siteRequestModalConfig?.actionLabel}
-        category={siteRequestModalConfig?.category}
-        networkName={siteRequestModalConfig?.networkName}
-        networkLogo={siteRequestModalConfig?.networkLogo}
-        riskLabel={siteRequestModalConfig?.riskLabel}
-        riskTone={(siteRequestModalConfig?.riskTone as any) || "medium"}
-        sections={siteRequestModalConfig?.sections || []}
-        warnings={siteRequestModalConfig?.warnings || []}
-        advancedContent={siteRequestModalConfig?.advancedContent}
-        confirmLabel={siteRequestModalConfig?.confirmLabel || "Confirm"}
-        confirmBusy={siteApproving}
-        onConfirm={onApproveSiteRequest}
-        onCancel={onRejectSiteRequest}
+        title={desktopApprovalView?.title || "Review request"}
+        subtitle={desktopApprovalView?.subtitle || "Confirm this browser request before the wallet signs or sends anything."}
+        badge={desktopApprovalView?.badge}
+        items={desktopApprovalView?.items || []}
+        warnings={desktopApprovalView?.warnings || []}
+        confirmLabel={desktopApprovalView?.confirmLabel || "Approve"}
+        confirming={desktopApproving}
+        onConfirm={approveDesktopRequest}
+        onCancel={rejectDesktopRequest}
       />
 
       <ToastViewport toasts={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))} />
@@ -946,15 +964,7 @@ export default function WalletShell() {
         onConfirm={confirmSensitiveAction}
         onCancel={() => {
           pendingSensitiveActionRef.current = null;
-          if (pendingSiteRequestRef.current) {
-            const error: any = new Error("User rejected the request");
-            error.code = 4001;
-            pendingSiteRequestRef.current.reject(error);
-            pendingSiteRequestRef.current = null;
-          }
           setWcApproving(false);
-          setSiteApproving(false);
-          setSiteRequest(null);
           setReauthOpen(false);
           setReauthPassword("");
           setReauthError("");
@@ -969,95 +979,10 @@ export default function WalletShell() {
 
 
 
-function buildRequestModalConfig(request: any, lang = "en") {
-  if (!request) return null;
-  const details: any = buildWcRequestDetails(request, lang);
-  const sections: TxConfirmSection[] = [
-    {
-      title: "Request",
-      items: [
-        { label: "Requested by", value: details.dappName || "Connected site" },
-        ...(details.dappUrl ? [{ label: "Origin", value: details.dappUrl, mono: true }] : []),
-        { label: "Method", value: details.displayMethod || details.methodLabel || details.method || "Unknown" },
-        { label: "Network", value: details.networkName || "INRI" },
-        { label: "Chain", value: details.chainLabel || `eip155:${details.chainId || 3777}` },
-      ],
-    },
-  ];
 
-  if (details.kind === "transaction") {
-    const items: any[] = [
-      { label: "Action", value: details.analysis?.action || details.displayMethod || "Transaction" },
-      { label: "To", value: details.toFull || details.to || "New contract", mono: true },
-      { label: "Value", value: details.valueNative || "0" },
-      { label: "Gas limit", value: details.gasLimit || "Auto" },
-      { label: "Estimated fee", value: details.estimatedFeeNative || "By network" },
-    ];
-    if (details.analysis?.spender) items.push({ label: "Spender", value: details.analysis.spender, mono: true });
-    if (details.analysis?.amountLabel) items.push({ label: "Amount", value: details.analysis.amountLabel });
-    if (details.dataPreview) items.push({ label: "Calldata", value: details.dataPreview, mono: true });
-    sections.push({ title: "Transaction", items });
-  } else if (details.kind === "networkSwitch") {
-    sections.push({ title: "Network switch", items: [
-      { label: "Current network", value: details.currentNetwork || "Current network" },
-      { label: "Requested network", value: details.requestedNetwork || "Unknown network" },
-      { label: "Requested chain", value: String(details.requestedChainId || "-") },
-    ]});
-  } else if (details.kind === "networkAdd") {
-    sections.push({ title: "Add network", items: [
-      { label: "Network", value: details.requestedNetwork || "Custom network" },
-      { label: "Chain ID", value: String(details.requestedChainId || "-") },
-      { label: "RPC URL", value: details.requestedRpc || "-", mono: true },
-    ]});
-  } else if (details.kind === "message") {
-    sections.push({ title: "Message", items: [
-      { label: "Preview", value: details.preview || "Empty message" },
-    ]});
-  } else if (details.kind === "typedData") {
-    sections.push({ title: "Typed data", items: [
-      { label: "Domain", value: details.summary?.domainName || "Unknown" },
-      { label: "Primary type", value: details.summary?.primaryType || "Unknown" },
-      { label: "Fields", value: String(details.summary?.fieldCount || 0), hint: (details.summary?.fields || []).join(", ") || undefined },
-      ...(details.analysis?.action ? [{ label: "Decoded intent", value: details.analysis.action, hint: details.analysis.functionName || undefined }] : []),
-    ]});
-  }
 
-  const riskLabel = details.kind === "transaction"
-    ? (details.analysis?.isUnlimitedApproval ? "High risk" : (details.riskLevel === "low" ? "Low risk" : details.riskLevel === "high" ? "High risk" : "Medium risk"))
-    : details.riskLevel === "low" ? "Low risk" : details.riskLevel === "high" ? "High risk" : "Medium risk";
 
-  const confirmLabel = details.kind === "message"
-    ? "Sign message"
-    : details.kind === "typedData"
-    ? "Sign typed data"
-    : details.kind === "networkSwitch"
-    ? "Switch network"
-    : details.kind === "networkAdd"
-    ? "Add network"
-    : details.kind === "transaction"
-    ? "Confirm transaction"
-    : "Confirm request";
 
-  return {
-    details,
-    title: details.title || "Confirm request",
-    subtitle: details.subtitle || "Review this request before approving it in INRI Wallet.",
-    actionLabel: details.kind === "transaction" ? "Contract interaction" : details.displayMethod || details.methodLabel || details.method,
-    networkName: details.networkName || "INRI",
-    networkLogo: resolveDappAsset(details.dappIcon || details.networkLogo, details.dappName || details.networkName || "INRI"),
-    category: details.dappName || "Connected site",
-    riskLabel,
-    riskTone: details.analysis?.isUnlimitedApproval ? "high" : (details.riskLevel === "low" ? "low" : details.riskLevel === "high" ? "high" : "medium"),
-    sections,
-    warnings: Array.isArray(details.riskItems) ? details.riskItems : [],
-    confirmLabel,
-    advancedContent: React.createElement(
-      "pre",
-      { style: { margin: 0, padding: 12, borderRadius: 14, border: "1px solid rgba(148,163,184,.25)", background: "rgba(15,23,42,.48)", color: "#d8e3ff", fontSize: 12, whiteSpace: "pre-wrap", wordBreak: "break-word" } },
-      JSON.stringify(request.params, null, 2)
-    ),
-  };
-}
 
 function secondaryButtonStyle(theme: "dark" | "light"): React.CSSProperties {
   return {
