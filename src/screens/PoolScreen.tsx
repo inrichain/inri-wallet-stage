@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
+import ActionButton from "../components/ActionButton";
+import EmptyState from "../components/EmptyState";
 import ScreenCard from "../components/ScreenCard";
 import SectionTitle from "../components/SectionTitle";
 import StatusPill from "../components/StatusPill";
-import ActionButton from "../components/ActionButton";
-import EmptyState from "../components/EmptyState";
 import {
   buildMinerCommand,
   fetchPoolSnapshot,
@@ -18,21 +18,59 @@ import {
   type PoolMode,
   type PoolPayment,
   type PoolSnapshot,
+  type PoolTopMiner,
 } from "../lib/pool";
 
-type PoolTab = "overview" | "mining" | "blocks" | "payments" | "top" | "setup";
+type PoolTab = "overview" | "mining" | "blocks" | "payments" | "setup";
+
+type Theme = "dark" | "light";
 
 const tabs: Array<{ id: PoolTab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "mining", label: "My Mining" },
   { id: "blocks", label: "Blocks" },
   { id: "payments", label: "Payments" },
-  { id: "top", label: "Top Miners" },
   { id: "setup", label: "Setup" },
 ];
 
-function Sparkline({ values, theme = "dark" }: { values: number[]; theme?: "dark" | "light" }) {
-  const isLight = theme === "light";
+function copyText(value: string) {
+  navigator.clipboard?.writeText(value).catch(() => {});
+}
+
+function shortHex(value: string, left = 8, right = 6) {
+  if (!value) return "—";
+  if (value.length <= left + right + 2) return value;
+  return `${value.slice(0, left)}…${value.slice(-right)}`;
+}
+
+function surfaceBackground(theme: Theme, level: 1 | 2 | 3 = 1) {
+  const dark = ["#0d1320", "#111827", "#0f1520"];
+  const light = ["#f7fbff", "#ffffff", "#eef4ff"];
+  return theme === "light" ? light[level - 1] : dark[level - 1];
+}
+
+function surfaceBorder(theme: Theme) {
+  return theme === "light" ? "#dbe6f6" : "#20283a";
+}
+
+function textPrimary(theme: Theme) {
+  return theme === "light" ? "#10131a" : "#ffffff";
+}
+
+function textMuted(theme: Theme) {
+  return theme === "light" ? "#556277" : "#9fb0cb";
+}
+
+function cardStyle(theme: Theme, level: 1 | 2 | 3 = 1): React.CSSProperties {
+  return {
+    background: surfaceBackground(theme, level),
+    border: `1px solid ${surfaceBorder(theme)}`,
+    borderRadius: 22,
+    padding: 16,
+  };
+}
+
+function Sparkline({ values, theme }: { values: number[]; theme: Theme }) {
   const safe = values.length ? values : [0, 0, 0, 0];
   const max = Math.max(...safe);
   const min = Math.min(...safe);
@@ -46,70 +84,156 @@ function Sparkline({ values, theme = "dark" }: { values: number[]; theme?: "dark
     .join(" ");
 
   return (
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="wallet-pool-sparkline" aria-hidden="true">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: "100%", height: 96, display: "block" }} aria-hidden="true">
       <defs>
-        <linearGradient id={`pool-line-${theme}`} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#5da1ff" stopOpacity="0.95" />
-          <stop offset="100%" stopColor="#5da1ff" stopOpacity="0.12" />
+        <linearGradient id={`pool-grad-${theme}`} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#4f8cff" stopOpacity="0.85" />
+          <stop offset="100%" stopColor="#4f8cff" stopOpacity="0.08" />
         </linearGradient>
       </defs>
-      <polyline fill="none" stroke={isLight ? "#2f6fff" : "#6ea0ff"} strokeWidth="3.2" points={points} />
-      <polygon fill={`url(#pool-line-${theme})`} points={`0,100 ${points} 100,100`} />
+      <polyline fill="none" stroke="#4f8cff" strokeWidth="3" points={points} />
+      <polygon fill={`url(#pool-grad-${theme})`} points={`0,100 ${points} 100,100`} />
     </svg>
   );
 }
 
-function copyText(value: string) {
-  navigator.clipboard?.writeText(value).catch(() => {});
+function PillRow({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{children}</div>;
 }
 
-function StatCard({ theme, title, value, hint, tone = "neutral" }: { theme?: "dark" | "light"; title: string; value: string; hint?: string; tone?: "neutral" | "primary" | "success" | "warning"; }) {
-  const isLight = theme === "light";
+function StatTile({ theme, label, value, hint, tone = "neutral" }: { theme: Theme; label: string; value: string; hint?: string; tone?: "neutral" | "primary" | "success" | "warning"; }) {
   return (
-    <div className="wallet-pool-stat-card" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-      <div className="wallet-pool-stat-top">
-        <div className="wallet-ui-subtle" style={{ fontSize: 12 }}>{title}</div>
+    <div style={cardStyle(theme, 2)}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
+        <div style={{ fontSize: 12, letterSpacing: 1.2, textTransform: "uppercase", color: textMuted(theme), fontWeight: 700 }}>{label}</div>
         <StatusPill theme={theme} tone={tone}>{tone === "success" ? "Live" : tone === "warning" ? "Watch" : tone === "primary" ? "Core" : "Info"}</StatusPill>
       </div>
-      <div className="wallet-pool-stat-value" style={{ color: isLight ? "#10131a" : "#ffffff" }}>{value}</div>
-      {hint ? <div className="wallet-ui-subtle">{hint}</div> : null}
+      <div style={{ fontSize: 20, fontWeight: 900, color: textPrimary(theme), lineHeight: 1.2 }}>{value}</div>
+      {hint ? <div style={{ marginTop: 8, fontSize: 13, color: textMuted(theme), lineHeight: 1.5 }}>{hint}</div> : null}
     </div>
   );
 }
 
-function RowBadge({ theme, value }: { theme?: "dark" | "light"; value: string }) {
+function SegmentTabs({ theme, current, onChange }: { theme: Theme; current: PoolTab; onChange: (tab: PoolTab) => void }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10 }}>
+      {tabs.map((item) => (
+        <ActionButton
+          key={item.id}
+          onClick={() => onChange(item.id)}
+          theme={theme}
+          tone={current === item.id ? "primary" : "secondary"}
+          compact
+          style={{ width: "100%" }}
+        >
+          {item.label}
+        </ActionButton>
+      ))}
+    </div>
+  );
+}
+
+function ModeCard({ theme, title, hashrate, miners, workers, payments, tone }: { theme: Theme; title: string; hashrate: string; miners: number; workers: number; payments: number; tone: "primary" | "warning"; }) {
+  return (
+    <div style={cardStyle(theme, 2)}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 14, alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 12, letterSpacing: 1.2, textTransform: "uppercase", color: textMuted(theme), fontWeight: 700 }}>{title}</div>
+          <div style={{ marginTop: 4, fontSize: 24, fontWeight: 900, color: textPrimary(theme) }}>{hashrate}</div>
+        </div>
+        <StatusPill theme={theme} tone={tone}>{title}</StatusPill>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
+        <MiniMetric theme={theme} label="Miners" value={String(miners)} />
+        <MiniMetric theme={theme} label="Workers" value={String(workers)} />
+        <MiniMetric theme={theme} label="Payments" value={String(payments)} />
+      </div>
+    </div>
+  );
+}
+
+function MiniMetric({ theme, label, value }: { theme: Theme; label: string; value: string }) {
+  return (
+    <div style={{ ...cardStyle(theme, 3), padding: 12, borderRadius: 16 }}>
+      <div style={{ fontSize: 12, color: textMuted(theme), marginBottom: 6 }}>{label}</div>
+      <div style={{ fontWeight: 900, color: textPrimary(theme) }}>{value}</div>
+    </div>
+  );
+}
+
+function InfoRow({ theme, label, value }: { theme: Theme; label: string; value: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: `1px solid ${surfaceBorder(theme)}` }}>
+      <div style={{ color: textMuted(theme), fontSize: 13 }}>{label}</div>
+      <div style={{ color: textPrimary(theme), fontWeight: 800, textAlign: "right" }}>{value}</div>
+    </div>
+  );
+}
+
+function DataList({ theme, children }: { theme: Theme; children: React.ReactNode }) {
+  return <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>;
+}
+
+function ListRow({ theme, left, right, href }: { theme: Theme; left: React.ReactNode; right?: React.ReactNode; href?: string }) {
+  const content = (
+    <div style={{ ...cardStyle(theme, 2), padding: 14, borderRadius: 18, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14 }}>
+      <div style={{ minWidth: 0, flex: 1 }}>{left}</div>
+      {right ? <div style={{ textAlign: "right", flexShrink: 0 }}>{right}</div> : null}
+    </div>
+  );
+
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
+        {content}
+      </a>
+    );
+  }
+
+  return content;
+}
+
+function CopyCard({ theme, title, body }: { theme: Theme; title: string; body: string }) {
+  return (
+    <div style={cardStyle(theme, 2)}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontWeight: 900, color: textPrimary(theme) }}>{title}</div>
+        <ActionButton theme={theme} tone="secondary" compact onClick={() => copyText(body)}>Copy</ActionButton>
+      </div>
+      <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 12, lineHeight: 1.6, color: textPrimary(theme), background: theme === "light" ? "#ffffff" : "#0b1018", border: `1px solid ${surfaceBorder(theme)}`, borderRadius: 16, padding: 14 }}>{body}</pre>
+    </div>
+  );
+}
+
+function RowBadge({ theme, value }: { theme: Theme; value: string }) {
   const lower = value.toLowerCase();
-  const tone = lower.includes("online") || lower.includes("confirmed") ? "success" : lower.includes("pending") ? "warning" : lower.includes("orphan") || lower.includes("offline") ? "danger" : "neutral";
+  const tone = lower.includes("online") || lower.includes("confirm") ? "success" : lower.includes("pend") ? "warning" : lower.includes("orphan") || lower.includes("offline") ? "danger" : "neutral";
   return <StatusPill theme={theme} tone={tone as any}>{value}</StatusPill>;
 }
 
-export default function PoolScreen({ theme = "dark", address = "", setTab }: { theme?: "dark" | "light"; lang?: string; address?: string; setTab?: (tab: any) => void; }) {
-  const [tab, setLocalTab] = useState<PoolTab>("overview");
-  const [modeFilter, setModeFilter] = useState<"all" | PoolMode>("all");
-  const [paymentFilter, setPaymentFilter] = useState<"all" | PoolMode | "mine">("all");
+export default function PoolScreen({ theme = "dark", address = "" }: { theme?: Theme; lang?: string; address?: string; setTab?: (tab: any) => void }) {
+  const [tab, setTab] = useState<PoolTab>("overview");
   const [snapshot, setSnapshot] = useState<PoolSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [workerName, setWorkerName] = useState("rig-01");
-  const isLight = theme === "light";
+  const [refreshing, setRefreshing] = useState(false);
+  const [workerName, setWorkerName] = useState("RIG001");
+  const [paymentFilter, setPaymentFilter] = useState<"all" | PoolMode | "mine">("all");
+  const [blockFilter, setBlockFilter] = useState<"all" | PoolMode>("all");
 
   useEffect(() => {
     let active = true;
-    async function load() {
-      try {
-        const next = await fetchPoolSnapshot(address);
-        if (!active) return;
-        setSnapshot(next);
-        setError("");
-      } catch (err: any) {
-        if (!active) return;
-        setError(err?.message || "Failed to load pool data");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-    load();
-    const timer = window.setInterval(load, 8000);
+
+    const load = async (showSpinner = false) => {
+      if (showSpinner) setRefreshing(true);
+      const next = await fetchPoolSnapshot(address);
+      if (!active) return;
+      setSnapshot(next);
+      setLoading(false);
+      setRefreshing(false);
+    };
+
+    load(false);
+    const timer = window.setInterval(() => load(false), 15000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -117,13 +241,13 @@ export default function PoolScreen({ theme = "dark", address = "", setTab }: { t
   }, [address]);
 
   const overview = snapshot?.overview;
+  const pplnsMode = overview?.modes.find((item) => item.mode === "pplns") || { hashrate: 0, miners: 0, workers: 0, paymentsCount: 0 };
+  const soloMode = overview?.modes.find((item) => item.mode === "solo") || { hashrate: 0, miners: 0, workers: 0, paymentsCount: 0 };
+  const topChart = overview?.chart.map((item) => item.hashrate) || [];
+  const topMiners = snapshot?.topMiners || [];
   const myMiner = snapshot?.miner || null;
-
-  const filteredBlocks = useMemo(() => {
-    const list = snapshot?.blocks || [];
-    if (modeFilter === "all") return list;
-    return list.filter((item) => item.mode === modeFilter);
-  }, [snapshot, modeFilter]);
+  const myPayments = myMiner?.payments || [];
+  const myBlocks = myMiner?.blocks || [];
 
   const filteredPayments = useMemo(() => {
     const list = snapshot?.payments || [];
@@ -132,14 +256,22 @@ export default function PoolScreen({ theme = "dark", address = "", setTab }: { t
     return list.filter((item) => item.mode === paymentFilter);
   }, [snapshot, paymentFilter, address]);
 
-  const recentFeePayments = snapshot?.transparency.payments || [];
-  const topChart = overview?.chart.map((item) => item.hashrate) || [];
+  const filteredBlocks = useMemo(() => {
+    const list = snapshot?.blocks || [];
+    if (blockFilter === "all") return list;
+    return list.filter((item) => item.mode === blockFilter);
+  }, [snapshot, blockFilter]);
+
+  const genericUser = address || "YOUR_INRI_WALLET";
+  const pplnsCommand = `lolMiner.exe --algo ETHASH --pool ${buildMinerCommand("pplns", genericUser, workerName).replace(" --pass x", "")} `;
+  const soloCommand = `lolMiner.exe --algo ETHASH --pool ${buildMinerCommand("solo", genericUser, workerName).replace(" --pass x", "")} `;
+  const linuxCommand = `./lolMiner --algo ETHASH --pool ${buildMinerCommand("pplns", genericUser, workerName).replace(" --pass x", "")} `;
 
   if (loading && !snapshot) {
     return (
       <div className="wallet-screen-stack wallet-screen-mobile-tight">
         <ScreenCard theme={theme}>
-          <SectionTitle title="Pool INRI" subtitle="Loading live pool telemetry and miner data…" theme={theme} />
+          <SectionTitle title="INRI Pool" subtitle="Loading live pool stats and wallet mining data..." theme={theme} />
           <div className="wallet-skeleton-list">
             <div className="wallet-skeleton-card" />
             <div className="wallet-skeleton-card" />
@@ -154,132 +286,171 @@ export default function PoolScreen({ theme = "dark", address = "", setTab }: { t
     return (
       <div className="wallet-screen-stack wallet-screen-mobile-tight">
         <ScreenCard theme={theme}>
-          <EmptyState theme={theme} title="Pool data unavailable" description={error || "Connect your pool API to bring overview, blocks, payments and miner stats online."} />
+          <EmptyState theme={theme} title="Pool unavailable" description="The live pool widget or RPC is not responding right now." />
         </ScreenCard>
       </div>
     );
   }
 
   return (
-    <div className="wallet-screen-stack wallet-screen-mobile-tight">
-      <ScreenCard theme={theme} className="wallet-pool-hero">
+    <div className="wallet-screen-stack wallet-screen-mobile-tight" style={{ gap: 16 }}>
+      <ScreenCard theme={theme} style={{ overflow: "hidden" }}>
         <SectionTitle
-          title="Pool INRI"
-          subtitle="Real-time premium mining panel inside the wallet, with public pool stats and automatic My Mining for the unlocked address."
           theme={theme}
+          title="INRI Pool"
+          subtitle="Premium live mining dashboard inside the wallet, using the pool widget and INRI RPC in real time."
           actions={
-            <>
-              <StatusPill theme={theme} tone={overview.poolOnline ? "success" : "danger"}>{overview.poolOnline ? "Pool online" : "Pool offline"}</StatusPill>
-              <StatusPill theme={theme} tone={overview.nodeOnline ? "success" : "warning"}>{overview.nodeOnline ? "Node synced" : "Node watch"}</StatusPill>
-              <StatusPill theme={theme} tone="primary">Fee {formatPercent(overview.feePercent)}</StatusPill>
-            </>
+            <PillRow>
+              <StatusPill theme={theme} tone={overview.poolOnline ? "success" : "danger"}>{overview.poolOnline ? "Pool live" : "Pool offline"}</StatusPill>
+              <StatusPill theme={theme} tone={overview.nodeOnline ? "success" : "warning"}>{overview.nodeOnline ? "RPC live" : "RPC watch"}</StatusPill>
+              <StatusPill theme={theme} tone="primary">Auto 15s</StatusPill>
+            </PillRow>
           }
         />
 
-        <div className="wallet-pool-hero-grid">
-          <div className="wallet-pool-route-card" style={{ background: isLight ? "linear-gradient(180deg,#f7faff 0%, #edf4ff 100%)" : "linear-gradient(180deg,#121c30 0%, #0d1522 100%)" }}>
-            <div className="wallet-pool-route-top">
-              <div>
-                <div className="wallet-ui-subtle">Pool hashrate</div>
-                <div className="wallet-pool-route-value">{formatHashrate(overview.poolHashrate)}</div>
-              </div>
-              <div className="wallet-pool-arrow">⟷</div>
-              <div style={{ textAlign: "right" }}>
-                <div className="wallet-ui-subtle">Network hashrate</div>
-                <div className="wallet-pool-route-value">{formatHashrate(overview.networkHashrate)}</div>
+        <div style={{ ...cardStyle(theme, 2), background: theme === "light" ? "linear-gradient(180deg,#f8fbff 0%,#eef4ff 100%)" : "linear-gradient(180deg,#101827 0%,#0b1220 100%)", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 14 }}>
+            <div style={{ minWidth: 240 }}>
+              <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1.05, color: textPrimary(theme) }}>Mine INRI with real live pool data.</div>
+              <div style={{ marginTop: 10, color: textMuted(theme), maxWidth: 760, lineHeight: 1.65 }}>
+                PPLNS and SOLO are now shown inside the wallet with live hashrate, miners, payments, blocks, top miners and automatic My Mining for the unlocked address.
               </div>
             </div>
-            <div className="wallet-pool-substats">
-              <div><span>Height</span><strong>{overview.currentHeight.toLocaleString()}</strong></div>
-              <div><span>Difficulty</span><strong>{formatDifficulty(overview.networkDifficulty)}</strong></div>
-              <div><span>Luck / Effort</span><strong>{formatPercent(overview.luckPercent)} / {formatPercent(overview.effortPercent)}</strong></div>
-              <div><span>Fee wallet</span><strong>{overview.feeWalletAddress.slice(0, 8)}…{overview.feeWalletAddress.slice(-4)}</strong></div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <ActionButton theme={theme} tone="secondary" compact onClick={() => copyText("https://pool.inri.life")}>Copy pool URL</ActionButton>
+              <ActionButton theme={theme} tone="secondary" compact onClick={() => window.open("https://pool.inri.life", "_blank")}>Open pool</ActionButton>
+              <ActionButton theme={theme} tone="secondary" compact onClick={() => window.open("https://explorer.inri.life", "_blank")}>Open explorer</ActionButton>
+              <ActionButton theme={theme} tone="primary" compact onClick={async () => {
+                setRefreshing(true);
+                const next = await fetchPoolSnapshot(address);
+                setSnapshot(next);
+                setRefreshing(false);
+              }}>{refreshing ? "Refreshing..." : "Refresh now"}</ActionButton>
             </div>
-            <Sparkline values={topChart} theme={theme} />
           </div>
 
-          <div className="wallet-pool-mode-stack">
-            {overview.modes.map((mode) => (
-              <div key={mode.mode} className="wallet-pool-mode-card" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                <div className="wallet-pool-mode-head">
-                  <div>
-                    <div className="wallet-ui-subtle">{mode.mode.toUpperCase()}</div>
-                    <div className="wallet-pool-mode-value">{formatHashrate(mode.hashrate)}</div>
-                  </div>
-                  <StatusPill theme={theme} tone={mode.mode === "solo" ? "warning" : "primary"}>{mode.mode.toUpperCase()}</StatusPill>
-                </div>
-                <div className="wallet-pool-mini-grid">
-                  <div><span>Miners</span><strong>{mode.miners}</strong></div>
-                  <div><span>Workers</span><strong>{mode.workers}</strong></div>
-                </div>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(280px,.8fr)", gap: 16 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 12 }}>
+                <MiniMetric theme={theme} label="Pool hashrate" value={formatHashrate(overview.poolHashrate)} />
+                <MiniMetric theme={theme} label="Latest block" value={overview.currentHeight ? overview.currentHeight.toLocaleString() : "—"} />
+                <MiniMetric theme={theme} label="Raw network peers" value={overview.rawNetworkPeers.toLocaleString()} />
+                <MiniMetric theme={theme} label="Total live pulse" value={overview.totalLivePulse.toLocaleString()} />
               </div>
-            ))}
+              <Sparkline values={topChart} theme={theme} />
+            </div>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <ModeCard theme={theme} title="PPLNS" hashrate={formatHashrate(pplnsMode.hashrate)} miners={pplnsMode.miners} workers={pplnsMode.workers} payments={Number(pplnsMode.paymentsCount || 0)} tone="primary" />
+              <ModeCard theme={theme} title="SOLO" hashrate={formatHashrate(soloMode.hashrate)} miners={soloMode.miners} workers={soloMode.workers} payments={Number(soloMode.paymentsCount || 0)} tone="warning" />
+            </div>
           </div>
         </div>
 
-        <div className="wallet-home-actions-grid wallet-home-actions-grid-single">
-          <ActionButton onClick={() => setLocalTab("overview")} theme={theme} tone={tab === "overview" ? "primary" : "secondary"} compact>Overview</ActionButton>
-          <ActionButton onClick={() => setLocalTab("mining")} theme={theme} tone={tab === "mining" ? "primary" : "secondary"} compact>My Mining</ActionButton>
-          <ActionButton onClick={() => setLocalTab("blocks")} theme={theme} tone={tab === "blocks" ? "primary" : "secondary"} compact>Blocks</ActionButton>
-          <ActionButton onClick={() => setLocalTab("payments")} theme={theme} tone={tab === "payments" ? "primary" : "secondary"} compact>Payments</ActionButton>
-          <ActionButton onClick={() => setLocalTab("top")} theme={theme} tone={tab === "top" ? "primary" : "secondary"} compact>Top Miners</ActionButton>
-          <ActionButton onClick={() => setLocalTab("setup")} theme={theme} tone={tab === "setup" ? "primary" : "secondary"} compact>Setup</ActionButton>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 12, marginBottom: 16 }}>
+          <StatTile theme={theme} label="Connected miners" value={overview.activeMiners.toLocaleString()} hint="PPLNS + SOLO combined" tone="success" />
+          <StatTile theme={theme} label="Active workers" value={overview.activeWorkers.toLocaleString()} hint="Across both pool modes" tone="primary" />
+          <StatTile theme={theme} label="Fee" value={formatPercent(overview.feePercent)} hint={`Fee wallet ${shortHex(overview.feeWalletAddress)}`} tone="primary" />
+          <StatTile theme={theme} label="Difficulty" value={formatDifficulty(overview.networkDifficulty)} hint={`Main RPC peers ${overview.mainRpcPeers}`} tone="neutral" />
+          <StatTile theme={theme} label="Blocks" value={`${overview.confirmedBlocks} confirmed`} hint={`${overview.pendingBlocks} pending · ${overview.orphanedBlocks} orphaned`} tone="warning" />
+          <StatTile theme={theme} label="Updated" value={new Date(overview.widgetUpdatedAt || snapshot.fetchedAt).toLocaleTimeString()} hint={`Fetched ${formatRelativeTime(snapshot.fetchedAt)}`} tone="success" />
         </div>
+
+        <SegmentTabs theme={theme} current={tab} onChange={setTab} />
       </ScreenCard>
 
       {tab === "overview" ? (
         <>
-          <div className="wallet-pool-grid-4">
-            <StatCard theme={theme} title="Active miners" value={String(overview.activeMiners)} hint="Unique mining addresses online" tone="primary" />
-            <StatCard theme={theme} title="Active workers" value={String(overview.activeWorkers)} hint="Workers reporting shares" tone="success" />
-            <StatCard theme={theme} title="Blocks" value={`${overview.confirmedBlocks} confirmed`} hint={`${overview.pendingBlocks} pending · ${overview.orphanedBlocks} orphaned`} tone="warning" />
-            <StatCard theme={theme} title="Fee transparency" value={`${formatPercent(overview.feeWalletPercent)} wallet`} hint="Treasury wallet visible in-app" tone="neutral" />
-          </div>
-
-          <div className="wallet-pool-grid-2">
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 16 }}>
             <ScreenCard theme={theme}>
-              <SectionTitle title="Recent blocks" subtitle="Fresh block flow from PPLNS and SOLO in one place." theme={theme} actions={<ActionButton onClick={() => setLocalTab("blocks")} theme={theme} compact>Open blocks</ActionButton>} />
-              <div className="wallet-pool-table-wrap">
-                <table className="wallet-pool-table">
-                  <thead>
-                    <tr><th>Height</th><th>Miner</th><th>Status</th><th>Type</th><th>Reward</th><th>When</th></tr>
-                  </thead>
-                  <tbody>
-                    {snapshot.blocks.slice(0, 6).map((block) => (
-                      <tr key={block.id}>
-                        <td><a href={getBlockExplorerUrl(block)} target="_blank" rel="noreferrer">#{block.height}</a></td>
-                        <td>{block.miner.slice(0, 6)}…{block.miner.slice(-4)}</td>
-                        <td><RowBadge theme={theme} value={block.status} /></td>
-                        <td>{block.mode.toUpperCase()}</td>
-                        <td>{formatCoin(block.reward)}</td>
-                        <td>{formatRelativeTime(block.createdAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <SectionTitle title="Recent payments" subtitle="Live payouts from the pool widget." theme={theme} actions={<StatusPill theme={theme} tone="primary">{snapshot.payments.length} total</StatusPill>} />
+              <DataList theme={theme}>
+                {(snapshot.payments.slice(0, 6) || []).map((payment) => (
+                  <ListRow
+                    key={payment.id}
+                    theme={theme}
+                    href={getTxExplorerUrl(payment)}
+                    left={
+                      <>
+                        <div style={{ fontWeight: 900, color: textPrimary(theme) }}>{shortHex(payment.address, 10, 6)}</div>
+                        <div style={{ color: textMuted(theme), fontSize: 13, marginTop: 6 }}>{payment.mode.toUpperCase()} · {formatRelativeTime(payment.createdAt)}</div>
+                      </>
+                    }
+                    right={
+                      <>
+                        <div style={{ fontWeight: 900, color: textPrimary(theme) }}>{formatCoin(payment.amount)}</div>
+                        <div style={{ color: textMuted(theme), fontSize: 13, marginTop: 6 }}>{shortHex(payment.txHash, 8, 6)}</div>
+                      </>
+                    }
+                  />
+                ))}
+              </DataList>
             </ScreenCard>
 
             <ScreenCard theme={theme}>
-              <SectionTitle title="Fee wallet transparency" subtitle="2% fee wallet fully visible with recent income and linked address." theme={theme} actions={<ActionButton onClick={() => copyText(snapshot.transparency.walletAddress)} theme={theme} compact>Copy wallet</ActionButton>} />
-              <div className="wallet-pool-transparency-box" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                <div className="wallet-ui-subtle">Fee wallet</div>
-                <div className="wallet-pool-wallet-address">{snapshot.transparency.walletAddress}</div>
-                <div className="wallet-action-row">
-                  <StatusPill theme={theme} tone="primary">Pool fee {formatPercent(overview.feePercent)}</StatusPill>
-                  <StatusPill theme={theme} tone="warning">Fee wallet {formatPercent(snapshot.transparency.feePercent)}</StatusPill>
-                </div>
-              </div>
-              <div className="wallet-pool-compact-list">
-                {recentFeePayments.slice(0, 4).map((payment) => (
-                  <a key={payment.id} href={getTxExplorerUrl(payment)} target="_blank" rel="noreferrer" className="wallet-pool-compact-row" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                    <div>
-                      <div style={{ fontWeight: 800 }}>{formatCoin(payment.amount)}</div>
-                      <div className="wallet-ui-subtle">{formatRelativeTime(payment.createdAt)}</div>
-                    </div>
-                    <div className="wallet-ui-subtle">{payment.txHash.slice(0, 8)}…{payment.txHash.slice(-4)}</div>
-                  </a>
+              <SectionTitle title="Recent blocks" subtitle="Live block feed from PPLNS and SOLO." theme={theme} actions={<StatusPill theme={theme} tone="warning">{snapshot.blocks.length} shown</StatusPill>} />
+              <DataList theme={theme}>
+                {(snapshot.blocks.slice(0, 6) || []).map((block) => (
+                  <ListRow
+                    key={block.id}
+                    theme={theme}
+                    href={getBlockExplorerUrl(block)}
+                    left={
+                      <>
+                        <div style={{ fontWeight: 900, color: textPrimary(theme) }}>#{block.height.toLocaleString()}</div>
+                        <div style={{ color: textMuted(theme), fontSize: 13, marginTop: 6 }}>{shortHex(block.miner, 10, 6)} · {formatRelativeTime(block.createdAt)}</div>
+                      </>
+                    }
+                    right={
+                      <>
+                        <RowBadge theme={theme} value={block.status} />
+                        <div style={{ color: textPrimary(theme), fontWeight: 900, marginTop: 8 }}>{formatCoin(block.reward)}</div>
+                        <div style={{ color: textMuted(theme), fontSize: 13, marginTop: 4 }}>{block.mode.toUpperCase()}</div>
+                      </>
+                    }
+                  />
                 ))}
+              </DataList>
+            </ScreenCard>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(320px,.8fr)", gap: 16 }}>
+            <ScreenCard theme={theme}>
+              <SectionTitle title="Top miners" subtitle="Sorted by current hashrate from the live widget." theme={theme} />
+              <DataList theme={theme}>
+                {topMiners.slice(0, 8).map((miner, index) => (
+                  <ListRow
+                    key={`${miner.address}-${index}`}
+                    theme={theme}
+                    left={
+                      <>
+                        <div style={{ fontWeight: 900, color: textPrimary(theme) }}>#{index + 1} {miner.label}</div>
+                        <div style={{ color: textMuted(theme), fontSize: 13, marginTop: 6 }}>{miner.workers} worker(s) · {miner.mode === "mixed" ? "MIXED" : miner.mode.toUpperCase()}</div>
+                      </>
+                    }
+                    right={
+                      <>
+                        <div style={{ fontWeight: 900, color: textPrimary(theme) }}>{formatHashrate(miner.hashrate)}</div>
+                        <div style={{ color: textMuted(theme), fontSize: 13, marginTop: 6 }}>24h {formatHashrate(miner.avg24h)}</div>
+                      </>
+                    }
+                  />
+                ))}
+              </DataList>
+            </ScreenCard>
+
+            <ScreenCard theme={theme}>
+              <SectionTitle title="Network pulse" subtitle="Pool + RPC health in one place." theme={theme} />
+              <div>
+                <InfoRow theme={theme} label="Raw network peers" value={overview.rawNetworkPeers.toLocaleString()} />
+                <InfoRow theme={theme} label="Main RPC peers" value={overview.mainRpcPeers.toLocaleString()} />
+                <InfoRow theme={theme} label="Connected miners" value={overview.activeMiners.toLocaleString()} />
+                <InfoRow theme={theme} label="Pool hashrate" value={formatHashrate(overview.poolHashrate)} />
+                <InfoRow theme={theme} label="Fee wallet" value={shortHex(overview.feeWalletAddress, 10, 6)} />
+                <InfoRow theme={theme} label="Last widget update" value={new Date(overview.widgetUpdatedAt || snapshot.fetchedAt).toLocaleTimeString()} />
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <StatusPill theme={theme} tone={overview.poolOnline ? "success" : "danger"}>{overview.poolOnline ? "Widget online" : "Widget offline"}</StatusPill>
               </div>
             </ScreenCard>
           </div>
@@ -287,300 +458,210 @@ export default function PoolScreen({ theme = "dark", address = "", setTab }: { t
       ) : null}
 
       {tab === "mining" ? (
-        <>
-          {!address ? (
-            <ScreenCard theme={theme}>
-              <EmptyState theme={theme} title="Unlock wallet to see My Mining" description="The personal mining view automatically uses the unlocked wallet address for workers, pending balance, payouts and found blocks." />
-            </ScreenCard>
-          ) : myMiner ? (
-            <>
-              <div className="wallet-pool-grid-4">
-                <StatCard theme={theme} title="Current hashrate" value={formatHashrate(myMiner.currentHashrate)} hint={`10m ${formatHashrate(myMiner.avg10m)}`} tone="primary" />
-                <StatCard theme={theme} title="Pending balance" value={formatCoin(myMiner.pendingBalance)} hint={`Payout at ${formatCoin(overview.minimumPayout)}`} tone="warning" />
-                <StatCard theme={theme} title="Total paid" value={formatCoin(myMiner.totalPaid)} hint={`Last ${formatCoin(myMiner.lastPaymentAmount)}`} tone="success" />
-                <StatCard theme={theme} title="Shares" value={`${myMiner.validShares.toLocaleString()} valid`} hint={`${myMiner.invalidShares.toLocaleString()} invalid`} tone="neutral" />
-              </div>
+        address ? (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 16 }}>
+              <StatTile theme={theme} label="My hashrate" value={formatHashrate(myMiner?.currentHashrate || 0)} hint={`24h ${formatHashrate(myMiner?.avg24h || 0)}`} tone="primary" />
+              <StatTile theme={theme} label="Pending balance" value={formatCoin(myMiner?.pendingBalance || 0)} hint={`Payout target ${formatCoin(overview.minimumPayout)}`} tone="warning" />
+              <StatTile theme={theme} label="Total paid" value={formatCoin(myMiner?.totalPaid || 0)} hint={myMiner?.lastPaymentAt ? `Last ${formatRelativeTime(myMiner.lastPaymentAt)}` : "No payouts yet"} tone="success" />
+              <StatTile theme={theme} label="Blocks found" value={String(myMiner?.blocksFound || 0)} hint={`${myMiner?.workersOnline || 0} online worker(s)`} tone="neutral" />
+            </div>
 
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 16 }}>
               <ScreenCard theme={theme}>
-                <SectionTitle title="My Mining" subtitle="Automatic stats for the unlocked wallet address, including workers, payout progress and address-specific history." theme={theme} actions={<StatusPill theme={theme} tone="primary">{address.slice(0, 6)}…{address.slice(-4)}</StatusPill>} />
-                <div className="wallet-pool-grid-2">
-                  <div className="wallet-pool-progress-card" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                    <div className="wallet-ui-subtle">Next payout progress</div>
-                    <div className="wallet-pool-progress-number">{Math.round(myMiner.payoutProgressPercent)}%</div>
-                    <div className="wallet-pool-progress-track"><div style={{ width: `${Math.max(6, myMiner.payoutProgressPercent)}%` }} /></div>
-                    <div className="wallet-pool-mini-grid">
-                      <div><span>Workers</span><strong>{myMiner.workersOnline} online / {myMiner.workersOffline} offline</strong></div>
-                      <div><span>Blocks found</span><strong>{myMiner.blocksFound}</strong></div>
-                      <div><span>Avg 1h</span><strong>{formatHashrate(myMiner.avg1h)}</strong></div>
-                      <div><span>Avg 24h</span><strong>{formatHashrate(myMiner.avg24h)}</strong></div>
+                <SectionTitle title="My wallet mining" subtitle="Automatic address-based view using the unlocked wallet." theme={theme} actions={<StatusPill theme={theme} tone="primary">{shortHex(address, 8, 6)}</StatusPill>} />
+                {myMiner && myMiner.currentHashrate > 0 ? (
+                  <div style={{ ...cardStyle(theme, 2), background: theme === "light" ? "linear-gradient(180deg,#f8fbff 0%,#eef4ff 100%)" : "linear-gradient(180deg,#101827 0%,#0b1220 100%)" }}>
+                    <div style={{ fontSize: 32, fontWeight: 900, color: textPrimary(theme) }}>{formatHashrate(myMiner.currentHashrate)}</div>
+                    <div style={{ marginTop: 8, color: textMuted(theme), lineHeight: 1.6 }}>
+                      This address is visible in the pool feed. Payments and found blocks below are filtered automatically for the unlocked wallet.
+                    </div>
+                    <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 12 }}>
+                      <MiniMetric theme={theme} label="Payments" value={String(myPayments.length)} />
+                      <MiniMetric theme={theme} label="Blocks" value={String(myBlocks.length)} />
                     </div>
                   </div>
-                  <div className="wallet-pool-compact-list">
-                    {myMiner.workers.map((worker) => (
-                      <div key={worker.id} className="wallet-pool-compact-row" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                        <div>
-                          <div style={{ fontWeight: 800 }}>{worker.name}</div>
-                          <div className="wallet-ui-subtle">{formatHashrate(worker.hashrate)} · valid {worker.validShares.toLocaleString()}</div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <RowBadge theme={theme} value={worker.status} />
-                          <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>{formatRelativeTime(worker.lastSeenAt)}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                ) : (
+                  <EmptyState theme={theme} title="This address is not active in the live feed yet" description="Start mining with this wallet, wait for the next widget refresh, and My Mining will populate automatically." />
+                )}
               </ScreenCard>
 
-              <div className="wallet-pool-grid-2">
-                <ScreenCard theme={theme}>
-                  <SectionTitle title="My Payments" subtitle="Recent payouts for the unlocked address." theme={theme} />
-                  <div className="wallet-pool-table-wrap">
-                    <table className="wallet-pool-table">
-                      <thead><tr><th>Amount</th><th>Tx</th><th>Date</th><th>Mode</th></tr></thead>
-                      <tbody>
-                        {myMiner.payments.map((payment) => (
-                          <tr key={payment.id}>
-                            <td>{formatCoin(payment.amount)}</td>
-                            <td><a href={getTxExplorerUrl(payment)} target="_blank" rel="noreferrer">{payment.txHash.slice(0, 10)}…</a></td>
-                            <td>{formatRelativeTime(payment.createdAt)}</td>
-                            <td>{payment.mode.toUpperCase()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </ScreenCard>
+              <ScreenCard theme={theme}>
+                <SectionTitle title="Worker naming guide" subtitle="Use one wallet and different worker names to track each rig." theme={theme} />
+                <div style={cardStyle(theme, 2)}>
+                  <div style={{ fontWeight: 900, color: textPrimary(theme), marginBottom: 10 }}>Recommended format</div>
+                  <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 12, color: textPrimary(theme), background: theme === "light" ? "#ffffff" : "#0b1018", border: `1px solid ${surfaceBorder(theme)}`, borderRadius: 16, padding: 14 }}>{`${genericUser}.${workerName}`}</pre>
+                  <div style={{ marginTop: 12, color: textMuted(theme), lineHeight: 1.6 }}>Example: one machine can be RIG001, another RIG002, and a backup rig can be OFFICEGPU.</div>
+                </div>
+              </ScreenCard>
+            </div>
 
-                <ScreenCard theme={theme}>
-                  <SectionTitle title="Blocks found by my address" subtitle="Your personal found-block feed from the current unlocked wallet." theme={theme} />
-                  <div className="wallet-pool-compact-list">
-                    {myMiner.blocks.length ? myMiner.blocks.map((block) => (
-                      <a key={block.id} className="wallet-pool-compact-row" href={getBlockExplorerUrl(block)} target="_blank" rel="noreferrer" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                        <div>
-                          <div style={{ fontWeight: 800 }}>#{block.height}</div>
-                          <div className="wallet-ui-subtle">{formatCoin(block.reward)} · {block.mode.toUpperCase()}</div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <RowBadge theme={theme} value={block.status} />
-                          <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>{formatRelativeTime(block.createdAt)}</div>
-                        </div>
-                      </a>
-                    )) : <EmptyState theme={theme} title="No blocks yet" description="As soon as this address finds blocks, they will appear here automatically." />}
-                  </div>
-                </ScreenCard>
-              </div>
-            </>
-          ) : null}
-        </>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 16 }}>
+              <ScreenCard theme={theme}>
+                <SectionTitle title="My payments" subtitle="Recent payouts for the unlocked wallet." theme={theme} />
+                {myPayments.length ? (
+                  <DataList theme={theme}>
+                    {myPayments.map((payment) => (
+                      <ListRow
+                        key={payment.id}
+                        theme={theme}
+                        href={getTxExplorerUrl(payment)}
+                        left={<><div style={{ fontWeight: 900, color: textPrimary(theme) }}>{formatCoin(payment.amount)}</div><div style={{ color: textMuted(theme), fontSize: 13, marginTop: 6 }}>{payment.mode.toUpperCase()} · {formatRelativeTime(payment.createdAt)}</div></>}
+                        right={<div style={{ color: textMuted(theme), fontSize: 13 }}>{shortHex(payment.txHash, 8, 6)}</div>}
+                      />
+                    ))}
+                  </DataList>
+                ) : <EmptyState theme={theme} title="No payments yet" description="As soon as this address receives pool payouts, they will appear here." />}
+              </ScreenCard>
+
+              <ScreenCard theme={theme}>
+                <SectionTitle title="My blocks" subtitle="Blocks found by the unlocked address." theme={theme} />
+                {myBlocks.length ? (
+                  <DataList theme={theme}>
+                    {myBlocks.map((block) => (
+                      <ListRow
+                        key={block.id}
+                        theme={theme}
+                        href={getBlockExplorerUrl(block)}
+                        left={<><div style={{ fontWeight: 900, color: textPrimary(theme) }}>#{block.height.toLocaleString()}</div><div style={{ color: textMuted(theme), fontSize: 13, marginTop: 6 }}>{formatRelativeTime(block.createdAt)} · {block.mode.toUpperCase()}</div></>}
+                        right={<><RowBadge theme={theme} value={block.status} /><div style={{ color: textPrimary(theme), fontWeight: 900, marginTop: 8 }}>{formatCoin(block.reward)}</div></>}
+                      />
+                    ))}
+                  </DataList>
+                ) : <EmptyState theme={theme} title="No blocks found yet" description="When this address finds a block through the pool, it will appear here automatically." />}
+              </ScreenCard>
+            </div>
+          </>
+        ) : (
+          <ScreenCard theme={theme}>
+            <EmptyState theme={theme} title="Unlock the wallet to enable My Mining" description="The pool screen already works publicly, but the personal mining panel needs the unlocked wallet address." />
+          </ScreenCard>
+        )
       ) : null}
 
       {tab === "blocks" ? (
         <ScreenCard theme={theme}>
-          <SectionTitle title="Blocks" subtitle="Premium real-time block table with PPLNS and SOLO filtering, explorer links and luck/effort visibility." theme={theme} actions={
-            <>
-              <ActionButton onClick={() => setModeFilter("all")} theme={theme} tone={modeFilter === "all" ? "primary" : "secondary"} compact>All</ActionButton>
-              <ActionButton onClick={() => setModeFilter("pplns")} theme={theme} tone={modeFilter === "pplns" ? "primary" : "secondary"} compact>PPLNS</ActionButton>
-              <ActionButton onClick={() => setModeFilter("solo")} theme={theme} tone={modeFilter === "solo" ? "primary" : "secondary"} compact>SOLO</ActionButton>
-            </>
-          } />
-          <div className="wallet-pool-table-wrap">
-            <table className="wallet-pool-table">
-              <thead>
-                <tr><th>Height</th><th>Miner</th><th>Reward</th><th>Status</th><th>Type</th><th>Confs</th><th>Luck</th><th>Effort</th><th>Created</th></tr>
-              </thead>
-              <tbody>
-                {filteredBlocks.map((block) => (
-                  <tr key={block.id}>
-                    <td><a href={getBlockExplorerUrl(block)} target="_blank" rel="noreferrer">#{block.height}</a></td>
-                    <td>{block.miner.slice(0, 6)}…{block.miner.slice(-4)}</td>
-                    <td>{formatCoin(block.reward)}</td>
-                    <td><RowBadge theme={theme} value={block.status} /></td>
-                    <td>{block.mode.toUpperCase()}</td>
-                    <td>{block.confirmations}</td>
-                    <td>{formatPercent(block.luckPercent)}</td>
-                    <td>{formatPercent(block.effortPercent)}</td>
-                    <td>{formatRelativeTime(block.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <SectionTitle
+            title="Pool blocks"
+            subtitle="Filter PPLNS and SOLO blocks in real time."
+            theme={theme}
+            actions={
+              <PillRow>
+                <ActionButton theme={theme} tone={blockFilter === "all" ? "primary" : "secondary"} compact onClick={() => setBlockFilter("all")}>All</ActionButton>
+                <ActionButton theme={theme} tone={blockFilter === "pplns" ? "primary" : "secondary"} compact onClick={() => setBlockFilter("pplns")}>PPLNS</ActionButton>
+                <ActionButton theme={theme} tone={blockFilter === "solo" ? "primary" : "secondary"} compact onClick={() => setBlockFilter("solo")}>SOLO</ActionButton>
+              </PillRow>
+            }
+          />
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {filteredBlocks.length ? filteredBlocks.map((block: PoolBlock) => (
+              <ListRow
+                key={block.id}
+                theme={theme}
+                href={getBlockExplorerUrl(block)}
+                left={
+                  <>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 900, color: textPrimary(theme) }}>#{block.height.toLocaleString()}</div>
+                      <RowBadge theme={theme} value={block.status} />
+                      <StatusPill theme={theme} tone={block.mode === "solo" ? "warning" : "primary"}>{block.mode.toUpperCase()}</StatusPill>
+                    </div>
+                    <div style={{ color: textMuted(theme), fontSize: 13, marginTop: 8 }}>Miner {shortHex(block.miner, 10, 6)} · {formatRelativeTime(block.createdAt)}</div>
+                  </>
+                }
+                right={
+                  <>
+                    <div style={{ fontWeight: 900, color: textPrimary(theme) }}>{formatCoin(block.reward)}</div>
+                    <div style={{ color: textMuted(theme), fontSize: 13, marginTop: 6 }}>Luck {formatPercent(block.luckPercent)} · Effort {formatPercent(block.effortPercent)}</div>
+                  </>
+                }
+              />
+            )) : <EmptyState theme={theme} title="No blocks in this filter" description="Try another mode or wait for the next refresh." />}
           </div>
         </ScreenCard>
       ) : null}
 
       {tab === "payments" ? (
-        <div className="wallet-pool-grid-2">
-          <ScreenCard theme={theme}>
-            <SectionTitle title="Payments" subtitle="Pool payouts in real time, with filters for PPLNS, SOLO and the unlocked wallet." theme={theme} actions={
-              <>
-                <ActionButton onClick={() => setPaymentFilter("all")} theme={theme} tone={paymentFilter === "all" ? "primary" : "secondary"} compact>All</ActionButton>
-                <ActionButton onClick={() => setPaymentFilter("pplns")} theme={theme} tone={paymentFilter === "pplns" ? "primary" : "secondary"} compact>PPLNS</ActionButton>
-                <ActionButton onClick={() => setPaymentFilter("solo")} theme={theme} tone={paymentFilter === "solo" ? "primary" : "secondary"} compact>SOLO</ActionButton>
-                <ActionButton onClick={() => setPaymentFilter("mine")} theme={theme} tone={paymentFilter === "mine" ? "primary" : "secondary"} compact disabled={!address}>My address</ActionButton>
-              </>
-            } />
-            <div className="wallet-pool-table-wrap">
-              <table className="wallet-pool-table">
-                <thead><tr><th>Address</th><th>Amount</th><th>Tx</th><th>Date</th><th>Mode</th></tr></thead>
-                <tbody>
-                  {filteredPayments.map((payment) => (
-                    <tr key={payment.id} className={Date.now() - payment.createdAt < 3600000 ? "wallet-pool-row-fresh" : ""}>
-                      <td>{payment.address.slice(0, 6)}…{payment.address.slice(-4)}</td>
-                      <td>{formatCoin(payment.amount)}</td>
-                      <td><a href={getTxExplorerUrl(payment)} target="_blank" rel="noreferrer">{payment.txHash.slice(0, 10)}…</a></td>
-                      <td>{formatRelativeTime(payment.createdAt)}</td>
-                      <td>{payment.mode.toUpperCase()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </ScreenCard>
-
-          <ScreenCard theme={theme}>
-            <SectionTitle title="Fee wallet payments" subtitle="Dedicated transparency section for the 2% fee wallet and recent treasury inflows." theme={theme} />
-            <div className="wallet-pool-compact-list">
-              {recentFeePayments.length ? recentFeePayments.map((payment) => (
-                <a key={payment.id} href={getTxExplorerUrl(payment)} target="_blank" rel="noreferrer" className="wallet-pool-compact-row" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                  <div>
-                    <div style={{ fontWeight: 800 }}>{formatCoin(payment.amount)}</div>
-                    <div className="wallet-ui-subtle">{payment.address.slice(0, 6)}…{payment.address.slice(-4)}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <StatusPill theme={theme} tone="warning">Fee wallet</StatusPill>
-                    <div className="wallet-ui-subtle" style={{ marginTop: 6 }}>{formatRelativeTime(payment.createdAt)}</div>
-                  </div>
-                </a>
-              )) : <EmptyState theme={theme} title="No fee payments yet" description="The fee wallet feed will appear here automatically once the API returns recent fee distributions." />}
-            </div>
-          </ScreenCard>
-        </div>
-      ) : null}
-
-      {tab === "top" ? (
-        <div className="wallet-pool-grid-2">
-          <ScreenCard theme={theme}>
-            <SectionTitle title="Top miners" subtitle="Premium ranking with performance, workers and mode mix." theme={theme} />
-            <div className="wallet-pool-rank-list">
-              {snapshot.topMiners.map((miner, index) => (
-                <div key={miner.address} className="wallet-pool-rank-card" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                  <div className="wallet-pool-rank-position">#{index + 1}</div>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="wallet-pool-rank-title">{miner.label}</div>
-                    <div className="wallet-ui-subtle">{miner.address.slice(0, 6)}…{miner.address.slice(-4)}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div className="wallet-pool-rank-metric">{formatHashrate(miner.hashrate)}</div>
-                    <div className="wallet-ui-subtle">{miner.workers} workers · {miner.blocksFound} blocks</div>
-                  </div>
-                  <div className="wallet-action-row">
-                    <StatusPill theme={theme} tone="primary">{miner.mode.toUpperCase()}</StatusPill>
-                    <StatusPill theme={theme} tone={miner.efficiencyPercent >= 92 ? "success" : "warning"}>{miner.efficiencyPercent}% perf</StatusPill>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </ScreenCard>
-
-          <ScreenCard theme={theme}>
-            <SectionTitle title="Top workers" subtitle="High-performing workers, online status and clean ranking without dashboard clutter." theme={theme} />
-            <div className="wallet-pool-compact-list">
-              {snapshot.topWorkers.map((worker, index) => (
-                <div key={`${worker.name}-${index}`} className="wallet-pool-compact-row" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                  <div>
-                    <div style={{ fontWeight: 800 }}>{worker.name}</div>
-                    <div className="wallet-ui-subtle">{worker.miner.slice(0, 6)}…{worker.miner.slice(-4)}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 800 }}>{formatHashrate(worker.hashrate)}</div>
-                    <div className="wallet-ui-subtle">24h {formatHashrate(worker.avg24h)}</div>
-                  </div>
-                  <RowBadge theme={theme} value={worker.status} />
-                </div>
-              ))}
-            </div>
-          </ScreenCard>
-        </div>
+        <ScreenCard theme={theme}>
+          <SectionTitle
+            title="Pool payments"
+            subtitle="Live payout feed from the pool widget, with filters for PPLNS, SOLO and your address."
+            theme={theme}
+            actions={
+              <PillRow>
+                <ActionButton theme={theme} tone={paymentFilter === "all" ? "primary" : "secondary"} compact onClick={() => setPaymentFilter("all")}>All</ActionButton>
+                <ActionButton theme={theme} tone={paymentFilter === "pplns" ? "primary" : "secondary"} compact onClick={() => setPaymentFilter("pplns")}>PPLNS</ActionButton>
+                <ActionButton theme={theme} tone={paymentFilter === "solo" ? "primary" : "secondary"} compact onClick={() => setPaymentFilter("solo")}>SOLO</ActionButton>
+                <ActionButton theme={theme} tone={paymentFilter === "mine" ? "primary" : "secondary"} compact disabled={!address} onClick={() => setPaymentFilter("mine")}>My address</ActionButton>
+              </PillRow>
+            }
+          />
+          <DataList theme={theme}>
+            {filteredPayments.length ? filteredPayments.map((payment: PoolPayment) => (
+              <ListRow
+                key={payment.id}
+                theme={theme}
+                href={getTxExplorerUrl(payment)}
+                left={<><div style={{ fontWeight: 900, color: textPrimary(theme) }}>{shortHex(payment.address, 10, 6)}</div><div style={{ color: textMuted(theme), fontSize: 13, marginTop: 6 }}>{payment.mode.toUpperCase()} · {formatRelativeTime(payment.createdAt)}</div></>}
+                right={<><div style={{ fontWeight: 900, color: textPrimary(theme) }}>{formatCoin(payment.amount)}</div><div style={{ color: textMuted(theme), fontSize: 13, marginTop: 6 }}>{shortHex(payment.txHash, 8, 6)}</div></>}
+              />
+            )) : <EmptyState theme={theme} title="No payments in this filter" description="Wait for new payouts or switch the filter." />}
+          </DataList>
+        </ScreenCard>
       ) : null}
 
       {tab === "setup" ? (
-        <div className="wallet-pool-grid-2">
-          <ScreenCard theme={theme}>
-            <SectionTitle title="Mine from inside the wallet" subtitle="Copy-ready setup for PPLNS and SOLO with pool host, ports, worker name and password." theme={theme} />
-            <div className="wallet-pool-setup-stack">
-              <div className="wallet-pool-setup-box" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                <div className="wallet-ui-subtle">Stratum host</div>
-                <div className="wallet-pool-wallet-address">{overview.stratum.host}</div>
-                <div className="wallet-action-row">
-                  <ActionButton onClick={() => copyText(overview.stratum.host)} theme={theme} compact>Copy host</ActionButton>
-                  <ActionButton onClick={() => copyText(String(overview.stratum.pplnsPort))} theme={theme} tone="ghost" compact>Copy PPLNS port</ActionButton>
-                  <ActionButton onClick={() => copyText(String(overview.stratum.soloPort))} theme={theme} tone="ghost" compact>Copy SOLO port</ActionButton>
-                </div>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 16 }}>
+            <ScreenCard theme={theme}>
+              <SectionTitle title="Start mining" subtitle="Use your INRI wallet address and pick the mode that fits your rig size." theme={theme} />
+              <div style={{ ...cardStyle(theme, 2), marginBottom: 12 }}>
+                <InfoRow theme={theme} label="PPLNS port" value={String(overview.stratum.pplnsPort)} />
+                <InfoRow theme={theme} label="SOLO port" value={String(overview.stratum.soloPort)} />
+                <InfoRow theme={theme} label="TLS port" value={String(overview.stratum.tlsPort || 0)} />
+                <InfoRow theme={theme} label="Host" value={overview.stratum.host} />
+                <InfoRow theme={theme} label="Password" value={overview.stratum.password} />
               </div>
-
-              <div className="wallet-form-grid">
-                <label className="wallet-ui-subtle" style={{ display: "grid", gap: 6 }}>
-                  Worker name
-                  <input value={workerName} onChange={(event) => setWorkerName(event.target.value)} style={inputStyle(theme)} placeholder="rig-01" />
-                </label>
+              <div style={{ ...cardStyle(theme, 2) }}>
+                <div style={{ fontWeight: 900, color: textPrimary(theme), marginBottom: 10 }}>Worker name</div>
+                <input
+                  value={workerName}
+                  onChange={(event) => setWorkerName(event.target.value.toUpperCase())}
+                  placeholder="RIG001"
+                  style={{ width: "100%", borderRadius: 16, border: `1px solid ${surfaceBorder(theme)}`, background: theme === "light" ? "#ffffff" : "#0b1018", color: textPrimary(theme), padding: "12px 14px", outline: "none" }}
+                />
+                <div style={{ marginTop: 10, color: textMuted(theme), fontSize: 13, lineHeight: 1.6 }}>Use the same wallet with different worker names for each rig so your mining fleet stays organized.</div>
               </div>
+            </ScreenCard>
 
-              <div className="wallet-pool-command-box" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                <div className="wallet-ui-subtle">PPLNS command</div>
-                <code>{buildMinerCommand("pplns", address || "YOUR_WALLET_ADDRESS", workerName)}</code>
-                <ActionButton onClick={() => copyText(buildMinerCommand("pplns", address || "YOUR_WALLET_ADDRESS", workerName))} theme={theme} compact>Copy PPLNS</ActionButton>
-              </div>
-
-              <div className="wallet-pool-command-box" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                <div className="wallet-ui-subtle">SOLO command</div>
-                <code>{buildMinerCommand("solo", address || "YOUR_WALLET_ADDRESS", workerName)}</code>
-                <ActionButton onClick={() => copyText(buildMinerCommand("solo", address || "YOUR_WALLET_ADDRESS", workerName))} theme={theme} compact>Copy SOLO</ActionButton>
-              </div>
-            </div>
-          </ScreenCard>
-
-          <ScreenCard theme={theme}>
-            <SectionTitle title="Quick instructions" subtitle="Prepared for both public mode and personal mode, keeping the premium wallet feel without sending miners outside the app." theme={theme} />
-            <div className="wallet-pool-compact-list">
-              {[
-                { title: "PPLNS", text: "Use the PPLNS port for steady pooled rewards and let the wallet address receive payouts automatically." },
-                { title: "SOLO", text: "Use the SOLO port if you want direct block hits to your wallet address and dedicated solo statistics." },
-                { title: "Worker password", text: `Password is usually ${overview.stratum.password}. Leave it as x unless your pool backend expects a custom value.` },
-                { title: "My Mining", text: "Once the wallet is unlocked, the current address automatically powers My Mining, My Workers and My Payments." },
-              ].map((item) => (
-                <div key={item.title} className="wallet-pool-compact-row" style={{ background: isLight ? "#f8fbff" : "#0f1520", borderColor: isLight ? "#e6ecf5" : "#202635" }}>
-                  <div>
-                    <div style={{ fontWeight: 800 }}>{item.title}</div>
-                    <div className="wallet-ui-subtle">{item.text}</div>
+            <ScreenCard theme={theme}>
+              <SectionTitle title="Mode guide" subtitle="Choose the mode that matches your hashrate and risk profile." theme={theme} />
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={cardStyle(theme, 2)}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontWeight: 900, color: textPrimary(theme) }}>PPLNS</div>
+                    <StatusPill theme={theme} tone="primary">Steady</StatusPill>
                   </div>
+                  <div style={{ color: textMuted(theme), lineHeight: 1.6 }}>Best for most miners. More stable payouts over time and smoother day-to-day mining.</div>
                 </div>
-              ))}
-            </div>
-            <div className="wallet-action-row">
-              <ActionButton onClick={() => setTab?.("dashboard")} theme={theme} tone="ghost" compact>Back to Home</ActionButton>
-            </div>
-          </ScreenCard>
-        </div>
-      ) : null}
+                <div style={cardStyle(theme, 2)}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontWeight: 900, color: textPrimary(theme) }}>SOLO</div>
+                    <StatusPill theme={theme} tone="warning">High variance</StatusPill>
+                  </div>
+                  <div style={{ color: textMuted(theme), lineHeight: 1.6 }}>Better for larger hashrate if you want the chance to capture a full block win instead of shared rewards.</div>
+                </div>
+              </div>
+            </ScreenCard>
+          </div>
 
-      {error ? (
-        <ScreenCard theme={theme}>
-          <div className="wallet-ui-subtle">Pool API note: {error}</div>
-        </ScreenCard>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 16 }}>
+            <CopyCard theme={theme} title="Windows · PPLNS" body={pplnsCommand} />
+            <CopyCard theme={theme} title="Windows · SOLO" body={soloCommand} />
+            <CopyCard theme={theme} title="Linux · PPLNS" body={linuxCommand} />
+          </div>
+        </>
       ) : null}
     </div>
   );
-}
-
-function inputStyle(theme: "dark" | "light"): React.CSSProperties {
-  return {
-    minHeight: 44,
-    borderRadius: 14,
-    border: `1px solid ${theme === "light" ? "#dbe2f0" : "#252b39"}`,
-    background: theme === "light" ? "#ffffff" : "#0f1520",
-    color: theme === "light" ? "#10131a" : "#ffffff",
-    padding: "10px 12px",
-    outline: "none",
-  };
 }
