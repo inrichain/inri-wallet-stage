@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ActionButton from "../components/ActionButton";
-import ConfirmModal from "../components/ConfirmModal";
+import TransactionConfirmModal from "../components/TransactionConfirmModal";
 import EmptyState from "../components/EmptyState";
 import LogoImage from "../components/LogoImage";
 import ScreenCard from "../components/ScreenCard";
@@ -326,16 +326,53 @@ export default function BridgeScreen({
         )}
       </ScreenCard>
 
-      <ConfirmModal
+      <TransactionConfirmModal
         open={confirmIntent !== null}
         theme={theme}
-        title={confirmIntent === "approve" ? t.confirmApprove : direction === "polygon_to_inri" ? t.confirmDeposit : t.confirmBurn}
-        description={confirmIntent === "approve"
-          ? `${t.approveAmount}: ${quote.amountIn} ${fromToken.symbol}`
-          : `${quote.amountIn} ${fromToken.symbol} → ${quote.amountOut} ${toToken.symbol} • ${feePercent.toFixed(2)}%`}
+        title={confirmIntent === "approve" ? (direction === "polygon_to_inri" ? "Approve USDT for bridge" : "Approve iUSD for bridge") : direction === "polygon_to_inri" ? "Confirm bridge deposit" : "Confirm bridge burn"}
+        subtitle={confirmIntent === "approve"
+          ? "Review the approval target and amount before granting token spending permissions."
+          : "Review the bridge route, destination and fee before sending funds to the bridge contract."}
+        actionLabel={confirmIntent === "approve" ? "Approve" : "Bridge"}
+        category="INRI Wallet"
+        networkName={getStoredNetwork().name}
+        networkLogo={getStoredNetwork().logo}
+        riskLabel={confirmIntent === "approve" ? "Medium risk" : "Medium risk"}
+        riskTone="medium"
+        sections={confirmIntent === "approve" ? [
+          {
+            title: "Approval",
+            items: [
+              { label: "Token", value: fromToken.symbol },
+              { label: "Amount", value: `${quote.amountIn} ${fromToken.symbol}` },
+              { label: "Spender", value: contractAddress, mono: true },
+              { label: "Network", value: direction === "polygon_to_inri" ? "Polygon" : "INRI" },
+            ],
+          },
+        ] : [
+          {
+            title: "Bridge route",
+            items: [
+              { label: "From", value: `${quote.amountIn} ${fromToken.symbol}` },
+              { label: "To", value: `${quote.amountOut} ${toToken.symbol}` },
+              { label: "Destination", value: destination || address, mono: true },
+              { label: "Bridge fee", value: `${feePercent.toFixed(2)}%` },
+            ],
+          },
+          {
+            title: "Contracts",
+            items: [
+              { label: "Bridge contract", value: contractAddress, mono: true },
+              { label: "Token contract", value: tokenAddress, mono: true },
+            ],
+          },
+        ]}
+        warnings={confirmIntent === "approve"
+          ? ["Only approve the bridge contract you trust.", "Approvals let the contract move the approved amount of your tokens."]
+          : ["Bridge operations can take time to settle across networks.", "Always double-check the destination address before confirming."]}
         confirmLabel={confirmIntent === "approve" ? t.confirmApproveButton : direction === "polygon_to_inri" ? t.depositNow : t.burnNow}
-        cancelLabel={t.cancel}
-        onCancel={() => setConfirmIntent(null)}
+        confirmBusy={busy}
+        onCancel={() => !busy && setConfirmIntent(null)}
         onConfirm={confirmIntent === "approve" ? runApprove : runBridge}
       />
     </div>

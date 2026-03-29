@@ -35,7 +35,7 @@ import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
 import { isValidSeedPhrase, normalizeSeed } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
-import { installDesktopEthereumProvider } from "../lib/desktopProvider";
+import { installDesktopEthereumProvider, type SensitiveRequestArgs } from "../lib/desktopProvider";
 import { getInriNetwork, getStoredNetwork, saveStoredNetwork } from "../lib/network";
 import type { AppToastPayload, AppToastType } from "../lib/ui";
 import type { Tab } from "../lib/navigation";
@@ -98,10 +98,13 @@ export default function WalletShell() {
 
   const autoLockTimerRef = useRef<number | null>(null);
   const pendingSensitiveActionRef = useRef<null | ((overridePrivateKey?: string) => Promise<void>)>(null);
+  const pendingSiteRequestRef = useRef<null | { args: SensitiveRequestArgs; resolve: (value: any) => void; reject: (reason?: any) => void }>(null);
 
   const [wcProposal, setWcProposal] = useState<any | null>(null);
   const [wcRequest, setWcRequest] = useState<any | null>(null);
   const [wcApproving, setWcApproving] = useState(false);
+  const [siteRequest, setSiteRequest] = useState<any | null>(null);
+  const [siteApproving, setSiteApproving] = useState(false);
   const [resumeTick, setResumeTick] = useState(0);
 
   const t = {
@@ -147,6 +150,9 @@ export default function WalletShell() {
       setWcProposal(null);
       setWcRequest(null);
       setWcApproving(false);
+      setSiteRequest(null);
+      setSiteApproving(false);
+      pendingSiteRequestRef.current = null;
       setResumeTick((value) => value + 1);
       window.dispatchEvent(new Event("wallet-close-overlays"));
     };
@@ -582,18 +588,17 @@ export default function WalletShell() {
       getPrivateKey: () => unlockedWallet.privateKey,
       requireSensitiveApproval: async (args) => {
         return await new Promise((resolve, reject) => {
-          runSensitiveAction(async (overridePrivateKey?: string) => {
-            try {
-              const result = await handleRequestMethod({
-                ...args,
-                privateKey: overridePrivateKey || unlockedWallet.privateKey,
-                chainId: `eip155:${Number(getStoredNetwork().chainId || 3777)}`,
-              });
-              resolve(result);
-            } catch (error) {
-              reject(error);
-            }
-          }).catch(reject);
+          pendingSiteRequestRef.current = { args, resolve, reject };
+          setSiteRequest({
+            method: args.method,
+            params: args.params,
+            chainId: `eip155:${Number(getStoredNetwork().chainId || 3777)}`,
+            peerMetadata: {
+              name: args.siteName || "Connected site",
+              url: args.origin || "",
+              icons: [],
+            },
+          });
         });
       },
       showMessage,
@@ -673,6 +678,55 @@ export default function WalletShell() {
       console.error(err);
       showMessage(tr(lang, "shell_request_reject_failed"));
     }
+  }
+
+  async function onApproveSiteRequest() {
+    if (!unlockedWallet || !pendingSiteRequestRef.current || siteApproving) {
+      return;
+    }
+
+    setSiteApproving(true);
+    setSiteRequest(null);
+    try {
+      await runSensitiveAction(async (overridePrivateKey?: string) => {
+        const current = pendingSiteRequestRef.current;
+        if (!current) return;
+        try {
+          const result = await handleRequestMethod({
+            method: current.args.method,
+            params: current.args.params,
+            address: unlockedWallet.address,
+            privateKey: overridePrivateKey || unlockedWallet.privateKey,
+            chainId: `eip155:${Number(getStoredNetwork().chainId || 3777)}`,
+          });
+          current.resolve(result);
+          showMessage(tr(lang, "shell_request_approved"));
+        } catch (err: any) {
+          console.error(err);
+          current.reject(err);
+          showMessage(err?.message || tr(lang, "shell_request_approve_failed"));
+        } finally {
+          pendingSiteRequestRef.current = null;
+          setSiteRequest(null);
+          setSiteApproving(false);
+        }
+      });
+    } catch (err) {
+      setSiteApproving(false);
+    }
+  }
+
+  function onRejectSiteRequest() {
+    const current = pendingSiteRequestRef.current;
+    pendingSiteRequestRef.current = null;
+    setSiteRequest(null);
+    setSiteApproving(false);
+    if (current) {
+      const error: any = new Error("User rejected the request");
+      error.code = 4001;
+      current.reject(error);
+    }
+    showMessage(tr(lang, "shell_request_rejected"));
   }
 
   const renderTab = () => {
@@ -842,6 +896,16 @@ export default function WalletShell() {
         onReject={onRejectRequest}
       />
 
+      <WcRequestModal
+        open={!!siteRequest}
+        theme={theme}
+        lang={lang}
+        request={siteRequest}
+        approving={siteApproving}
+        onApprove={onApproveSiteRequest}
+        onReject={onRejectSiteRequest}
+      />
+
       <ToastViewport toasts={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))} />
 
       <ReauthModal
@@ -857,7 +921,15 @@ export default function WalletShell() {
         onConfirm={confirmSensitiveAction}
         onCancel={() => {
           pendingSensitiveActionRef.current = null;
+          if (pendingSiteRequestRef.current) {
+            const error: any = new Error("User rejected the request");
+            error.code = 4001;
+            pendingSiteRequestRef.current.reject(error);
+            pendingSiteRequestRef.current = null;
+          }
           setWcApproving(false);
+          setSiteApproving(false);
+          setSiteRequest(null);
           setReauthOpen(false);
           setReauthPassword("");
           setReauthError("");

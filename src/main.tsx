@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./styles.css";
 
-const BASE = import.meta.env.BASE_URL || "/";
 const RESUME_RELOAD_KEY = "__inri_wallet_resume_reload__";
 const HIDDEN_AT_KEY = "__inri_wallet_hidden_at__";
 
@@ -24,17 +23,10 @@ async function cleanupLegacyPwa() {
 
 function safeReloadOnce(reason: string) {
   try {
-    if (sessionStorage.getItem(RESUME_RELOAD_KEY) === reason) return false;
+    if (sessionStorage.getItem(RESUME_RELOAD_KEY) === reason) return;
     sessionStorage.setItem(RESUME_RELOAD_KEY, reason);
   } catch {}
   window.location.reload();
-  return true;
-}
-
-function clearReloadReason() {
-  try {
-    sessionStorage.removeItem(RESUME_RELOAD_KEY);
-  } catch {}
 }
 
 function rootLooksBlank() {
@@ -64,7 +56,9 @@ function installResumeGuards() {
       if ((awayMs > 1200 || document.visibilityState === "visible") && rootLooksBlank()) {
         safeReloadOnce("resume-blank-root");
       } else {
-        clearReloadReason();
+        try {
+          sessionStorage.removeItem(RESUME_RELOAD_KEY);
+        } catch {}
       }
     }, 140);
   };
@@ -99,92 +93,6 @@ function installResumeGuards() {
   });
 }
 
-function WalletRecoveryScreen() {
-  const autoAttemptAlreadyUsed = useMemo(() => {
-    try {
-      return sessionStorage.getItem(RESUME_RELOAD_KEY) === "boundary-auto-refresh";
-    } catch {
-      return false;
-    }
-  }, []);
-  const [seconds, setSeconds] = useState(autoAttemptAlreadyUsed ? 0 : 2);
-
-  useEffect(() => {
-    if (autoAttemptAlreadyUsed) return;
-
-    const tick = window.setInterval(() => {
-      setSeconds((value) => {
-        if (value <= 1) {
-          window.clearInterval(tick);
-          return 0;
-        }
-        return value - 1;
-      });
-    }, 1000);
-
-    const reloadTimer = window.setTimeout(() => {
-      safeReloadOnce("boundary-auto-refresh");
-    }, 1650);
-
-    return () => {
-      window.clearInterval(tick);
-      window.clearTimeout(reloadTimer);
-    };
-  }, [autoAttemptAlreadyUsed]);
-
-  return (
-    <div className="wallet-recovery-shell">
-      <div className="wallet-recovery-card">
-        <div className="wallet-recovery-brand">
-          <img className="wallet-recovery-logo" src={`${BASE}brand-inri.png`} alt="INRI" />
-          <div>
-            <div className="wallet-recovery-title">INRI Wallet</div>
-            <div className="wallet-recovery-subtitle">Restoring your secure session</div>
-          </div>
-        </div>
-
-        <div className="wallet-recovery-copy">
-          {autoAttemptAlreadyUsed
-            ? "The wallet is ready to recover. Tap refresh to reopen the interface cleanly."
-            : "The wallet is reopening after returning to the browser. This usually takes just a moment."}
-        </div>
-
-        <div className="wallet-recovery-status-row">
-          <div className="wallet-recovery-spinner" aria-hidden="true" />
-          <div className="wallet-recovery-status-text">
-            {autoAttemptAlreadyUsed
-              ? "Manual recovery available"
-              : `Automatic recovery starts in ${seconds || 1}s`}
-          </div>
-        </div>
-
-        <div className="wallet-recovery-progress" aria-hidden="true">
-          <div className="wallet-recovery-progress-bar" />
-        </div>
-
-        <div className="wallet-recovery-actions">
-          <button
-            className="wallet-recovery-btn wallet-recovery-btn-primary"
-            onClick={() => safeReloadOnce("boundary-manual-refresh")}
-          >
-            Refresh wallet
-          </button>
-          <button
-            className="wallet-recovery-btn wallet-recovery-btn-secondary"
-            onClick={() => window.location.assign(window.location.href)}
-          >
-            Reopen page
-          </button>
-        </div>
-
-        <div className="wallet-recovery-note">
-          Your wallet data stays local. This only refreshes the interface.
-        </div>
-      </div>
-    </div>
-  );
-}
-
 type BoundaryState = { hasError: boolean };
 
 class RootErrorBoundary extends React.Component<React.PropsWithChildren, BoundaryState> {
@@ -198,7 +106,15 @@ class RootErrorBoundary extends React.Component<React.PropsWithChildren, Boundar
 
   render() {
     if (!this.state.hasError) return this.props.children;
-    return <WalletRecoveryScreen />;
+    return (
+      <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 20, background: "linear-gradient(180deg,#0b0b0f 0%, #101625 100%)", color: "#ffffff" }}>
+        <div style={{ width: "min(420px, 100%)", border: "1px solid rgba(148,163,184,.18)", borderRadius: 24, padding: 20, background: "#101827", display: "grid", gap: 12 }}>
+          <div style={{ fontSize: 24, fontWeight: 900 }}>INRI Wallet</div>
+          <div style={{ color: "#cbd5e1", lineHeight: 1.6 }}>The app had a rendering problem after returning to the browser. Refresh once to recover.</div>
+          <button onClick={() => safeReloadOnce("boundary-refresh")} style={{ border: "1px solid rgba(63,124,255,.38)", background: "rgba(63,124,255,.14)", color: "#ffffff", borderRadius: 14, padding: "12px 14px", fontWeight: 800, cursor: "pointer" }}>Refresh wallet</button>
+        </div>
+      </div>
+    );
   }
 }
 

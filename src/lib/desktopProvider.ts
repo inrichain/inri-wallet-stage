@@ -5,11 +5,13 @@ import { grantSitePermission, hasSitePermission, touchSitePermission } from "./s
 
 type ProviderEventName = "accountsChanged" | "chainChanged" | "connect" | "disconnect" | "message";
 
-type SensitiveRequestArgs = {
+export type SensitiveRequestArgs = {
   method: string;
   params: any;
   address: string;
   privateKey: string;
+  origin?: string;
+  siteName?: string;
 };
 
 type DesktopProviderOptions = {
@@ -243,6 +245,8 @@ class InriDesktopProvider {
       params,
       address: this.currentAddress,
       privateKey: this.options.getPrivateKey(),
+      origin: getCurrentOrigin(),
+      siteName: getCurrentSiteName(),
     });
   }
 
