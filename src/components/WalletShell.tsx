@@ -25,7 +25,6 @@ import PoolScreen from "../screens/PoolScreen";
 import ToastViewport from "./ToastViewport";
 import WcSessionProposalModal from "./WcSessionProposalModal";
 import WcRequestModal from "./WcRequestModal";
-import TransactionConfirmModal, { type TransactionConfirmItem } from "./TransactionConfirmModal";
 import {
   approveSessionProposal,
   rejectSessionProposal,
@@ -34,7 +33,6 @@ import {
 } from "../lib/walletconnect";
 import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
-import { buildWcRequestDetails } from "../lib/wcRequestDetails";
 import { isValidSeedPhrase, normalizeSeed } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
 import { installDesktopEthereumProvider } from "../lib/desktopProvider";
@@ -63,14 +61,6 @@ type UnlockedWallet = {
   name: string;
   address: string;
   privateKey: string;
-};
-
-type DesktopApprovalState = null | {
-  method: string;
-  params: any;
-  chainId: string;
-  origin: string;
-  name: string;
 };
 
 export default function WalletShell() {
@@ -108,14 +98,11 @@ export default function WalletShell() {
 
   const autoLockTimerRef = useRef<number | null>(null);
   const pendingSensitiveActionRef = useRef<null | ((overridePrivateKey?: string) => Promise<void>)>(null);
-  const desktopApproveResolveRef = useRef<null | ((value: any) => void)>(null);
-  const desktopApproveRejectRef = useRef<null | ((reason?: any) => void)>(null);
 
   const [wcProposal, setWcProposal] = useState<any | null>(null);
-  const [desktopApproval, setDesktopApproval] = useState<DesktopApprovalState>(null);
-  const [desktopApproving, setDesktopApproving] = useState(false);
   const [wcRequest, setWcRequest] = useState<any | null>(null);
   const [wcApproving, setWcApproving] = useState(false);
+  const [resumeTick, setResumeTick] = useState(0);
 
   const t = {
     authSubtitle: tr(lang, "auth_subtitle"),
@@ -150,6 +137,34 @@ export default function WalletShell() {
     walletAlreadyExists: tr(lang, "auth_wallet_already_exists"),
   };
 
+
+
+  useEffect(() => {
+    const recoverUi = () => {
+      setReauthOpen(false);
+      setReauthPassword("");
+      setReauthError("");
+      setWcProposal(null);
+      setWcRequest(null);
+      setWcApproving(false);
+      setResumeTick((value) => value + 1);
+      window.dispatchEvent(new Event("wallet-close-overlays"));
+    };
+
+    const onVisibility = () => {
+      if (!document.hidden) window.setTimeout(recoverUi, 60);
+    };
+
+    window.addEventListener("focus", recoverUi);
+    window.addEventListener("pageshow", recoverUi as EventListener);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener("focus", recoverUi);
+      window.removeEventListener("pageshow", recoverUi as EventListener);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -567,15 +582,18 @@ export default function WalletShell() {
       getPrivateKey: () => unlockedWallet.privateKey,
       requireSensitiveApproval: async (args) => {
         return await new Promise((resolve, reject) => {
-          desktopApproveResolveRef.current = resolve;
-          desktopApproveRejectRef.current = reject;
-          setDesktopApproval({
-            method: args.method,
-            params: args.params,
-            chainId: `eip155:${Number(getStoredNetwork().chainId || 3777)}`,
-            origin: window.location.origin || "browser",
-            name: document.title || window.location.hostname || "Browser",
-          });
+          runSensitiveAction(async (overridePrivateKey?: string) => {
+            try {
+              const result = await handleRequestMethod({
+                ...args,
+                privateKey: overridePrivateKey || unlockedWallet.privateKey,
+                chainId: `eip155:${Number(getStoredNetwork().chainId || 3777)}`,
+              });
+              resolve(result);
+            } catch (error) {
+              reject(error);
+            }
+          }).catch(reject);
         });
       },
       showMessage,
@@ -655,118 +673,6 @@ export default function WalletShell() {
       console.error(err);
       showMessage(tr(lang, "shell_request_reject_failed"));
     }
-  }
-
-  const desktopApprovalView = useMemo(() => {
-    if (!desktopApproval) return null;
-    const details = buildWcRequestDetails({
-      method: desktopApproval.method,
-      params: desktopApproval.params,
-      chainId: desktopApproval.chainId,
-      peerMetadata: {
-        name: desktopApproval.name,
-        url: desktopApproval.origin,
-        icons: [],
-      },
-    }, lang);
-
-    const items: TransactionConfirmItem[] = [
-      { label: "Requested by", value: details.dappName || desktopApproval.origin },
-      { label: "Method", value: details.displayMethod || details.methodLabel || desktopApproval.method },
-      { label: "Network", value: details.networkName },
-      { label: "Chain", value: details.chainLabel },
-    ];
-
-    if (details.kind === "transaction") {
-      items.push(
-        { label: "To", value: details.to || "-", mono: true },
-        { label: "Value", value: details.valueNative || "0" },
-        { label: "Estimated fee", value: details.estimatedFeeNative || "-" },
-      );
-      if (details.analysis?.action) items.push({ label: "Decoded action", value: details.analysis.action });
-      if (details.analysis?.spender) items.push({ label: "Spender", value: details.analysis.spender, mono: true });
-      if (details.analysis?.amountLabel) items.push({ label: "Amount", value: details.analysis.amountLabel });
-    } else if (details.kind === "typedData") {
-      items.push(
-        { label: "Domain", value: details.summary?.domainName || "-" },
-        { label: "Primary type", value: details.summary?.primaryType || "-" },
-      );
-    } else if (details.kind === "message") {
-      items.push({ label: "Preview", value: details.preview || "-" });
-    } else if (details.kind === "networkSwitch") {
-      items.push({ label: "Requested network", value: details.requestedNetwork || "-" });
-    } else if (details.kind === "networkAdd") {
-      items.push(
-        { label: "Requested network", value: details.requestedNetwork || "-" },
-        { label: "RPC", value: details.requestedRpc || "-", mono: true },
-      );
-    }
-
-    return {
-      title:
-        details.kind === "transaction"
-          ? "Review transaction"
-          : details.kind === "typedData"
-            ? "Review typed data"
-            : details.kind === "message"
-              ? "Review message"
-              : details.kind === "networkSwitch"
-                ? "Review network switch"
-                : details.kind === "networkAdd"
-                  ? "Review custom network"
-                  : "Review request",
-      subtitle: details.subtitle,
-      badge: details.kind === "transaction" ? "Contract interaction" : details.kind === "typedData" ? "Typed data" : details.kind === "message" ? "Signature" : "Security check",
-      items,
-      warnings: details.riskItems?.length ? details.riskItems.slice(0, 4) : [],
-      confirmLabel:
-        details.kind === "transaction"
-          ? "Approve transaction"
-          : details.kind === "typedData"
-            ? "Sign typed data"
-            : details.kind === "message"
-              ? "Sign message"
-              : details.kind === "networkSwitch"
-                ? "Switch network"
-                : details.kind === "networkAdd"
-                  ? "Add network"
-                  : "Approve",
-    };
-  }, [desktopApproval, lang]);
-
-  async function approveDesktopRequest() {
-    if (!desktopApproval || !unlockedWallet || desktopApproving) return;
-    setDesktopApproving(true);
-    try {
-      await runSensitiveAction(async (overridePrivateKey?: string) => {
-        const result = await handleRequestMethod({
-          method: desktopApproval.method,
-          params: desktopApproval.params,
-          address: unlockedWallet.address,
-          privateKey: overridePrivateKey || unlockedWallet.privateKey,
-          chainId: desktopApproval.chainId,
-        });
-        desktopApproveResolveRef.current?.(result);
-        desktopApproveResolveRef.current = null;
-        desktopApproveRejectRef.current = null;
-        setDesktopApproval(null);
-        setDesktopApproving(false);
-      });
-    } catch (error) {
-      desktopApproveRejectRef.current?.(error);
-      desktopApproveResolveRef.current = null;
-      desktopApproveRejectRef.current = null;
-      setDesktopApproval(null);
-      setDesktopApproving(false);
-    }
-  }
-
-  function rejectDesktopRequest() {
-    desktopApproveRejectRef.current?.(new Error("User rejected the request"));
-    desktopApproveResolveRef.current = null;
-    desktopApproveRejectRef.current = null;
-    setDesktopApproval(null);
-    setDesktopApproving(false);
   }
 
   const renderTab = () => {
@@ -889,6 +795,7 @@ export default function WalletShell() {
 
   return (
     <div
+      key={`resume-${resumeTick}`}
       className="wallet-page-shell"
       style={{
         background:
@@ -933,20 +840,6 @@ export default function WalletShell() {
         approving={wcApproving}
         onApprove={onApproveRequest}
         onReject={onRejectRequest}
-      />
-
-      <TransactionConfirmModal
-        open={!!desktopApproval && !!desktopApprovalView}
-        theme={theme}
-        title={desktopApprovalView?.title || "Review request"}
-        subtitle={desktopApprovalView?.subtitle || "Confirm this browser request before the wallet signs or sends anything."}
-        badge={desktopApprovalView?.badge}
-        items={desktopApprovalView?.items || []}
-        warnings={desktopApprovalView?.warnings || []}
-        confirmLabel={desktopApprovalView?.confirmLabel || "Approve"}
-        confirming={desktopApproving}
-        onConfirm={approveDesktopRequest}
-        onCancel={rejectDesktopRequest}
       />
 
       <ToastViewport toasts={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))} />
