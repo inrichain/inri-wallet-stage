@@ -6,6 +6,7 @@ import Header from "./Header";
 import BottomNav from "./BottomNav";
 import AuthPanel, { type AuthMode } from "./AuthPanel";
 import ReauthModal from "./ReauthModal";
+import TransactionConfirmModal, { type TxConfirmSection } from "./TransactionConfirmModal";
 import DashboardScreen from "../screens/DashboardScreen";
 import SendScreen from "../screens/SendScreen";
 import ReceiveScreen from "../screens/ReceiveScreen";
@@ -24,7 +25,6 @@ import P2PScreen from "../screens/P2PScreen";
 import PoolScreen from "../screens/PoolScreen";
 import ToastViewport from "./ToastViewport";
 import WcSessionProposalModal from "./WcSessionProposalModal";
-import WcRequestModal from "./WcRequestModal";
 import {
   approveSessionProposal,
   rejectSessionProposal,
@@ -33,6 +33,8 @@ import {
 } from "../lib/walletconnect";
 import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
+import { buildWcRequestDetails } from "../lib/wcRequestDetails";
+import { resolveDappAsset } from "../lib/assets";
 import { isValidSeedPhrase, normalizeSeed } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
 import { installDesktopEthereumProvider, type SensitiveRequestArgs } from "../lib/desktopProvider";
@@ -572,6 +574,9 @@ export default function WalletShell() {
 
   const activeAddress = unlockedWallet?.address || currentWalletMeta?.address || "";
 
+  const wcRequestModalConfig = useMemo(() => buildRequestModalConfig(wcRequest, lang), [wcRequest, lang]);
+  const siteRequestModalConfig = useMemo(() => buildRequestModalConfig(siteRequest, lang), [siteRequest, lang]);
+
   useEffect(() => {
     if (!activeAddress) return;
 
@@ -886,24 +891,44 @@ export default function WalletShell() {
         onReject={onRejectProposal}
       />
 
-      <WcRequestModal
-        open={!!wcRequest}
+      <TransactionConfirmModal
+        open={!!wcRequest && !!wcRequestModalConfig}
         theme={theme}
-        lang={lang}
-        request={wcRequest}
-        approving={wcApproving}
-        onApprove={onApproveRequest}
-        onReject={onRejectRequest}
+        title={wcRequestModalConfig?.title || "Confirm request"}
+        subtitle={wcRequestModalConfig?.subtitle}
+        actionLabel={wcRequestModalConfig?.actionLabel}
+        category={wcRequestModalConfig?.category}
+        networkName={wcRequestModalConfig?.networkName}
+        networkLogo={wcRequestModalConfig?.networkLogo}
+        riskLabel={wcRequestModalConfig?.riskLabel}
+        riskTone={(wcRequestModalConfig?.riskTone as any) || "medium"}
+        sections={wcRequestModalConfig?.sections || []}
+        warnings={wcRequestModalConfig?.warnings || []}
+        advancedContent={wcRequestModalConfig?.advancedContent}
+        confirmLabel={wcRequestModalConfig?.confirmLabel || "Confirm"}
+        confirmBusy={wcApproving}
+        onConfirm={onApproveRequest}
+        onCancel={onRejectRequest}
       />
 
-      <WcRequestModal
-        open={!!siteRequest}
+      <TransactionConfirmModal
+        open={!!siteRequest && !!siteRequestModalConfig}
         theme={theme}
-        lang={lang}
-        request={siteRequest}
-        approving={siteApproving}
-        onApprove={onApproveSiteRequest}
-        onReject={onRejectSiteRequest}
+        title={siteRequestModalConfig?.title || "Confirm request"}
+        subtitle={siteRequestModalConfig?.subtitle}
+        actionLabel={siteRequestModalConfig?.actionLabel}
+        category={siteRequestModalConfig?.category}
+        networkName={siteRequestModalConfig?.networkName}
+        networkLogo={siteRequestModalConfig?.networkLogo}
+        riskLabel={siteRequestModalConfig?.riskLabel}
+        riskTone={(siteRequestModalConfig?.riskTone as any) || "medium"}
+        sections={siteRequestModalConfig?.sections || []}
+        warnings={siteRequestModalConfig?.warnings || []}
+        advancedContent={siteRequestModalConfig?.advancedContent}
+        confirmLabel={siteRequestModalConfig?.confirmLabel || "Confirm"}
+        confirmBusy={siteApproving}
+        onConfirm={onApproveSiteRequest}
+        onCancel={onRejectSiteRequest}
       />
 
       <ToastViewport toasts={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))} />
@@ -944,10 +969,95 @@ export default function WalletShell() {
 
 
 
+function buildRequestModalConfig(request: any, lang = "en") {
+  if (!request) return null;
+  const details: any = buildWcRequestDetails(request, lang);
+  const sections: TxConfirmSection[] = [
+    {
+      title: "Request",
+      items: [
+        { label: "Requested by", value: details.dappName || "Connected site" },
+        ...(details.dappUrl ? [{ label: "Origin", value: details.dappUrl, mono: true }] : []),
+        { label: "Method", value: details.displayMethod || details.methodLabel || details.method || "Unknown" },
+        { label: "Network", value: details.networkName || "INRI" },
+        { label: "Chain", value: details.chainLabel || `eip155:${details.chainId || 3777}` },
+      ],
+    },
+  ];
 
+  if (details.kind === "transaction") {
+    const items: any[] = [
+      { label: "Action", value: details.analysis?.action || details.displayMethod || "Transaction" },
+      { label: "To", value: details.toFull || details.to || "New contract", mono: true },
+      { label: "Value", value: details.valueNative || "0" },
+      { label: "Gas limit", value: details.gasLimit || "Auto" },
+      { label: "Estimated fee", value: details.estimatedFeeNative || "By network" },
+    ];
+    if (details.analysis?.spender) items.push({ label: "Spender", value: details.analysis.spender, mono: true });
+    if (details.analysis?.amountLabel) items.push({ label: "Amount", value: details.analysis.amountLabel });
+    if (details.dataPreview) items.push({ label: "Calldata", value: details.dataPreview, mono: true });
+    sections.push({ title: "Transaction", items });
+  } else if (details.kind === "networkSwitch") {
+    sections.push({ title: "Network switch", items: [
+      { label: "Current network", value: details.currentNetwork || "Current network" },
+      { label: "Requested network", value: details.requestedNetwork || "Unknown network" },
+      { label: "Requested chain", value: String(details.requestedChainId || "-") },
+    ]});
+  } else if (details.kind === "networkAdd") {
+    sections.push({ title: "Add network", items: [
+      { label: "Network", value: details.requestedNetwork || "Custom network" },
+      { label: "Chain ID", value: String(details.requestedChainId || "-") },
+      { label: "RPC URL", value: details.requestedRpc || "-", mono: true },
+    ]});
+  } else if (details.kind === "message") {
+    sections.push({ title: "Message", items: [
+      { label: "Preview", value: details.preview || "Empty message" },
+    ]});
+  } else if (details.kind === "typedData") {
+    sections.push({ title: "Typed data", items: [
+      { label: "Domain", value: details.summary?.domainName || "Unknown" },
+      { label: "Primary type", value: details.summary?.primaryType || "Unknown" },
+      { label: "Fields", value: String(details.summary?.fieldCount || 0), hint: (details.summary?.fields || []).join(", ") || undefined },
+      ...(details.analysis?.action ? [{ label: "Decoded intent", value: details.analysis.action, hint: details.analysis.functionName || undefined }] : []),
+    ]});
+  }
 
+  const riskLabel = details.kind === "transaction"
+    ? (details.analysis?.isUnlimitedApproval ? "High risk" : (details.riskLevel === "low" ? "Low risk" : details.riskLevel === "high" ? "High risk" : "Medium risk"))
+    : details.riskLevel === "low" ? "Low risk" : details.riskLevel === "high" ? "High risk" : "Medium risk";
 
+  const confirmLabel = details.kind === "message"
+    ? "Sign message"
+    : details.kind === "typedData"
+    ? "Sign typed data"
+    : details.kind === "networkSwitch"
+    ? "Switch network"
+    : details.kind === "networkAdd"
+    ? "Add network"
+    : details.kind === "transaction"
+    ? "Confirm transaction"
+    : "Confirm request";
 
+  return {
+    details,
+    title: details.title || "Confirm request",
+    subtitle: details.subtitle || "Review this request before approving it in INRI Wallet.",
+    actionLabel: details.kind === "transaction" ? "Contract interaction" : details.displayMethod || details.methodLabel || details.method,
+    networkName: details.networkName || "INRI",
+    networkLogo: resolveDappAsset(details.dappIcon || details.networkLogo, details.dappName || details.networkName || "INRI"),
+    category: details.dappName || "Connected site",
+    riskLabel,
+    riskTone: details.analysis?.isUnlimitedApproval ? "high" : (details.riskLevel === "low" ? "low" : details.riskLevel === "high" ? "high" : "medium"),
+    sections,
+    warnings: Array.isArray(details.riskItems) ? details.riskItems : [],
+    confirmLabel,
+    advancedContent: React.createElement(
+      "pre",
+      { style: { margin: 0, padding: 12, borderRadius: 14, border: "1px solid rgba(148,163,184,.25)", background: "rgba(15,23,42,.48)", color: "#d8e3ff", fontSize: 12, whiteSpace: "pre-wrap", wordBreak: "break-word" } },
+      JSON.stringify(request.params, null, 2)
+    ),
+  };
+}
 
 function secondaryButtonStyle(theme: "dark" | "light"): React.CSSProperties {
   return {
