@@ -102,7 +102,6 @@ export default function WalletShell() {
   const [wcProposal, setWcProposal] = useState<any | null>(null);
   const [wcRequest, setWcRequest] = useState<any | null>(null);
   const [wcApproving, setWcApproving] = useState(false);
-  const [resumeTick, setResumeTick] = useState(0);
 
   const t = {
     authSubtitle: tr(lang, "auth_subtitle"),
@@ -137,34 +136,6 @@ export default function WalletShell() {
     walletAlreadyExists: tr(lang, "auth_wallet_already_exists"),
   };
 
-
-
-  useEffect(() => {
-    const recoverUi = () => {
-      setReauthOpen(false);
-      setReauthPassword("");
-      setReauthError("");
-      setWcProposal(null);
-      setWcRequest(null);
-      setWcApproving(false);
-      setResumeTick((value) => value + 1);
-      window.dispatchEvent(new Event("wallet-close-overlays"));
-    };
-
-    const onVisibility = () => {
-      if (!document.hidden) window.setTimeout(recoverUi, 60);
-    };
-
-    window.addEventListener("focus", recoverUi);
-    window.addEventListener("pageshow", recoverUi as EventListener);
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      window.removeEventListener("focus", recoverUi);
-      window.removeEventListener("pageshow", recoverUi as EventListener);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -795,7 +766,6 @@ export default function WalletShell() {
 
   return (
     <div
-      key={`resume-${resumeTick}`}
       className="wallet-page-shell"
       style={{
         background:

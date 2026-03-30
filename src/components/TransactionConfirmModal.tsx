@@ -1,9 +1,10 @@
 import React from "react";
 
-export type TransactionConfirmItem = {
+type Row = {
   label: string;
   value: string;
   mono?: boolean;
+  tone?: "default" | "danger" | "warning" | "success";
 };
 
 export default function TransactionConfirmModal({
@@ -11,181 +12,90 @@ export default function TransactionConfirmModal({
   theme = "dark",
   title,
   subtitle,
-  badge,
-  items,
-  warnings = [],
+  kind,
+  rows,
+  warning,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
-  confirming = false,
   onConfirm,
   onCancel,
+  busy = false,
 }: {
   open: boolean;
   theme?: "dark" | "light";
   title: string;
   subtitle?: string;
-  badge?: string;
-  items: TransactionConfirmItem[];
-  warnings?: string[];
+  kind?: string;
+  rows: Row[];
+  warning?: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  confirming?: boolean;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
+  busy?: boolean;
 }) {
   if (!open) return null;
   const isLight = theme === "light";
 
   return (
-    <div style={overlayStyle} onClick={onCancel}>
-      <div style={panelStyle(isLight)} onClick={(event) => event.stopPropagation()}>
-        <div style={heroStyle(isLight)}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff" }}>{title}</div>
-              {badge ? <span style={badgeStyle(isLight)}>{badge}</span> : null}
+    <div
+      onClick={onCancel}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 220,
+        background: isLight ? "rgba(15,23,42,.28)" : "rgba(3,7,18,.68)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(520px, 100%)",
+          borderRadius: 28,
+          border: `1px solid ${isLight ? "#dbe2f0" : "#243041"}`,
+          background: isLight ? "#ffffff" : "linear-gradient(180deg,#0f1728 0%, #0b1120 100%)",
+          boxShadow: isLight ? "0 28px 70px rgba(15,23,42,.18)" : "0 30px 80px rgba(0,0,0,.55)",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: 22, borderBottom: `1px solid ${isLight ? "#e6edf7" : "#1e293b"}`, display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ display: "grid", gap: 6 }}>
+              {kind ? (
+                <div style={{ display: "inline-flex", width: "fit-content", padding: "6px 10px", borderRadius: 999, fontSize: 11, fontWeight: 900, letterSpacing: ".08em", textTransform: "uppercase", color: "#60a5fa", background: isLight ? "#eef4ff" : "rgba(59,130,246,.12)", border: `1px solid ${isLight ? "#cfe0ff" : "rgba(59,130,246,.2)"}` }}>{kind}</div>
+              ) : null}
+              <div style={{ fontSize: 28, lineHeight: 1.05, fontWeight: 900, color: isLight ? "#0f172a" : "#ffffff", letterSpacing: "-.03em" }}>{title}</div>
+              {subtitle ? <div style={{ color: isLight ? "#475569" : "#94a3b8", lineHeight: 1.5 }}>{subtitle}</div> : null}
             </div>
-            {subtitle ? <div style={{ marginTop: 6, color: isLight ? "#64748b" : "#94a3b8", lineHeight: 1.5 }}>{subtitle}</div> : null}
+            <button onClick={onCancel} style={{ width: 42, height: 42, borderRadius: 14, border: `1px solid ${isLight ? "#dbe2f0" : "#243041"}`, background: isLight ? "#f8fafc" : "#101826", color: isLight ? "#0f172a" : "#e2e8f0", fontSize: 18, cursor: "pointer" }}>✕</button>
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-          {items.map((item, index) => (
-            <div key={`${item.label}-${index}`} style={itemStyle(isLight)}>
-              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".04em", textTransform: "uppercase", color: isLight ? "#64748b" : "#94a3b8", marginBottom: 6 }}>
-                {item.label}
+        <div style={{ padding: 22, display: "grid", gap: 12 }}>
+          {rows.map((row, index) => {
+            const toneColor = row.tone === "danger" ? (isLight ? "#b91c1c" : "#fca5a5") : row.tone === "warning" ? (isLight ? "#b45309" : "#fbbf24") : row.tone === "success" ? (isLight ? "#047857" : "#6ee7b7") : (isLight ? "#0f172a" : "#e2e8f0");
+            return (
+              <div key={`${row.label}-${index}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`, borderRadius: 16, padding: "14px 16px", background: isLight ? "#f8fafc" : "#0b1120" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em", color: isLight ? "#64748b" : "#94a3b8" }}>{row.label}</div>
+                <div style={{ color: toneColor, fontWeight: 800, textAlign: "right", wordBreak: row.mono ? "break-all" : "break-word", fontFamily: row.mono ? "ui-monospace, SFMono-Regular, Menlo, monospace" : "inherit", maxWidth: "65%" }}>{row.value || "-"}</div>
               </div>
-              <div
-                style={{
-                  color: isLight ? "#0f172a" : "#ffffff",
-                  fontWeight: 800,
-                  fontSize: 15,
-                  lineHeight: 1.45,
-                  wordBreak: item.mono ? "break-all" : "break-word",
-                  fontFamily: item.mono ? "ui-monospace, SFMono-Regular, Menlo, monospace" : "inherit",
-                }}
-              >
-                {item.value || "-"}
-              </div>
-            </div>
-          ))}
+            );
+          })}
+
+          {warning ? (
+            <div style={{ borderRadius: 18, padding: 14, border: `1px solid ${isLight ? "#fde68a" : "rgba(251,191,36,.25)"}`, background: isLight ? "#fff7d6" : "rgba(251,191,36,.09)", color: isLight ? "#92400e" : "#fcd34d", lineHeight: 1.5, fontWeight: 700 }}>{warning}</div>
+          ) : null}
         </div>
 
-        {warnings.length ? (
-          <div style={warningBoxStyle(isLight)}>
-            {warnings.map((warning, index) => (
-              <div key={`${warning}-${index}`} style={{ display: "flex", gap: 8, lineHeight: 1.45, color: isLight ? "#8a4b00" : "#fdba74" }}>
-                <span style={{ fontWeight: 900 }}>•</span>
-                <span>{warning}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-          <button type="button" onClick={onCancel} disabled={confirming} style={secondaryButtonStyle(isLight)}>
-            {cancelLabel}
-          </button>
-          <button type="button" onClick={onConfirm} disabled={confirming} style={primaryButtonStyle(confirming)}>
-            {confirming ? "Processing..." : confirmLabel}
-          </button>
+        <div style={{ padding: 22, paddingTop: 4, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <button onClick={onCancel} disabled={busy} style={{ minHeight: 52, borderRadius: 18, border: `1px solid ${isLight ? "#dbe2f0" : "#243041"}`, background: isLight ? "#ffffff" : "#101826", color: isLight ? "#0f172a" : "#e2e8f0", fontWeight: 900, cursor: "pointer" }}>{cancelLabel}</button>
+          <button onClick={onConfirm} disabled={busy} style={{ minHeight: 52, borderRadius: 18, border: "1px solid rgba(59,130,246,.28)", background: busy ? (isLight ? "#cbd5e1" : "#1e293b") : "linear-gradient(135deg,#3b82f6 0%, #2563eb 100%)", color: "#ffffff", fontWeight: 900, cursor: busy ? "not-allowed" : "pointer", boxShadow: busy ? "none" : "0 16px 34px rgba(37,99,235,.26)" }}>{busy ? "Processing..." : confirmLabel}</button>
         </div>
       </div>
     </div>
   );
-}
-
-const overlayStyle: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(2,6,23,.72)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 14,
-  zIndex: 12000,
-};
-
-function panelStyle(isLight: boolean): React.CSSProperties {
-  return {
-    width: "min(620px, calc(100vw - 28px))",
-    maxHeight: "calc(100vh - 28px)",
-    overflow: "auto",
-    borderRadius: 24,
-    border: `1px solid ${isLight ? "#dbe2f0" : "#223045"}`,
-    background: isLight ? "#ffffff" : "#0b1220",
-    boxShadow: isLight ? "0 30px 80px rgba(15,23,42,.18)" : "0 30px 80px rgba(0,0,0,.5)",
-    padding: 18,
-  };
-}
-
-function heroStyle(isLight: boolean): React.CSSProperties {
-  return {
-    borderRadius: 20,
-    padding: 16,
-    border: `1px solid ${isLight ? "#dbe2f0" : "#223045"}`,
-    background: isLight ? "linear-gradient(180deg,#ffffff 0%,#f8fbff 100%)" : "linear-gradient(180deg,#101a2d 0%,#0b1220 100%)",
-  };
-}
-
-function itemStyle(isLight: boolean): React.CSSProperties {
-  return {
-    borderRadius: 18,
-    padding: 14,
-    border: `1px solid ${isLight ? "#e2e8f0" : "#1f2937"}`,
-    background: isLight ? "#f8fafc" : "#0f172a",
-  };
-}
-
-function warningBoxStyle(isLight: boolean): React.CSSProperties {
-  return {
-    display: "grid",
-    gap: 8,
-    marginTop: 14,
-    borderRadius: 18,
-    padding: 14,
-    border: `1px solid ${isLight ? "#fed7aa" : "rgba(251,146,60,.24)"}`,
-    background: isLight ? "#fff7ed" : "rgba(251,146,60,.08)",
-  };
-}
-
-function badgeStyle(isLight: boolean): React.CSSProperties {
-  return {
-    padding: "7px 10px",
-    borderRadius: 999,
-    border: `1px solid ${isLight ? "rgba(63,124,255,.24)" : "rgba(96,165,250,.22)"}`,
-    background: isLight ? "#eef4ff" : "rgba(63,124,255,.14)",
-    color: isLight ? "#2453d4" : "#8bb4ff",
-    fontWeight: 800,
-    fontSize: 12,
-    letterSpacing: ".04em",
-    textTransform: "uppercase",
-  };
-}
-
-function secondaryButtonStyle(isLight: boolean): React.CSSProperties {
-  return {
-    flex: 1,
-    height: 48,
-    borderRadius: 14,
-    border: `1px solid ${isLight ? "#dbe2f0" : "#223045"}`,
-    background: "transparent",
-    color: isLight ? "#0f172a" : "#ffffff",
-    fontWeight: 800,
-    cursor: "pointer",
-  };
-}
-
-function primaryButtonStyle(confirming: boolean): React.CSSProperties {
-  return {
-    flex: 1,
-    height: 48,
-    borderRadius: 14,
-    border: "none",
-    background: confirming ? "#7da8ff" : "linear-gradient(135deg,#2ec7b8 0%,#5a7cff 100%)",
-    color: "#ffffff",
-    fontWeight: 900,
-    cursor: confirming ? "default" : "pointer",
-    boxShadow: "0 12px 28px rgba(63,124,255,.28)",
-  };
 }

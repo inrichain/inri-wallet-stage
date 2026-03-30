@@ -45,29 +45,28 @@ export default function Header({
     const syncAvatar = () => setAvatar(localStorage.getItem("wallet_avatar") || DEFAULT_AVATAR);
     const closeMenu = () => setNetworkOpen(false);
     const onResize = () => setIsCompact(window.innerWidth <= 760);
-    const onVisibility = () => {
-      if (!document.hidden) setNetworkOpen(false);
+    const onResume = () => {
+      syncNetwork();
+      syncAvatar();
+      closeMenu();
     };
-    const onResume = () => setNetworkOpen(false);
     window.addEventListener("storage", syncNetwork);
     window.addEventListener("wallet-network-updated", syncNetwork as EventListener);
     window.addEventListener("wallet-avatar-updated", syncAvatar as EventListener);
-    window.addEventListener("wallet-close-overlays", closeMenu as EventListener);
     window.addEventListener("click", closeMenu);
     window.addEventListener("resize", onResize);
     window.addEventListener("focus", onResume);
     window.addEventListener("pageshow", onResume as EventListener);
-    document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener("visibilitychange", onResume);
     return () => {
       window.removeEventListener("storage", syncNetwork);
       window.removeEventListener("wallet-network-updated", syncNetwork as EventListener);
       window.removeEventListener("wallet-avatar-updated", syncAvatar as EventListener);
-      window.removeEventListener("wallet-close-overlays", closeMenu as EventListener);
       window.removeEventListener("click", closeMenu);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("focus", onResume);
       window.removeEventListener("pageshow", onResume as EventListener);
-      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("visibilitychange", onResume);
     };
   }, []);
 
@@ -145,7 +144,7 @@ export default function Header({
       style={{
         borderBottom: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
         background: isLight ? "#ffffff" : "#0b1020",
-        position: isCompact ? "relative" : "sticky",
+        position: "sticky",
         top: 0,
         zIndex: 30,
       }}

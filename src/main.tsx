@@ -1,11 +1,45 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./styles.css";
 
-const BASE = import.meta.env.BASE_URL || "/";
-const RESUME_RELOAD_KEY = "__inri_wallet_resume_reload__";
-const HIDDEN_AT_KEY = "__inri_wallet_hidden_at__";
+type RootHandle = ReturnType<typeof ReactDOM.createRoot>;
+
+declare global {
+  interface Window {
+    __INRI_WALLET_ROOT__?: RootHandle | null;
+    __INRI_WALLET_RECOVERY__?: number | null;
+  }
+}
+
+class RootBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: any) {
+    console.error("INRI Wallet root crash", error);
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="wallet-resume-overlay">
+        <div className="wallet-resume-card">
+          <div className="wallet-resume-badge">INRI Wallet</div>
+          <div className="wallet-resume-title">Restoring your secure session</div>
+          <div className="wallet-resume-text">The app is recovering after returning to the browser. A quick refresh brings everything back safely.</div>
+          <button className="wallet-resume-btn" onClick={() => window.location.reload()}>Refresh wallet</button>
+        </div>
+      </div>
+    );
+  }
+}
 
 async function cleanupLegacyPwa() {
   try {
@@ -22,194 +56,63 @@ async function cleanupLegacyPwa() {
   } catch {}
 }
 
-function safeReloadOnce(reason: string) {
-  try {
-    if (sessionStorage.getItem(RESUME_RELOAD_KEY) === reason) return false;
-    sessionStorage.setItem(RESUME_RELOAD_KEY, reason);
-  } catch {}
-  window.location.reload();
-  return true;
+function getRootEl() {
+  return document.getElementById("root");
 }
 
-function clearReloadReason() {
-  try {
-    sessionStorage.removeItem(RESUME_RELOAD_KEY);
-  } catch {}
-}
-
-function rootLooksBlank() {
-  const root = document.getElementById("root");
-  if (!root) return true;
-  if (!root.hasChildNodes()) return true;
-  const hasWalletShell = !!document.querySelector(".wallet-page-shell, .wallet-auth-shell");
-  return !hasWalletShell && root.textContent?.trim() === "";
-}
-
-function installResumeGuards() {
-  const rememberHidden = () => {
-    try {
-      sessionStorage.setItem(HIDDEN_AT_KEY, String(Date.now()));
-    } catch {}
-  };
-
-  const checkVisibleState = () => {
-    let hiddenAt = 0;
-    try {
-      hiddenAt = Number(sessionStorage.getItem(HIDDEN_AT_KEY) || "0");
-      sessionStorage.removeItem(HIDDEN_AT_KEY);
-    } catch {}
-
-    const awayMs = hiddenAt ? Date.now() - hiddenAt : 0;
-    window.setTimeout(() => {
-      if ((awayMs > 1200 || document.visibilityState === "visible") && rootLooksBlank()) {
-        safeReloadOnce("resume-blank-root");
-      } else {
-        clearReloadReason();
-      }
-    }, 140);
-  };
-
-  window.addEventListener("pagehide", rememberHidden);
-  window.addEventListener("pageshow", (event) => {
-    if ((event as PageTransitionEvent).persisted) {
-      safeReloadOnce("pageshow-persisted");
-      return;
-    }
-    checkVisibleState();
-  });
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      rememberHidden();
-      return;
-    }
-    checkVisibleState();
-  });
-
-  window.addEventListener("focus", checkVisibleState);
-  window.addEventListener("error", () => {
-    window.setTimeout(() => {
-      if (rootLooksBlank()) safeReloadOnce("runtime-error");
-    }, 80);
-  });
-  window.addEventListener("unhandledrejection", () => {
-    window.setTimeout(() => {
-      if (rootLooksBlank()) safeReloadOnce("promise-rejection");
-    }, 80);
-  });
-}
-
-function WalletRecoveryScreen() {
-  const autoAttemptAlreadyUsed = useMemo(() => {
-    try {
-      return sessionStorage.getItem(RESUME_RELOAD_KEY) === "boundary-auto-refresh";
-    } catch {
-      return false;
-    }
-  }, []);
-  const [seconds, setSeconds] = useState(autoAttemptAlreadyUsed ? 0 : 2);
-
-  useEffect(() => {
-    if (autoAttemptAlreadyUsed) return;
-
-    const tick = window.setInterval(() => {
-      setSeconds((value) => {
-        if (value <= 1) {
-          window.clearInterval(tick);
-          return 0;
-        }
-        return value - 1;
-      });
-    }, 1000);
-
-    const reloadTimer = window.setTimeout(() => {
-      safeReloadOnce("boundary-auto-refresh");
-    }, 1650);
-
-    return () => {
-      window.clearInterval(tick);
-      window.clearTimeout(reloadTimer);
-    };
-  }, [autoAttemptAlreadyUsed]);
-
-  return (
-    <div className="wallet-recovery-shell">
-      <div className="wallet-recovery-card">
-        <div className="wallet-recovery-brand">
-          <img className="wallet-recovery-logo" src={`${BASE}brand-inri.png`} alt="INRI" />
-          <div>
-            <div className="wallet-recovery-title">INRI Wallet</div>
-            <div className="wallet-recovery-subtitle">Restoring your secure session</div>
-          </div>
-        </div>
-
-        <div className="wallet-recovery-copy">
-          {autoAttemptAlreadyUsed
-            ? "The wallet is ready to recover. Tap refresh to reopen the interface cleanly."
-            : "The wallet is reopening after returning to the browser. This usually takes just a moment."}
-        </div>
-
-        <div className="wallet-recovery-status-row">
-          <div className="wallet-recovery-spinner" aria-hidden="true" />
-          <div className="wallet-recovery-status-text">
-            {autoAttemptAlreadyUsed
-              ? "Manual recovery available"
-              : `Automatic recovery starts in ${seconds || 1}s`}
-          </div>
-        </div>
-
-        <div className="wallet-recovery-progress" aria-hidden="true">
-          <div className="wallet-recovery-progress-bar" />
-        </div>
-
-        <div className="wallet-recovery-actions">
-          <button
-            className="wallet-recovery-btn wallet-recovery-btn-primary"
-            onClick={() => safeReloadOnce("boundary-manual-refresh")}
-          >
-            Refresh wallet
-          </button>
-          <button
-            className="wallet-recovery-btn wallet-recovery-btn-secondary"
-            onClick={() => window.location.assign(window.location.href)}
-          >
-            Reopen page
-          </button>
-        </div>
-
-        <div className="wallet-recovery-note">
-          Your wallet data stays local. This only refreshes the interface.
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type BoundaryState = { hasError: boolean };
-
-class RootErrorBoundary extends React.Component<React.PropsWithChildren, BoundaryState> {
-  state: BoundaryState = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
+function renderApp() {
+  const el = getRootEl();
+  if (!el) return;
+  if (!window.__INRI_WALLET_ROOT__) {
+    window.__INRI_WALLET_ROOT__ = ReactDOM.createRoot(el);
   }
-
-  componentDidCatch() {}
-
-  render() {
-    if (!this.state.hasError) return this.props.children;
-    return <WalletRecoveryScreen />;
-  }
-}
-
-installResumeGuards();
-
-cleanupLegacyPwa().finally(() => {
-  ReactDOM.createRoot(document.getElementById("root")!).render(
+  window.__INRI_WALLET_ROOT__!.render(
     <React.StrictMode>
-      <RootErrorBoundary>
+      <RootBoundary>
         <App />
-      </RootErrorBoundary>
+      </RootBoundary>
     </React.StrictMode>
   );
+}
+
+function rootLooksEmpty() {
+  const el = getRootEl();
+  if (!el) return true;
+  if (el.childElementCount === 0 && !el.textContent?.trim()) return true;
+  const rect = el.getBoundingClientRect();
+  return rect.height < 4 && rect.width < 4;
+}
+
+function recoverIfNeeded(force = false) {
+  if (window.__INRI_WALLET_RECOVERY__) {
+    window.clearTimeout(window.__INRI_WALLET_RECOVERY__);
+  }
+  window.__INRI_WALLET_RECOVERY__ = window.setTimeout(() => {
+    if (document.visibilityState !== "visible") return;
+    if (!force && !rootLooksEmpty()) return;
+    try {
+      window.__INRI_WALLET_ROOT__?.unmount?.();
+    } catch {}
+    window.__INRI_WALLET_ROOT__ = null;
+    const el = getRootEl();
+    if (el) el.innerHTML = "";
+    document.body.classList.add("wallet-resume-repaint");
+    renderApp();
+    window.setTimeout(() => document.body.classList.remove("wallet-resume-repaint"), 260);
+  }, force ? 80 : 220);
+}
+
+cleanupLegacyPwa().finally(() => {
+  renderApp();
+
+  window.addEventListener("pageshow", () => recoverIfNeeded(false));
+  window.addEventListener("focus", () => recoverIfNeeded(false));
+  window.addEventListener("resume", () => recoverIfNeeded(false) as any);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) recoverIfNeeded(false);
+  });
+
+  window.setInterval(() => {
+    if (document.visibilityState === "visible") recoverIfNeeded(false);
+  }, 2500);
 });
