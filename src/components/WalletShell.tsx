@@ -30,12 +30,14 @@ import {
   rejectSessionProposal,
   approveSessionRequest,
   rejectSessionRequest,
+  pairWalletConnect,
 } from "../lib/walletconnect";
 import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
 import { isValidSeedPhrase, normalizeSeed } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
 import { installDesktopEthereumProvider } from "../lib/desktopProvider";
+import { captureWcLaunchFromLocation, finishPendingWcLaunch, getPendingWcLaunch } from "../lib/wcLaunch";
 import { getInriNetwork, getStoredNetwork, saveStoredNetwork } from "../lib/network";
 import type { AppToastPayload, AppToastType } from "../lib/ui";
 import type { Tab } from "../lib/navigation";
@@ -98,6 +100,7 @@ export default function WalletShell() {
 
   const autoLockTimerRef = useRef<number | null>(null);
   const pendingSensitiveActionRef = useRef<null | ((overridePrivateKey?: string) => Promise<void>)>(null);
+  const handledWcLaunchRef = useRef<string>("");
 
   const [wcProposal, setWcProposal] = useState<any | null>(null);
   const [wcRequest, setWcRequest] = useState<any | null>(null);
@@ -206,6 +209,13 @@ export default function WalletShell() {
     sync();
     return wcStoreSubscribe(sync);
   }, []);
+  useEffect(() => {
+    const launch = captureWcLaunchFromLocation();
+    if (!launch) return;
+    setTab("walletconnect");
+    showMessage("WalletConnect launch detected");
+  }, []);
+
 
   function ensureFavicon() {
     let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
@@ -544,6 +554,38 @@ export default function WalletShell() {
       console.error("WalletConnect init failed:", err);
     });
   }, [activeAddress]);
+  useEffect(() => {
+    if (!activeAddress || view !== "wallet") return;
+
+    const pending = getPendingWcLaunch();
+    if (!pending?.uri) return;
+
+    const launchKey = `${pending.createdAt}:${pending.uri}`;
+    if (handledWcLaunchRef.current === launchKey) return;
+    handledWcLaunchRef.current = launchKey;
+
+    let cancelled = false;
+
+    window.setTimeout(() => {
+      initWalletConnect(activeAddress, Number(getStoredNetwork().chainId || 3777))
+        .then(async () => {
+          if (cancelled) return;
+          await pairWalletConnect(pending.uri!);
+          if (cancelled) return;
+          setTab("walletconnect");
+          showMessage("WalletConnect pair request loaded");
+        })
+        .catch((err) => {
+          console.error("WalletConnect deep link failed:", err);
+          showMessage(String(err?.message || err || "WalletConnect launch failed"));
+          handledWcLaunchRef.current = "";
+        });
+    }, 150);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAddress, view]);
 
   useEffect(() => {
     if (!unlockedWallet) return;
@@ -582,6 +624,7 @@ export default function WalletShell() {
     try {
       await approveSessionProposal(wcProposal, unlockedWallet.address);
       showMessage(tr(lang, "shell_wc_connected"));
+      window.setTimeout(() => finishPendingWcLaunch(), 350);
     } catch (err) {
       console.error(err);
       showMessage(tr(lang, "shell_wc_approve_failed"));
@@ -594,6 +637,7 @@ export default function WalletShell() {
     try {
       await rejectSessionProposal(wcProposal.id);
       showMessage(tr(lang, "shell_connection_rejected"));
+      window.setTimeout(() => finishPendingWcLaunch(), 250);
     } catch (err) {
       console.error(err);
       showMessage(tr(lang, "shell_reject_failed"));
@@ -622,6 +666,7 @@ export default function WalletShell() {
 
           await approveSessionRequest(wcRequest, result);
           showMessage(tr(lang, "shell_request_approved"));
+          window.setTimeout(() => finishPendingWcLaunch(), 250);
         } catch (err: any) {
           console.error(err);
           showMessage(err?.message || tr(lang, "shell_request_approve_failed"));
@@ -640,6 +685,7 @@ export default function WalletShell() {
     try {
       await rejectSessionRequest(wcRequest);
       showMessage(tr(lang, "shell_request_rejected"));
+      window.setTimeout(() => finishPendingWcLaunch(), 250);
     } catch (err) {
       console.error(err);
       showMessage(tr(lang, "shell_request_reject_failed"));
