@@ -152,6 +152,35 @@ export function buildWcRequestDetails(request: any, lang = "en") {
     };
   }
 
+
+  if (method === "wallet_watchAsset") {
+    const assetRequest = Array.isArray(request?.params) ? request.params[0] : request?.params;
+    const options = assetRequest?.options || {};
+    const tokenAddress = String(options?.address || "");
+    const tokenSymbol = String(options?.symbol || "TOKEN").toUpperCase();
+    const tokenName = String(options?.name || options?.tokenName || tokenSymbol);
+    const tokenDecimals = Number(options?.decimals ?? 18);
+
+    return {
+      ...base,
+      kind: "asset",
+      title: "Add token to wallet",
+      subtitle: `${tokenSymbol} • ${network?.name || "Current network"}`,
+      tokenAddress,
+      tokenSymbol,
+      tokenName,
+      tokenDecimals: Number.isFinite(tokenDecimals) ? tokenDecimals : 18,
+      tokenImage: String(options?.image || options?.logo || ""),
+      riskItems: [
+        "This only adds the token to your local wallet list.",
+        "It does not spend funds and does not grant permissions.",
+        "Verify the token contract address before approving.",
+      ],
+      riskLevel: "low",
+      displayMethod: "Add token",
+    };
+  }
+
   if (method === "wallet_switchEthereumChain") {
     const requested = Array.isArray(request?.params) ? request.params?.[0]?.chainId : request?.params?.chainId;
     const parsed = typeof requested === "string" && requested.startsWith("0x") ? Number(BigInt(requested)) : Number(requested);

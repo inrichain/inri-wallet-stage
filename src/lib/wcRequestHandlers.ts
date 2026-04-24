@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { getAllNetworks, getNetworkByChainId, getStoredNetwork, resolveNetworkLogo } from "./network";
+import { resolveTokenAsset } from "./assets";
 
 export function getSupportedNamespaces(address: string) {
   const chains = getAllNetworks().map((item) => `eip155:${Number(item.chainId)}`);
@@ -19,12 +20,95 @@ export function getSupportedNamespaces(address: string) {
         "eth_signTypedData_v4",
         "wallet_switchEthereumChain",
         "wallet_addEthereumChain",
+        "wallet_watchAsset",
       ],
       events: ["accountsChanged", "chainChanged"],
       accounts: chains.map((chain) => `${chain}:${address}`),
     },
   };
 }
+
+
+const CUSTOM_TOKENS_KEY = "wallet_custom_tokens";
+
+function readCustomTokensFromStorage() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CUSTOM_TOKENS_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function shortTokenAddress(address: string) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function normalizeWatchAssetParams(params: any) {
+  const request = Array.isArray(params) ? params[0] : params;
+  const type = String(request?.type || "").toUpperCase();
+  const options = request?.options || {};
+  const address = String(options?.address || "").trim();
+  const symbol = String(options?.symbol || "").trim().toUpperCase().slice(0, 24);
+  const name = String(options?.name || options?.tokenName || options?.label || "").trim();
+  const image = String(options?.image || options?.logo || "").trim();
+  const decimals = Number(options?.decimals ?? 18);
+
+  if (type !== "ERC20") {
+    throw new Error("Only ERC20 assets are supported");
+  }
+
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    throw new Error("Invalid token address");
+  }
+
+  if (!symbol) {
+    throw new Error("Invalid token symbol");
+  }
+
+  if (!Number.isFinite(decimals) || decimals < 0 || decimals > 36) {
+    throw new Error("Invalid token decimals");
+  }
+
+  return { address, symbol, name, image, decimals };
+}
+
+export function addWatchedAssetToWallet(params: any, chainId?: string | null) {
+  const asset = normalizeWatchAssetParams(params);
+  const net = getNetworkForChainId(chainId);
+  const networkKey = net?.key || getStoredNetwork().key || "inri";
+  const existing = readCustomTokensFromStorage();
+  const tokenKey = `${networkKey}:${asset.address.toLowerCase()}`;
+
+  const nextToken = {
+    symbol: asset.symbol,
+    subtitle: asset.name || `custom token • ${shortTokenAddress(asset.address)}`,
+    balance: "0.000000",
+    logo: resolveTokenAsset({
+      symbol: asset.symbol,
+      name: asset.name || asset.symbol,
+      networkKey,
+      logo: asset.image,
+    }),
+    isDefault: false,
+    address: asset.address,
+    decimals: asset.decimals,
+    networkKey,
+  };
+
+  const filtered = existing.filter((item: any) => {
+    const itemNetwork = item?.networkKey || networkKey;
+    const itemAddress = String(item?.address || "").toLowerCase();
+    const itemKey = `${itemNetwork}:${itemAddress}`;
+    return itemKey !== tokenKey;
+  });
+
+  localStorage.setItem(CUSTOM_TOKENS_KEY, JSON.stringify([...filtered, nextToken]));
+  window.dispatchEvent(new Event("wallet-tokens-updated"));
+  window.dispatchEvent(new Event("wallet-assets-updated"));
+  return true;
+}
+
 
 function normalizeWcChainId(value?: string | null) {
   if (!value) return null;
@@ -82,6 +166,10 @@ export async function handleRequestMethod(args: {
     localStorage.setItem("wallet_active_network", JSON.stringify(next));
     window.dispatchEvent(new Event("wallet-network-updated"));
     return null;
+  }
+
+  if (method === "wallet_watchAsset") {
+    return addWatchedAssetToWallet(params, chainId);
   }
 
   if (method === "wallet_addEthereumChain") {

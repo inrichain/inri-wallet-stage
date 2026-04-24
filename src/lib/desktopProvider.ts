@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import { getAllNetworks, getStoredNetwork, saveStoredNetwork, upsertCustomNetwork, resolveNetworkLogo, type NetworkItem } from "./network";
-import { handleRequestMethod } from "./wcRequestHandlers";
+import { addWatchedAssetToWallet, handleRequestMethod } from "./wcRequestHandlers";
 import { grantSitePermission, hasSitePermission, touchSitePermission } from "./sitePermissions";
 
 type ProviderEventName = "accountsChanged" | "chainChanged" | "connect" | "disconnect" | "message";
@@ -367,8 +367,9 @@ class InriDesktopProvider {
       }
       case "web3_clientVersion":
         return "INRI Wallet/1.0";
-      case "wallet_watchAsset":
-        return true;
+      case "wallet_watchAsset": {
+        return addWatchedAssetToWallet(params, `eip155:${this.currentChainId}`);
+      }
       case "wallet_revokePermissions":
         return [];
       case "eth_sendTransaction":

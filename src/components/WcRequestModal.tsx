@@ -106,6 +106,18 @@ export default function WcRequestModal({ open, theme, lang = "en", request, appr
           </>
         )}
 
+
+        {details.kind === "asset" && (
+          <>
+            <SectionTitle text="Token to add" />
+            <div style={gridStyle}>
+              <Card theme={theme} label="Token" value={details.tokenSymbol || "TOKEN"} hint={details.tokenName || ""} />
+              <Card theme={theme} label="Decimals" value={String(details.tokenDecimals ?? "-")} />
+              <Card theme={theme} label="Contract" value={details.tokenAddress || "-"} hint="Verify this address before adding" />
+            </div>
+          </>
+        )}
+
         {details.kind === "message" && (<><SectionTitle text={t("wc_request_message_preview")} /><pre style={preStyle(theme)}>{details.preview || t("wc_request_empty_message")}</pre></>)}
         {details.kind === "typedData" && (
           <>
@@ -146,6 +158,7 @@ function buttonLabel(kind: string, t: (key: string) => string) {
   if (kind === "message") return "Sign message";
   if (kind === "typedData") return "Sign typed data";
   if (kind === "transaction") return "Approve transaction";
+  if (kind === "asset") return "Add token";
   return t("wc_request_approve");
 }
 function Spinner() { return <span style={{ width: 14, height: 14, borderRadius: 999, border: "2px solid rgba(255,255,255,.35)", borderTopColor: "#fff", display: "inline-block", animation: "inri-spin .8s linear infinite" }} />; }

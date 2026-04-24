@@ -20,6 +20,7 @@ import MoreScreen from "../screens/MoreScreen";
 import NetworksScreen from "../screens/NetworksScreen";
 import WalletConnectScreen from "../screens/WalletConnectScreen";
 import AssetManagerScreen from "../screens/AssetManagerScreen";
+import TokenFactoryScreen from "../screens/TokenFactoryScreen";
 import P2PScreen from "../screens/P2PScreen";
 import PoolScreen from "../screens/PoolScreen";
 import ToastViewport from "./ToastViewport";
@@ -735,6 +736,9 @@ export default function WalletShell() {
 
       case "assets":
         return <AssetManagerScreen theme={theme} lang={lang} />;
+
+      case "factory":
+        return <TokenFactoryScreen theme={theme} lang={lang} address={address} privateKey={privateKey} setTab={setTab as any} />;
 
       case "p2p":
         return <P2PScreen theme={theme} lang={lang} setTab={setTab as any} address={address} privateKey={privateKey} />;
