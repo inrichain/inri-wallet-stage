@@ -80,11 +80,13 @@ export default function SendScreen({
   lang = "en",
   address,
   privateKey,
+  onSensitiveAction,
 }: {
   theme?: "dark" | "light";
   lang?: string;
   address: string;
   privateKey: string;
+  onSensitiveAction?: (action: (overridePrivateKey?: string) => Promise<void>) => Promise<void>;
 }) {
   const isLight = theme === "light";
   const [networkKey, setNetworkKey] = useState(getStoredNetwork().key);
@@ -94,6 +96,7 @@ export default function SendScreen({
   const [toAddress, setToAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [showReceiveQr, setShowReceiveQr] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -223,38 +226,65 @@ export default function SendScreen({
     );
   }
 
-  async function handleSend() {
-    if (!privateKey) {
-      showMessage(t.noWallet);
-      return;
-    }
-
+  function validateSendForm() {
     if (!token) {
       showMessage(t.sendFailed);
-      return;
+      return false;
     }
 
     if (!validateAddress(toAddress.trim())) {
       showMessage(t.invalidAddress);
-      return;
+      return false;
     }
 
     const n = Number(amount || "0");
     if (!Number.isFinite(n) || n <= 0) {
       showMessage(t.invalidAmount);
-      return;
+      return false;
     }
 
     if (Number(amount) > Number(token.balance || "0")) {
       showMessage(t.insufficientBalance);
+      return false;
+    }
+
+    return true;
+  }
+
+  function openSendReview() {
+    if (!validateSendForm()) return;
+    setShowReview(true);
+  }
+
+  async function confirmReviewedSend() {
+    if (!validateSendForm()) return;
+    setShowReview(false);
+
+    if (onSensitiveAction) {
+      await onSensitiveAction(async (overridePrivateKey?: string) => {
+        await executeSend(overridePrivateKey);
+      });
       return;
     }
+
+    await executeSend();
+  }
+
+  async function executeSend(overridePrivateKey?: string) {
+    const signingPrivateKey = overridePrivateKey || privateKey;
+
+    if (!signingPrivateKey) {
+      showMessage(t.noWallet);
+      return;
+    }
+
+    if (!validateSendForm()) return;
 
     setSending(true);
 
     try {
       const activeNetwork = getStoredNetwork();
-      const wallet = new ethers.Wallet(privateKey, getProvider(networkKey));
+      const wallet = new ethers.Wallet(signingPrivateKey, getProvider(networkKey));
 
       let tx: any;
 
@@ -555,15 +585,17 @@ export default function SendScreen({
           ) : null}
         </div>
 
+        <div style={secureBannerStyle(isLight)}>🔐 {t.secureV3}</div>
+
         <button
-          onClick={handleSend}
+          onClick={openSendReview}
           disabled={sending}
           style={{
             ...mainButtonStyle(),
             opacity: sending ? 0.7 : 1,
           }}
         >
-          {sending ? t.sending : `${t.send} ${token?.symbol || ""}`}
+          {sending ? t.sending : `${t.reviewSend} ${token?.symbol || ""}`}
         </button>
 
         {token?.isNative ? (
@@ -574,6 +606,47 @@ export default function SendScreen({
 
         {message ? <div style={messageStyle}>{message}</div> : null}
       </div>
+
+      {showReview ? (
+        <div style={modalBackdropStyle} onClick={() => !sending && setShowReview(false)}>
+          <div style={modalStyle(isLight)} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "#3f7cff", letterSpacing: ".08em", textTransform: "uppercase" }}>
+                  INRI Secure Send V3
+                </div>
+                <div style={{ fontWeight: 900, fontSize: 22, color: isLight ? "#10131a" : "#ffffff" }}>
+                  {t.reviewTransaction}
+                </div>
+              </div>
+              <button onClick={() => setShowReview(false)} disabled={sending} style={secondaryButtonStyle()}>
+                {t.close}
+              </button>
+            </div>
+
+            <div style={reviewGridStyle}>
+              <div style={reviewRowStyle(isLight)}><span>{t.token}</span><strong>{token?.symbol || "-"}</strong></div>
+              <div style={reviewRowStyle(isLight)}><span>{t.amount}</span><strong>{amount || "0"}</strong></div>
+              <div style={reviewRowStyle(isLight)}><span>{t.network}</span><strong>{getStoredNetwork().name} · Chain {getStoredNetwork().chainId}</strong></div>
+              <div style={reviewRowStyle(isLight)}><span>{t.recipient}</span><strong>{truncateMiddle(toAddress.trim())}</strong></div>
+              <div style={reviewRowStyle(isLight)}><span>{t.contract}</span><strong>{token?.isNative ? t.nativeTransfer : truncateMiddle(token?.address || "-")}</strong></div>
+            </div>
+
+            <div style={warningStyle(isLight)}>
+              ⚠️ {t.securityWarning}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+              <button onClick={() => setShowReview(false)} disabled={sending} style={secondaryButtonStyle()}>
+                {t.cancel}
+              </button>
+              <button onClick={confirmReviewedSend} disabled={sending} style={mainButtonStyle()}>
+                {sending ? t.sending : t.confirmSend}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showScanner ? (
         <div style={modalBackdropStyle} onClick={closeScanner}>
@@ -659,6 +732,57 @@ function getText(lang: string) {
   return map[lang] || map.en;
 }
 
+
+function truncateMiddle(value: string, left = 8, right = 6) {
+  if (!value) return "-";
+  if (value.length <= left + right + 3) return value;
+  return `${value.slice(0, left)}...${value.slice(-right)}`;
+}
+
+function secureBannerStyle(isLight: boolean): React.CSSProperties {
+  return {
+    border: `1px solid ${isLight ? "#bfdbfe" : "rgba(96,165,250,.3)"}`,
+    background: isLight ? "#eff6ff" : "rgba(63,124,255,.1)",
+    color: isLight ? "#1d4ed8" : "#93c5fd",
+    borderRadius: 14,
+    padding: "10px 12px",
+    fontSize: 13,
+    fontWeight: 900,
+  };
+}
+
+const reviewGridStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 10,
+};
+
+function reviewRowStyle(isLight: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#f6f8fc" : "#0d111b",
+    borderRadius: 14,
+    padding: "12px 14px",
+    color: isLight ? "#4a5568" : "#97a0b3",
+  };
+}
+
+function warningStyle(isLight: boolean): React.CSSProperties {
+  return {
+    marginTop: 12,
+    border: `1px solid ${isLight ? "#fed7aa" : "rgba(251,146,60,.35)"}`,
+    background: isLight ? "#fff7ed" : "rgba(251,146,60,.09)",
+    color: isLight ? "#9a3412" : "#fdba74",
+    borderRadius: 14,
+    padding: "12px 14px",
+    fontSize: 13,
+    lineHeight: 1.45,
+    fontWeight: 700,
+  };
+}
 
 function cardStyle(isLight: boolean): React.CSSProperties {
   return {
