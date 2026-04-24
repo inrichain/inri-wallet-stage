@@ -702,7 +702,15 @@ export default function WalletShell() {
         return <DashboardScreen setTab={setTab} theme={theme} lang={lang} address={address} />;
 
       case "send":
-        return <SendScreen theme={theme} lang={lang} address={address} privateKey={privateKey} onSensitiveAction={runSensitiveAction} />;
+        return (
+          <SendScreen
+            theme={theme}
+            lang={lang}
+            address={address}
+            privateKey={privateKey}
+            onSensitiveAction={runSensitiveAction}
+          />
+        );
 
       case "receive":
         return <ReceiveScreen theme={theme} lang={lang} address={address} />;
