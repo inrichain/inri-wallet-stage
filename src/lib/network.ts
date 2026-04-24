@@ -52,7 +52,7 @@ export function getNetworkLogoFallback(input: {
 }
 
 export const NETWORK_PRESETS: NetworkPreset[] = [
-  { key: "inri", name: "INRI", chainId: 3777, symbol: "INRI", rpcUrl: "https://rpc.inri.life", explorerBaseUrl: "https://explorer.inri.life", logo: `${BASE}network-inri.png`, color: "#2f85ff" },
+  { key: "inri", name: "INRI", chainId: 3777, symbol: "INRI", rpcUrl: "https://rpc-chain.inri.life", explorerBaseUrl: "https://explorer.inri.life", logo: `${BASE}network-inri.png`, color: "#2f85ff" },
   { key: "ethereum", name: "Ethereum", chainId: 1, symbol: "ETH", rpcUrl: "https://ethereum-rpc.publicnode.com", explorerBaseUrl: "https://etherscan.io", logo: `${BASE}network-ethereum.png`, color: "#627eea" },
   { key: "polygon", name: "Polygon", chainId: 137, symbol: "POL", rpcUrl: "https://polygon.drpc.org", explorerBaseUrl: "https://polygonscan.com", logo: `${BASE}network-polygon.png`, color: "#8247e5" },
   { key: "bsc", name: "BNB Chain", chainId: 56, symbol: "BNB", rpcUrl: "https://bsc-dataseed.binance.org", explorerBaseUrl: "https://bscscan.com", logo: `${BASE}network-bnb.png`, color: "#f0b90b" },
@@ -142,7 +142,7 @@ function normalizeStoredNetwork(value: any): NetworkItem {
       }),
     };
   }
-  return {
+  const normalized = {
     ...known,
     ...value,
     logo: resolveNetworkLogo({
@@ -152,6 +152,16 @@ function normalizeStoredNetwork(value: any): NetworkItem {
       logo: value?.logo || known.logo,
     }),
   };
+
+  if (isProtectedNetwork(normalized.key) || isProtectedNetwork(normalized.chainId)) {
+    const inri = getInriNetwork();
+    return {
+      ...inri,
+      logo: normalized.logo || inri.logo,
+    };
+  }
+
+  return normalized;
 }
 
 export function getCustomNetworks(): NetworkItem[] {
@@ -160,6 +170,7 @@ export function getCustomNetworks(): NetworkItem[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((item) => item?.chainId && item?.rpcUrl)
+      .filter((item) => !isProtectedNetwork(item?.key) && !isProtectedNetwork(Number(item?.chainId)))
       .map((item) => {
         const preset = findPresetByChainId(Number(item.chainId)) || findPresetByKey(item?.key);
         return {

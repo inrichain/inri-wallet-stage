@@ -4,7 +4,7 @@ import { resolveTokenAsset } from "./assets";
 
 const BASE = import.meta.env.BASE_URL || "/";
 
-export const RPC_URL = "https://rpc.inri.life";
+export const RPC_URL = "https://rpc-chain.inri.life";
 export const RPC_FALLBACK_URL = "https://rpc-chain.inri.life";
 export const CHAIN_ID = 3777;
 
