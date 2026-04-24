@@ -209,7 +209,7 @@ async function readJson(path: string) {
 async function fetchRpc(method: string, params: any[] = []) {
   const response = await fetch(DEFAULT_RPC_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "text/plain;charset=UTF-8", Accept: "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
   });
   if (!response.ok) throw new Error(`RPC ${method} failed: ${response.status}`);

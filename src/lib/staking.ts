@@ -100,7 +100,7 @@ function getPrimaryProvider() {
 function getReadProviderEntries(): Array<{ provider: ethers.JsonRpcProvider; label: string }> {
   return [
     { provider: getPrimaryProvider(), label: "rpc-chain.inri.life" },
-    { provider: fallbackProvider, label: "rpc-chain.inri.life" },
+    { provider: fallbackProvider, label: "rpc.inri.life" },
   ];
 }
 
