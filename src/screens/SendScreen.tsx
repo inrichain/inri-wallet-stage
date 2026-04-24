@@ -101,6 +101,7 @@ export default function SendScreen({
   const [showReceiveQr, setShowReceiveQr] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [scannerStatus, setScannerStatus] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [tokens, setTokens] = useState<ViewToken[]>(() =>
@@ -394,26 +395,34 @@ export default function SendScreen({
     }
   }
 
-  async function openScanner() {
-    if (isIosPwaStandalone()) {
-      setShowScanner(true);
-      fileRef.current?.click();
-      return;
-    }
-
+  function openScanner() {
+    setScannerStatus(t.cameraOpening);
     setShowScanner(true);
+  }
+
+  async function startLiveScanner() {
+    if (!showScanner) return;
 
     try {
-      await ensureCameraAccess();
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      setScannerStatus(t.cameraOpening);
 
-      if (!videoRef.current) {
-        showMessage(t.cameraUnavailable);
-        return;
+      try {
+        (readerRef.current as any)?.reset?.();
+      } catch {}
+      stopCameraTracks();
+
+      await ensureCameraAccess();
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+
+      const video = videoRef.current;
+      if (!video) {
+        throw new Error(t.cameraUnavailable);
       }
 
-      videoRef.current.setAttribute("playsinline", "true");
-      videoRef.current.muted = true;
+      video.setAttribute("playsinline", "true");
+      video.setAttribute("webkit-playsinline", "true");
+      video.muted = true;
+      video.autoplay = true;
 
       const reader = new BrowserMultiFormatReader();
       readerRef.current = reader;
@@ -423,7 +432,7 @@ export default function SendScreen({
 
       await startQrDecode({
         reader,
-        video: videoRef.current,
+        video,
         deviceId: preferred?.deviceId,
         onResult: (text) => {
           const match = text.match(/0x[a-fA-F0-9]{40}/);
@@ -433,8 +442,11 @@ export default function SendScreen({
           showMessage(t.qrCaptured);
         },
       });
+
+      setScannerStatus(t.cameraLive);
     } catch (error) {
       console.error(error);
+      setScannerStatus(t.cameraFallbackHint);
       showMessage(t.cameraFail);
     }
   }
@@ -445,8 +457,23 @@ export default function SendScreen({
     } catch {}
 
     stopCameraTracks();
+    setScannerStatus("");
     setShowScanner(false);
   }
+
+  useEffect(() => {
+    if (!showScanner) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (!cancelled) void startLiveScanner();
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [showScanner]);
 
   useEffect(() => {
     return () => {
@@ -552,7 +579,7 @@ export default function SendScreen({
           ) : null}
         </div>
 
-        <div style={secureBannerStyle(isLight)}>🔐 SECURE SEND V7 ACTIVE — review first, password second, send last.</div>
+        <div style={secureBannerStyle(isLight)}>🔐 SECURE SEND V8 ACTIVE — review first, password second, send last.</div>
 
         {!token?.isNative ? (
           <div style={gasNoticeStyle(isLight)}>⛽ {t.gasNotice}</div>
@@ -584,7 +611,7 @@ export default function SendScreen({
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 900, color: "#3f7cff", letterSpacing: ".08em", textTransform: "uppercase" }}>
-                  INRI Secure Send V7
+                  INRI Secure Send V8
                 </div>
                 <div style={{ fontWeight: 900, fontSize: 22, color: isLight ? "#10131a" : "#ffffff" }}>
                   {t.reviewTransaction}
@@ -641,8 +668,23 @@ export default function SendScreen({
               style={{ width: "100%", height: 320, objectFit: "cover", borderRadius: 16, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: "#000" }}
             />
 
-            <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginTop: 12 }}>
-              {isIosPwaStandalone() ? `${t.scanHint} ${t.openCamera}.` : t.scanHint}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginTop: 12 }}>
+              <button type="button" onClick={() => void startLiveScanner()} style={secondaryButtonStyle()}>
+                {t.openLiveCamera}
+              </button>
+              <button type="button" onClick={() => fileRef.current?.click()} style={secondaryButtonStyle()}>
+                {t.openCameraGallery}
+              </button>
+            </div>
+
+            {scannerStatus ? (
+              <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginTop: 12, lineHeight: 1.45 }}>
+                {scannerStatus}
+              </div>
+            ) : null}
+
+            <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
+              {isIosPwaStandalone() ? `${t.scanHint} ${t.openCameraGallery}.` : t.scanHint}
             </div>
           </div>
         </div>
@@ -685,6 +727,11 @@ function getText(lang: string) {
       qrCaptured: "Address captured from QR.",
       cameraFail: "Could not open camera.",
       cameraUnavailable: "Camera unavailable.",
+      cameraOpening: "Opening camera... If your phone asks for permission, tap Allow.",
+      cameraLive: "Camera active. Point it at the QR code.",
+      cameraFallbackHint: "Live camera did not open. Use the button below to open the phone camera/gallery and read the QR image.",
+      openLiveCamera: "Open live camera",
+      openCameraGallery: "Use phone camera/gallery",
       reviewSend: "Review send",
       reviewTransaction: "Review transaction",
       network: "Network",
@@ -727,6 +774,11 @@ function getText(lang: string) {
       qrCaptured: "Endereço capturado do QR.",
       cameraFail: "Não foi possível abrir a câmera.",
       cameraUnavailable: "Câmera indisponível.",
+      cameraOpening: "Abrindo câmera... Se o celular pedir permissão, toque em Permitir.",
+      cameraLive: "Câmera ativa. Aponte para o QR code.",
+      cameraFallbackHint: "A câmera ao vivo não abriu. Use o botão abaixo para abrir a câmera/galeria do celular e ler a imagem do QR.",
+      openLiveCamera: "Abrir câmera ao vivo",
+      openCameraGallery: "Usar câmera/galeria",
       reviewSend: "Revisar envio",
       reviewTransaction: "Revisar transação",
       network: "Rede",
@@ -769,6 +821,11 @@ function getText(lang: string) {
       qrCaptured: "Dirección capturada desde el QR.",
       cameraFail: "No se pudo abrir la cámara.",
       cameraUnavailable: "Cámara no disponible.",
+      cameraOpening: "Abriendo cámara... Si el teléfono pide permiso, toca Permitir.",
+      cameraLive: "Cámara activa. Apunta al código QR.",
+      cameraFallbackHint: "La cámara en vivo no se abrió. Usa el botón abajo para abrir la cámara/galería del teléfono y leer la imagen QR.",
+      openLiveCamera: "Abrir cámara en vivo",
+      openCameraGallery: "Usar cámara/galería",
       reviewSend: "Revisar envío",
       reviewTransaction: "Revisar transacción",
       network: "Red",
