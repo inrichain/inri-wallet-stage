@@ -613,13 +613,13 @@ export default function SendScreen({
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 900, color: "#3f7cff", letterSpacing: ".08em", textTransform: "uppercase" }}>
-                  INRI Secure Send V3
+                  INRI Secure Send V6
                 </div>
                 <div style={{ fontWeight: 900, fontSize: 22, color: isLight ? "#10131a" : "#ffffff" }}>
                   {t.reviewTransaction}
                 </div>
               </div>
-              <button onClick={() => setShowReview(false)} disabled={sending} style={secondaryButtonStyle()}>
+              <button onClick={() => setShowReview(false)} disabled={sending} style={modalCloseButtonStyle(isLight)}>
                 {t.close}
               </button>
             </div>
@@ -709,15 +709,132 @@ export default function SendScreen({
 }
 
 function getText(lang: string) {
+  const common = {
+    network: "Network",
+    contract: "Contract",
+    nativeTransfer: "Native transfer",
+    reviewTransaction: "Review transaction",
+    securityWarning:
+      "Check the recipient and amount carefully. After confirmation, blockchain transactions cannot be reversed.",
+    cancel: "Cancel",
+    confirmSend: "Confirm send",
+    reviewSend: "Review send",
+    secureV3: "SECURE SEND V6 ACTIVE — review first, password second, send last.",
+  };
+
   const map: Record<string, any> = {
     en: {
-      send: "Send", token: "Token", balance: "Balance", recipient: "Recipient address", amount: "Amount", yourAddress: "Your address", openCamera: "Open Camera", useMyAddress: "Use My Address", copyAddress: "Copy Address", showQr: "Show QR", hideQr: "Hide QR", copied: "Copied.", copyFail: "Could not copy.", noWallet: "Unlock your wallet first.", invalidAddress: "Invalid recipient address.", invalidAmount: "Invalid amount.", insufficientBalance: "Insufficient balance.", sending: "Sending...", sent: "Sent", sendFailed: "Transaction failed.", nativeInfo: "Native token transfer pays network gas fees.", tokenInfo: "ERC-20 token transfer through the active network.", scanQr: "Scan QR", close: "Close", scanHint: "Point your camera at a QR code containing a wallet address.", qrCaptured: "Address captured from QR.", cameraFail: "Could not open camera.", cameraUnavailable: "Camera unavailable.",
+      ...common,
+      send: "Send",
+      token: "Token",
+      balance: "Balance",
+      recipient: "Recipient address",
+      amount: "Amount",
+      yourAddress: "Your address",
+      openCamera: "Open Camera",
+      useMyAddress: "Use My Address",
+      copyAddress: "Copy Address",
+      showQr: "Show QR",
+      hideQr: "Hide QR",
+      copied: "Copied.",
+      copyFail: "Could not copy.",
+      noWallet: "Unlock your wallet first.",
+      invalidAddress: "Invalid recipient address.",
+      invalidAmount: "Invalid amount.",
+      insufficientBalance: "Insufficient balance.",
+      sending: "Sending...",
+      sent: "Sent",
+      sendFailed: "Transaction failed.",
+      nativeInfo: "Native token transfer pays network gas fees.",
+      tokenInfo: "ERC-20 token transfer through the active network.",
+      scanQr: "Scan QR",
+      close: "Close",
+      scanHint: "Point your camera at a QR code containing a wallet address.",
+      qrCaptured: "Address captured from QR.",
+      cameraFail: "Could not open camera.",
+      cameraUnavailable: "Camera unavailable.",
     },
     pt: {
-      send: "Enviar", token: "Token", balance: "Saldo", recipient: "Endereço do destinatário", amount: "Quantidade", yourAddress: "Seu endereço", openCamera: "Abrir Câmera", useMyAddress: "Usar Meu Endereço", copyAddress: "Copiar Endereço", showQr: "Mostrar QR", hideQr: "Ocultar QR", copied: "Copiado.", copyFail: "Não foi possível copiar.", noWallet: "Desbloqueie sua carteira primeiro.", invalidAddress: "Endereço do destinatário inválido.", invalidAmount: "Quantidade inválida.", insufficientBalance: "Saldo insuficiente.", sending: "Enviando...", sent: "Enviado", sendFailed: "Falha na transação.", nativeInfo: "A transferência do token nativo paga as taxas da rede.", tokenInfo: "Transferência de token ERC-20 pela rede ativa.", scanQr: "Ler QR", close: "Fechar", scanHint: "Aponte sua câmera para um QR code com endereço de carteira.", qrCaptured: "Endereço capturado do QR.", cameraFail: "Não foi possível abrir a câmera.", cameraUnavailable: "Câmera indisponível.",
+      ...common,
+      network: "Rede",
+      contract: "Contrato",
+      nativeTransfer: "Transferência nativa",
+      reviewTransaction: "Revisar transação",
+      securityWarning:
+        "Confira o destinatário e o valor com atenção. Depois de confirmar, transações na blockchain não podem ser desfeitas.",
+      cancel: "Cancelar",
+      confirmSend: "Confirmar envio",
+      reviewSend: "Revisar envio",
+      secureV3: "ENVIO SEGURO V6 ATIVO — primeiro revisa, depois pede senha, depois envia.",
+      send: "Enviar",
+      token: "Token",
+      balance: "Saldo",
+      recipient: "Endereço do destinatário",
+      amount: "Quantidade",
+      yourAddress: "Seu endereço",
+      openCamera: "Abrir Câmera",
+      useMyAddress: "Usar Meu Endereço",
+      copyAddress: "Copiar Endereço",
+      showQr: "Mostrar QR",
+      hideQr: "Ocultar QR",
+      copied: "Copiado.",
+      copyFail: "Não foi possível copiar.",
+      noWallet: "Desbloqueie sua carteira primeiro.",
+      invalidAddress: "Endereço do destinatário inválido.",
+      invalidAmount: "Quantidade inválida.",
+      insufficientBalance: "Saldo insuficiente.",
+      sending: "Enviando...",
+      sent: "Enviado",
+      sendFailed: "Falha na transação.",
+      nativeInfo: "A transferência do token nativo paga as taxas da rede.",
+      tokenInfo: "Transferência de token ERC-20 pela rede ativa.",
+      scanQr: "Ler QR",
+      close: "Fechar",
+      scanHint: "Aponte sua câmera para um QR code com endereço de carteira.",
+      qrCaptured: "Endereço capturado do QR.",
+      cameraFail: "Não foi possível abrir a câmera.",
+      cameraUnavailable: "Câmera indisponível.",
     },
     es: {
-      send: "Enviar", token: "Token", balance: "Saldo", recipient: "Dirección del destinatario", amount: "Cantidad", yourAddress: "Tu dirección", openCamera: "Abrir Cámara", useMyAddress: "Usar Mi Dirección", copyAddress: "Copiar Dirección", showQr: "Mostrar QR", hideQr: "Ocultar QR", copied: "Copiado.", copyFail: "No se pudo copiar.", noWallet: "Desbloquea tu wallet primero.", invalidAddress: "Dirección del destinatario inválida.", invalidAmount: "Cantidad inválida.", insufficientBalance: "Saldo insuficiente.", sending: "Enviando...", sent: "Enviado", sendFailed: "La transacción falló.", nativeInfo: "La transferencia del token nativo paga las comisiones de la red.", tokenInfo: "Transferencia de token ERC-20 a través de la red activa.", scanQr: "Escanear QR", close: "Cerrar", scanHint: "Apunta tu cámara a un código QR que contenga una dirección de wallet.", qrCaptured: "Dirección capturada desde el QR.", cameraFail: "No se pudo abrir la cámara.", cameraUnavailable: "Cámara no disponible.",
+      ...common,
+      network: "Red",
+      contract: "Contrato",
+      nativeTransfer: "Transferencia nativa",
+      reviewTransaction: "Revisar transacción",
+      securityWarning:
+        "Comprueba cuidadosamente el destinatario y la cantidad. Después de confirmar, las transacciones en blockchain no se pueden deshacer.",
+      cancel: "Cancelar",
+      confirmSend: "Confirmar envío",
+      reviewSend: "Revisar envío",
+      secureV3: "ENVÍO SEGURO V6 ACTIVO — primero revisa, luego contraseña, luego envía.",
+      send: "Enviar",
+      token: "Token",
+      balance: "Saldo",
+      recipient: "Dirección del destinatario",
+      amount: "Cantidad",
+      yourAddress: "Tu dirección",
+      openCamera: "Abrir Cámara",
+      useMyAddress: "Usar Mi Dirección",
+      copyAddress: "Copiar Dirección",
+      showQr: "Mostrar QR",
+      hideQr: "Ocultar QR",
+      copied: "Copiado.",
+      copyFail: "No se pudo copiar.",
+      noWallet: "Desbloquea tu wallet primero.",
+      invalidAddress: "Dirección del destinatario inválida.",
+      invalidAmount: "Cantidad inválida.",
+      insufficientBalance: "Saldo insuficiente.",
+      sending: "Enviando...",
+      sent: "Enviado",
+      sendFailed: "La transacción falló.",
+      nativeInfo: "La transferencia del token nativo paga las comisiones de la red.",
+      tokenInfo: "Transferencia de token ERC-20 a través de la red activa.",
+      scanQr: "Escanear QR",
+      close: "Cerrar",
+      scanHint: "Apunta tu cámara a un código QR que contenga una dirección de wallet.",
+      qrCaptured: "Dirección capturada desde el QR.",
+      cameraFail: "No se pudo abrir la cámara.",
+      cameraUnavailable: "Cámara no disponible.",
     },
   };
 
@@ -731,7 +848,6 @@ function getText(lang: string) {
   map.tr ||= map.en;
   return map[lang] || map.en;
 }
-
 
 function truncateMiddle(value: string, left = 8, right = 6) {
   if (!value) return "-";
@@ -781,6 +897,20 @@ function warningStyle(isLight: boolean): React.CSSProperties {
     fontSize: 13,
     lineHeight: 1.45,
     fontWeight: 700,
+  };
+}
+
+function modalCloseButtonStyle(isLight: boolean): React.CSSProperties {
+  return {
+    width: "auto",
+    minWidth: 96,
+    padding: "10px 14px",
+    borderRadius: 14,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#f6f8fc" : "#1b2741",
+    color: isLight ? "#10131a" : "#ffffff",
+    cursor: "pointer",
+    fontWeight: 800,
   };
 }
 
@@ -901,6 +1031,8 @@ const modalBackdropStyle: React.CSSProperties = {
 function modalStyle(isLight: boolean): React.CSSProperties {
   return {
     width: "min(560px, 100%)",
+    maxHeight: "92dvh",
+    overflowY: "auto",
     borderRadius: 20,
     border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
     background: isLight ? "#ffffff" : "#121621",
