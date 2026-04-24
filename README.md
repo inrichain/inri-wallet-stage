@@ -1,20 +1,17 @@
-# INRI Wallet Stage
+# INRI CHAIN - Shadcn landing adaptation
 
-Professionalized wallet stage build for GitHub Pages.
+This package is a cleaned and adapted homepage concept for INRI CHAIN based on the uploaded shadcn dashboard landing template.
 
-## Included now
-- wallet create/import/unlock
-- native INRI send
-- ERC-20 send
-- receive QR
-- token manager
-- NFT fetch from explorer
-- activity history
-- PWA manifest
-- multilingual settings
-- premium placeholder swap/bridge screens ready for real contract integration later
+## Run locally
 
-## Still requires real integration later
-- swap router/factory/liquidity contracts
-- bridge lockbox/executor/API contracts
-- advanced WalletConnect signing flow for external dapps
+```bash
+pnpm install
+pnpm dev
+```
+
+## Deploy to GitHub Pages
+
+1. Push this project to your repository.
+2. In GitHub, open **Settings -> Pages**.
+3. Set **Source** to **GitHub Actions**.
+4. The included workflow `.github/workflows/deploy-pages.yml` will publish automatically on every push to `main`.
