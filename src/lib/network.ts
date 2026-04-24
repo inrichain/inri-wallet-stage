@@ -28,6 +28,8 @@ export type NetworkPreset = {
 export const NETWORKS_KEY = "wallet_active_network";
 const CUSTOM_NETWORKS_KEY = "wallet_custom_networks_v1";
 const HIDDEN_NETWORKS_KEY = "wallet_hidden_networks_v1";
+const HIDDEN_TOKENS_KEY = "wallet_hidden_default_tokens_v1";
+const INRI_WALLET_STATE_REPAIR_KEY = "inri_wallet_rpc_chain_repair_v4";
 
 export function buildNetworkBadge(name: string, symbol = "ETH", color = "#3f7cff") {
   return resolveNetworkAsset({ name, symbol, color });
@@ -52,7 +54,7 @@ export function getNetworkLogoFallback(input: {
 }
 
 export const NETWORK_PRESETS: NetworkPreset[] = [
-  { key: "inri", name: "INRI", chainId: 3777, symbol: "INRI", rpcUrl: "https://rpc.inri.life", explorerBaseUrl: "https://explorer.inri.life", logo: `${BASE}network-inri.png`, color: "#2f85ff" },
+  { key: "inri", name: "INRI", chainId: 3777, symbol: "INRI", rpcUrl: "https://rpc-chain.inri.life", explorerBaseUrl: "https://explorer.inri.life", logo: `${BASE}network-inri.png`, color: "#2f85ff" },
   { key: "ethereum", name: "Ethereum", chainId: 1, symbol: "ETH", rpcUrl: "https://ethereum-rpc.publicnode.com", explorerBaseUrl: "https://etherscan.io", logo: `${BASE}network-ethereum.png`, color: "#627eea" },
   { key: "polygon", name: "Polygon", chainId: 137, symbol: "POL", rpcUrl: "https://polygon.drpc.org", explorerBaseUrl: "https://polygonscan.com", logo: `${BASE}network-polygon.png`, color: "#8247e5" },
   { key: "bsc", name: "BNB Chain", chainId: 56, symbol: "BNB", rpcUrl: "https://bsc-dataseed.binance.org", explorerBaseUrl: "https://bscscan.com", logo: `${BASE}network-bnb.png`, color: "#f0b90b" },
@@ -274,4 +276,60 @@ export function getStoredNetwork(): NetworkItem {
 
 export function saveStoredNetwork(network: NetworkItem) {
   localStorage.setItem(NETWORKS_KEY, JSON.stringify(normalizeStoredNetwork(network)));
+}
+
+
+export function repairInriWalletState(force = false) {
+  try {
+    const alreadyRepaired = localStorage.getItem(INRI_WALLET_STATE_REPAIR_KEY) === "done";
+    if (alreadyRepaired && !force) return false;
+
+    const inri = getInriNetwork();
+
+    try {
+      const custom = JSON.parse(localStorage.getItem(CUSTOM_NETWORKS_KEY) || "[]");
+      if (Array.isArray(custom)) {
+        const cleaned = custom.filter((item) => !isProtectedNetwork(item?.key) && !isProtectedNetwork(Number(item?.chainId)));
+        localStorage.setItem(CUSTOM_NETWORKS_KEY, JSON.stringify(cleaned));
+      }
+    } catch {
+      localStorage.removeItem(CUSTOM_NETWORKS_KEY);
+    }
+
+    try {
+      const hidden = JSON.parse(localStorage.getItem(HIDDEN_NETWORKS_KEY) || "[]");
+      if (Array.isArray(hidden)) {
+        const cleaned = hidden.filter((item) => !isProtectedNetwork(item) && !isProtectedNetwork(Number(item)));
+        localStorage.setItem(HIDDEN_NETWORKS_KEY, JSON.stringify(cleaned));
+      }
+    } catch {
+      localStorage.removeItem(HIDDEN_NETWORKS_KEY);
+    }
+
+    try {
+      const hiddenTokens = JSON.parse(localStorage.getItem(HIDDEN_TOKENS_KEY) || "[]");
+      if (Array.isArray(hiddenTokens)) {
+        const cleaned = hiddenTokens.filter((item) => !String(item).toLowerCase().startsWith("inri:"));
+        localStorage.setItem(HIDDEN_TOKENS_KEY, JSON.stringify(cleaned));
+      }
+    } catch {
+      localStorage.removeItem(HIDDEN_TOKENS_KEY);
+    }
+
+    let shouldUseInri = force;
+    try {
+      const current = JSON.parse(localStorage.getItem(NETWORKS_KEY) || "null");
+      shouldUseInri = force || !current || isProtectedNetwork(current?.key) || isProtectedNetwork(Number(current?.chainId));
+    } catch {
+      shouldUseInri = true;
+    }
+
+    if (shouldUseInri) localStorage.setItem(NETWORKS_KEY, JSON.stringify(inri));
+    localStorage.setItem(INRI_WALLET_STATE_REPAIR_KEY, "done");
+    window.dispatchEvent(new Event("wallet-network-updated"));
+    window.dispatchEvent(new Event("wallet-token-updated"));
+    return true;
+  } catch {
+    return false;
+  }
 }

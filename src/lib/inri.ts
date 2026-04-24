@@ -4,8 +4,8 @@ import { resolveTokenAsset } from "./assets";
 
 const BASE = import.meta.env.BASE_URL || "/";
 
-export const RPC_URL = "https://rpc.inri.life";
-export const RPC_FALLBACK_URL = "https://rpc-chain.inri.life";
+export const RPC_URL = "https://rpc-chain.inri.life";
+export const RPC_FALLBACK_URL = "https://rpc.inri.life";
 export const CHAIN_ID = 3777;
 
 export const EXPLORER_BASE_URL = "https://explorer.inri.life";
@@ -170,7 +170,7 @@ function getRpcUrls(networkKey?: string) {
   const network = getNetworkConfig(networkKey);
 
   if (network.key === "inri") {
-    return [network.rpcUrl, RPC_FALLBACK_URL].filter(Boolean);
+    return Array.from(new Set([network.rpcUrl, RPC_URL, RPC_FALLBACK_URL].filter(Boolean)));
   }
 
   if (network.key === "ethereum") {
@@ -186,19 +186,27 @@ function getRpcUrls(networkKey?: string) {
 }
 
 async function rpcCall(url: string, method: string, params: any[]) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 7000);
 
-  const data = await res.json();
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      signal: controller.signal,
+    });
 
-  if (data?.error) {
-    throw new Error(data.error.message || "RPC error");
+    const data = await res.json();
+
+    if (data?.error) {
+      throw new Error(data.error.message || "RPC error");
+    }
+
+    return data.result;
+  } finally {
+    window.clearTimeout(timer);
   }
-
-  return data.result;
 }
 
 async function tryRpcUrls(networkKey: string | undefined, method: string, params: any[]) {
@@ -247,6 +255,25 @@ async function getTokenBalanceWithProvider(
   return Number(ethers.formatUnits(raw, decimals)).toFixed(6);
 }
 
+function encodeBalanceOfCall(walletAddress: string) {
+  const selector = "0x70a08231";
+  const clean = walletAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  return `${selector}${clean}`;
+}
+
+async function getTokenBalanceRaw(
+  tokenAddress: string,
+  walletAddress: string,
+  decimals = 18,
+  networkKey?: string
+) {
+  const result = await tryRpcUrls(networkKey, "eth_call", [
+    { to: tokenAddress, data: encodeBalanceOfCall(walletAddress) },
+    "latest",
+  ]);
+  return Number(ethers.formatUnits(result || "0x0", decimals)).toFixed(6);
+}
+
 export async function getTokenBalance(
   tokenAddress: string,
   walletAddress: string,
@@ -263,7 +290,11 @@ export async function getTokenBalance(
       decimals
     );
   } catch {
-    return "0.000000";
+    try {
+      return await getTokenBalanceRaw(tokenAddress, walletAddress, decimals, networkKey);
+    } catch {
+      return "0.000000";
+    }
   }
 }
 

@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./styles.css";
+import { repairInriWalletState } from "./lib/network";
 
 type RootHandle = ReturnType<typeof ReactDOM.createRoot>;
 
@@ -206,6 +207,8 @@ function recoverIfNeeded(force = false) {
     window.setTimeout(() => document.body.classList.remove("wallet-resume-repaint"), 260);
   }, force ? 80 : 180);
 }
+
+repairInriWalletState();
 
 cleanupLegacyPwa().finally(() => {
   clearAutoReloadFlagLater();
