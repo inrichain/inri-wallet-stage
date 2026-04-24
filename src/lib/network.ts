@@ -29,7 +29,7 @@ export const NETWORKS_KEY = "wallet_active_network";
 const CUSTOM_NETWORKS_KEY = "wallet_custom_networks_v1";
 const HIDDEN_NETWORKS_KEY = "wallet_hidden_networks_v1";
 const HIDDEN_TOKENS_KEY = "wallet_hidden_default_tokens_v1";
-const INRI_WALLET_STATE_REPAIR_KEY = "inri_wallet_rpc_chain_repair_v4";
+const INRI_WALLET_STATE_REPAIR_KEY = "inri_wallet_rpc_chain_repair_v5";
 
 export function buildNetworkBadge(name: string, symbol = "ETH", color = "#3f7cff") {
   return resolveNetworkAsset({ name, symbol, color });
@@ -132,6 +132,13 @@ function networkStorageKey(item: { key?: string; chainId?: number }) {
 }
 
 function normalizeStoredNetwork(value: any): NetworkItem {
+  // INRI is a protected built-in network. Older wallet versions could store it
+  // as a custom network with a different key/rpcUrl, which makes staking think
+  // the user is on the wrong network even when chainId is 3777.
+  if (isProtectedNetwork(value?.key) || isProtectedNetwork(Number(value?.chainId))) {
+    return getInriNetwork();
+  }
+
   const known = getAllNetworks({ includeHidden: true }).find((item) => item.key === value?.key || item.chainId === Number(value?.chainId));
   if (!known) {
     return {
@@ -266,8 +273,11 @@ export function getStoredNetwork(): NetworkItem {
       const parsed = JSON.parse(raw);
       if (parsed?.key && parsed?.chainId && parsed?.rpcUrl) {
         const normalized = normalizeStoredNetwork(parsed);
+        if (isProtectedNetwork(parsed?.key) || isProtectedNetwork(Number(parsed?.chainId))) {
+          localStorage.setItem(NETWORKS_KEY, JSON.stringify(normalized));
+        }
         const hidden = getHiddenNetworkKeys();
-        if (isProtectedNetwork(normalized.key) || !hidden.includes(networkStorageKey(normalized))) return normalized;
+        if (isProtectedNetwork(normalized.key) || isProtectedNetwork(Number(normalized.chainId)) || !hidden.includes(networkStorageKey(normalized))) return normalized;
       }
     }
   } catch {}
@@ -275,7 +285,8 @@ export function getStoredNetwork(): NetworkItem {
 }
 
 export function saveStoredNetwork(network: NetworkItem) {
-  localStorage.setItem(NETWORKS_KEY, JSON.stringify(normalizeStoredNetwork(network)));
+  const normalized = normalizeStoredNetwork(network);
+  localStorage.setItem(NETWORKS_KEY, JSON.stringify(normalized));
 }
 
 

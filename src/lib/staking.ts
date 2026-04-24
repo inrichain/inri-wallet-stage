@@ -99,8 +99,8 @@ function getPrimaryProvider() {
 
 function getReadProviderEntries(): Array<{ provider: ethers.JsonRpcProvider; label: string }> {
   return [
-    { provider: getPrimaryProvider(), label: "rpc.inri.life" },
-    { provider: fallbackProvider, label: "rpc-chain.inri.life" },
+    { provider: getPrimaryProvider(), label: "rpc-chain.inri.life" },
+    { provider: fallbackProvider, label: "rpc.inri.life" },
   ];
 }
 
@@ -366,6 +366,58 @@ function makeSigner(privateKey: string) {
   return new ethers.Wallet(privateKey, getPrimaryProvider());
 }
 
+async function getLegacyGasPrice(provider: ethers.JsonRpcProvider) {
+  try {
+    const raw = await provider.send("eth_gasPrice", []);
+    const gasPrice = BigInt(raw || 0);
+    if (gasPrice > 0n) return gasPrice;
+  } catch {
+    // fallback below
+  }
+
+  try {
+    const feeData = await provider.getFeeData();
+    if (feeData.gasPrice && feeData.gasPrice > 0n) return feeData.gasPrice;
+  } catch {
+    // fallback below
+  }
+
+  return ethers.parseUnits("1", "gwei");
+}
+
+function withGasBuffer(value: bigint, fallback: bigint) {
+  const base = value > 0n ? value : fallback;
+  return (base * 120n) / 100n + 10000n;
+}
+
+async function buildLegacyOverrides(
+  signer: ethers.Wallet,
+  tx: ethers.TransactionRequest,
+  fallbackGasLimit: bigint
+): Promise<ethers.TransactionRequest> {
+  const provider = signer.provider as ethers.JsonRpcProvider;
+  const gasPrice = await getLegacyGasPrice(provider);
+
+  let gasLimit = fallbackGasLimit;
+  try {
+    gasLimit = await provider.estimateGas({
+      ...tx,
+      from: await signer.getAddress(),
+      type: 0,
+      gasPrice,
+    });
+  } catch {
+    // Custom INRI nodes may reject estimation on some contract methods.
+    // A safe fixed limit still works; unused gas is not spent.
+  }
+
+  return {
+    type: 0,
+    gasPrice,
+    gasLimit: withGasBuffer(gasLimit, fallbackGasLimit),
+  };
+}
+
 async function waitForTx(txPromise: Promise<any>): Promise<StakingTxResult> {
   const tx = await txPromise;
   const receipt = await tx.wait();
@@ -425,23 +477,47 @@ export async function stakeInriTx(privateKey: string, planId: number, amountInri
   const signer = makeSigner(privateKey);
   const contract = getStakingContract(signer);
   const amount = ethers.parseEther(amountInri);
-  return waitForTx(contract.stake(planId, { value: amount }));
+  const data = contract.interface.encodeFunctionData("stake", [planId]);
+  const overrides = await buildLegacyOverrides(
+    signer,
+    { to: INRI_STAKING_ADDRESS, data, value: amount },
+    450000n
+  );
+  return waitForTx(contract.stake(planId, { value: amount, ...overrides }));
 }
 
 export async function claimAllInriTx(privateKey: string) {
   const signer = makeSigner(privateKey);
   const contract = getStakingContract(signer);
-  return waitForTx(contract.claimAll());
+  const data = contract.interface.encodeFunctionData("claimAll", []);
+  const overrides = await buildLegacyOverrides(
+    signer,
+    { to: INRI_STAKING_ADDRESS, data, value: 0n },
+    350000n
+  );
+  return waitForTx(contract.claimAll(overrides));
 }
 
 export async function restakeRewardsTx(privateKey: string, planId: number) {
   const signer = makeSigner(privateKey);
   const contract = getStakingContract(signer);
-  return waitForTx(contract.restakeToPlan(planId));
+  const data = contract.interface.encodeFunctionData("restakeToPlan", [planId]);
+  const overrides = await buildLegacyOverrides(
+    signer,
+    { to: INRI_STAKING_ADDRESS, data, value: 0n },
+    450000n
+  );
+  return waitForTx(contract.restakeToPlan(planId, overrides));
 }
 
 export async function unstakeInriTx(privateKey: string, planId: number) {
   const signer = makeSigner(privateKey);
   const contract = getStakingContract(signer);
-  return waitForTx(contract.unstake(planId));
+  const data = contract.interface.encodeFunctionData("unstake", [planId]);
+  const overrides = await buildLegacyOverrides(
+    signer,
+    { to: INRI_STAKING_ADDRESS, data, value: 0n },
+    450000n
+  );
+  return waitForTx(contract.unstake(planId, overrides));
 }
