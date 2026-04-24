@@ -145,7 +145,7 @@ const DEFAULT_SOLO_PORT = Number((import.meta as any).env?.VITE_POOL_SOLO_PORT |
 const DEFAULT_TLS_PORT = Number((import.meta as any).env?.VITE_POOL_TLS_PORT || 3335);
 const DEFAULT_POOL_FEE = Number((import.meta as any).env?.VITE_POOL_FEE_PERCENT || 2);
 const DEFAULT_MIN_PAYOUT = Number((import.meta as any).env?.VITE_POOL_MIN_PAYOUT || 5);
-const DEFAULT_RPC_URL = (import.meta as any).env?.VITE_POOL_RPC_URL || "https://rpc-chain.inri.life";
+const DEFAULT_RPC_URL = (import.meta as any).env?.VITE_POOL_RPC_URL || "https://rpc.inri.life";
 const DEFAULT_WIDGET_URL = (import.meta as any).env?.VITE_POOL_WIDGET_URL || "https://pool.inri.life/widget/pool-pulse.js";
 const FIXED_RPC_CHAIN_PEERS = Number((import.meta as any).env?.VITE_POOL_FIXED_RPC_CHAIN_PEERS || 13);
 const FIXED_BOOT1_PEERS = Number((import.meta as any).env?.VITE_POOL_FIXED_BOOT1_PEERS || 25);
@@ -209,7 +209,7 @@ async function readJson(path: string) {
 async function fetchRpc(method: string, params: any[] = []) {
   const response = await fetch(DEFAULT_RPC_URL, {
     method: "POST",
-    headers: { "Content-Type": "text/plain;charset=UTF-8", Accept: "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
   });
   if (!response.ok) throw new Error(`RPC ${method} failed: ${response.status}`);

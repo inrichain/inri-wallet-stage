@@ -34,7 +34,7 @@ import {
 } from "../lib/walletconnect";
 import { wcStoreGetState, wcStoreSubscribe } from "../lib/wcSessionStore";
 import { handleRequestMethod } from "../lib/wcRequestHandlers";
-import { isValidSeedPhrase, normalizeSeed, restoreDefaultInriTokensVisibility } from "../lib/inri";
+import { isValidSeedPhrase, normalizeSeed } from "../lib/inri";
 import { getSecuritySettings, type SecuritySettings } from "../lib/security";
 import { installDesktopEthereumProvider } from "../lib/desktopProvider";
 import { captureWcLaunchFromLocation, finishPendingWcLaunch, getPendingWcLaunch } from "../lib/wcLaunch";
@@ -154,12 +154,10 @@ export default function WalletShell() {
   }, []);
 
   useEffect(() => {
-    const activeNetwork = getStoredNetwork();
-    if (!localStorage.getItem("wallet_active_network") || Number(activeNetwork.chainId) === 3777) {
+    if (!localStorage.getItem("wallet_active_network")) {
       saveStoredNetwork(getInriNetwork());
       window.dispatchEvent(new Event("wallet-network-updated"));
     }
-    restoreDefaultInriTokensVisibility();
     const saved = localStorage.getItem(VAULTS_KEY);
     const currentId = localStorage.getItem(CURRENT_WALLET_KEY);
 

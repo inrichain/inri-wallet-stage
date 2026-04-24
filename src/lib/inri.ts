@@ -4,8 +4,8 @@ import { resolveTokenAsset } from "./assets";
 
 const BASE = import.meta.env.BASE_URL || "/";
 
-export const RPC_URL = "https://rpc-chain.inri.life";
-export const RPC_FALLBACK_URL = "https://rpc.inri.life";
+export const RPC_URL = "https://rpc.inri.life";
+export const RPC_FALLBACK_URL = "https://rpc-chain.inri.life";
 export const CHAIN_ID = 3777;
 
 export const EXPLORER_BASE_URL = "https://explorer.inri.life";
@@ -32,102 +32,6 @@ export type TokenMetadata = {
 };
 
 const providerCache = new Map<string, ethers.JsonRpcProvider>();
-
-const INRI_RPC_CANDIDATES = [
-  RPC_URL,
-  `${RPC_URL}/`,
-  "https://rpc-chain.inri.life/rpc",
-  "https://rpc-chain.inri.life/rpc/",
-  RPC_FALLBACK_URL,
-  `${RPC_FALLBACK_URL}/`,
-  "https://rpc.inri.life/rpc",
-  "https://rpc.inri.life/rpc/",
-];
-
-function uniqueRpcUrls(urls: Array<string | undefined | null>) {
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const raw of urls) {
-    const value = String(raw || "").trim();
-    if (!value || seen.has(value)) continue;
-    seen.add(value);
-    result.push(value);
-  }
-
-  return result;
-}
-
-function expandRpcUrlVariants(rawUrl?: string) {
-  const clean = String(rawUrl || "").trim();
-  if (!clean) return [] as string[];
-
-  const withoutTrailingSlash = clean.replace(/\/+$/, "");
-  const variants = [clean, withoutTrailingSlash, `${withoutTrailingSlash}/`];
-
-  // Many INRI nginx setups expose geth behind /rpc as well. These hidden
-  // variants make the wallet recover without changing the visible endpoint.
-  if (!/\/rpc\/?$/i.test(withoutTrailingSlash)) {
-    variants.push(`${withoutTrailingSlash}/rpc`, `${withoutTrailingSlash}/rpc/`);
-  }
-
-  return uniqueRpcUrls(variants);
-}
-
-export function normalizeNetworkKeyForTokens(networkKey?: string) {
-  const raw = String(networkKey || "").trim();
-  const lower = raw.toLowerCase();
-
-  if (!raw) {
-    try {
-      const stored = getStoredNetwork();
-      return Number(stored.chainId) === CHAIN_ID ? "inri" : stored.key;
-    } catch {
-      return "inri";
-    }
-  }
-
-  if (lower === "inri" || lower === "3777" || lower === "chain-3777" || lower === "chain3777") return "inri";
-
-  try {
-    const known = getAllNetworks({ includeHidden: true }).find((item) => item.key === raw || String(item.chainId) === lower);
-    if (Number(known?.chainId) === CHAIN_ID) return "inri";
-  } catch {}
-
-  return raw;
-}
-
-function isInriNetworkKey(networkKey?: string) {
-  return normalizeNetworkKeyForTokens(networkKey) === "inri";
-}
-
-export function getProtectedInriDefaultTokenKeys() {
-  const networkAliases = ["inri", "3777", "chain-3777", "chain3777", "INRI"];
-  const tokenIds = DEFAULT_TOKENS
-    .filter((token) => normalizeNetworkKeyForTokens(token.networkKey) === "inri")
-    .map((token) => String(token.address || token.symbol || "").toLowerCase());
-
-  return new Set(networkAliases.flatMap((network) => tokenIds.map((tokenId) => `${network}:${tokenId}`)));
-}
-
-export function restoreDefaultInriTokensVisibility() {
-  const key = "wallet_hidden_default_tokens_v1";
-
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return;
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return;
-
-    const protectedDefaultKeys = getProtectedInriDefaultTokenKeys();
-    const next = parsed.filter((item) => !protectedDefaultKeys.has(String(item)));
-    if (next.length !== parsed.length) {
-      localStorage.setItem(key, JSON.stringify(next));
-      window.dispatchEvent(new Event("wallet-tokens-updated"));
-    }
-  } catch {}
-}
 
 export function getNetworkConfig(networkKey?: string): NetworkItem {
   const active = networkKey
@@ -245,8 +149,8 @@ export const DEFAULT_TOKENS: TokenItem[] = [
 ];
 
 export function getDefaultTokensForNetwork(networkKey?: string) {
-  const key = normalizeNetworkKeyForTokens(networkKey);
-  return DEFAULT_TOKENS.filter((token) => normalizeNetworkKeyForTokens(token.networkKey) === key);
+  const key = networkKey || getStoredNetwork().key;
+  return DEFAULT_TOKENS.filter((token) => token.networkKey === key);
 }
 
 export const ERC20_ABI = [
@@ -262,106 +166,39 @@ const ERC20_STRING_FALLBACK_ABI = [
   "function symbol() view returns (bytes32)",
 ];
 
-const ERC20_INTERFACE = new ethers.Interface(ERC20_ABI);
-const ERC20_BYTES32_INTERFACE = new ethers.Interface(ERC20_STRING_FALLBACK_ABI);
-
 function getRpcUrls(networkKey?: string) {
   const network = getNetworkConfig(networkKey);
 
-  if (Number(network.chainId) === CHAIN_ID || isInriNetworkKey(network.key)) {
-    return uniqueRpcUrls([
-      ...expandRpcUrlVariants(network.rpcUrl),
-      ...INRI_RPC_CANDIDATES,
-    ]);
+  if (network.key === "inri") {
+    return [network.rpcUrl, RPC_FALLBACK_URL].filter(Boolean);
   }
 
   if (network.key === "ethereum") {
-    return uniqueRpcUrls([
-      ...expandRpcUrlVariants(network.rpcUrl),
+    return [
+      network.rpcUrl,
       "https://ethereum-rpc.publicnode.com",
       "https://rpc.ankr.com/eth",
       "https://cloudflare-eth.com",
-    ]);
+    ].filter(Boolean);
   }
 
-  return uniqueRpcUrls(expandRpcUrlVariants(network.rpcUrl));
+  return [network.rpcUrl].filter(Boolean);
 }
-
-export type RpcTestResult = {
-  ok: boolean;
-  chainId: number;
-  url: string;
-  expectedChainId: number;
-  assumed?: boolean;
-};
 
 async function rpcCall(url: string, method: string, params: any[]) {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 9000);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
 
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        // text/plain keeps the request simple and avoids many nginx/geth CORS
-        // preflight failures that happen with application/json in mobile PWAs.
-        "Content-Type": "text/plain;charset=UTF-8",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
+  const data = await res.json();
 
-    const text = await res.text();
-    let data: any = null;
-
-    try {
-      data = JSON.parse(text);
-    } catch {
-      throw new Error(text || `HTTP ${res.status}`);
-    }
-
-    if (!res.ok) {
-      throw new Error(data?.error?.message || `HTTP ${res.status}`);
-    }
-
-    if (data?.error) {
-      throw new Error(data.error.message || "RPC error");
-    }
-
-    return data.result;
-  } finally {
-    window.clearTimeout(timeout);
-  }
-}
-
-export async function testRpcEndpoint(url: string, expectedChainId = CHAIN_ID): Promise<RpcTestResult> {
-  const candidates = uniqueRpcUrls([
-    ...expandRpcUrlVariants(url),
-    ...(Number(expectedChainId) === CHAIN_ID ? INRI_RPC_CANDIDATES : []),
-  ]);
-  let lastError: unknown;
-
-  for (const candidate of candidates) {
-    try {
-      const hex = String(await rpcCall(candidate, "eth_chainId", []));
-      const got = hex ? Number.parseInt(hex, 16) : NaN;
-      if (!Number.isFinite(got)) throw new Error("Invalid RPC response");
-      return { ok: got === Number(expectedChainId), chainId: got, url: candidate, expectedChainId: Number(expectedChainId) };
-    } catch (error) {
-      lastError = error;
-    }
+  if (data?.error) {
+    throw new Error(data.error.message || "RPC error");
   }
 
-  // INRI is a protected built-in network. If a browser blocks verification because
-  // the server rejected CORS/preflight, do not leave the wallet stuck with a red
-  // save failure. Balance loading still tries every hidden fallback above.
-  if (Number(expectedChainId) === CHAIN_ID && String(url || "").includes("rpc-chain.inri.life")) {
-    return { ok: true, chainId: CHAIN_ID, url, expectedChainId: CHAIN_ID, assumed: true };
-  }
-
-  throw lastError || new Error("RPC unavailable");
+  return data.result;
 }
 
 async function tryRpcUrls(networkKey: string | undefined, method: string, params: any[]) {
@@ -388,11 +225,11 @@ export async function getNativeBalance(address: string, networkKey?: string) {
   if (!address) return "0.000000";
 
   try {
-    return await getNativeBalanceRaw(address, networkKey);
+    const raw = await getProvider(networkKey).getBalance(address);
+    return Number(ethers.formatEther(raw)).toFixed(6);
   } catch {
     try {
-      const raw = await getProvider(networkKey).getBalance(address);
-      return Number(ethers.formatEther(raw)).toFixed(6);
+      return await getNativeBalanceRaw(address, networkKey);
     } catch {
       return "0.000000";
     }
@@ -410,22 +247,6 @@ async function getTokenBalanceWithProvider(
   return Number(ethers.formatUnits(raw, decimals)).toFixed(6);
 }
 
-async function ethCallRaw(networkKey: string | undefined, to: string, data: string) {
-  return await tryRpcUrls(networkKey, "eth_call", [{ to, data }, "latest"]);
-}
-
-async function getTokenBalanceRaw(
-  tokenAddress: string,
-  walletAddress: string,
-  decimals = 18,
-  networkKey?: string
-) {
-  const data = ERC20_INTERFACE.encodeFunctionData("balanceOf", [walletAddress]);
-  const result = await ethCallRaw(networkKey, tokenAddress, data);
-  if (!result || result === "0x") return "0.000000";
-  return Number(ethers.formatUnits(result, decimals)).toFixed(6);
-}
-
 export async function getTokenBalance(
   tokenAddress: string,
   walletAddress: string,
@@ -435,18 +256,14 @@ export async function getTokenBalance(
   if (!tokenAddress || !walletAddress) return "0.000000";
 
   try {
-    return await getTokenBalanceRaw(tokenAddress, walletAddress, decimals, networkKey);
+    return await getTokenBalanceWithProvider(
+      getProvider(networkKey),
+      tokenAddress,
+      walletAddress,
+      decimals
+    );
   } catch {
-    try {
-      return await getTokenBalanceWithProvider(
-        getProvider(networkKey),
-        tokenAddress,
-        walletAddress,
-        decimals
-      );
-    } catch {
-      return "0.000000";
-    }
+    return "0.000000";
   }
 }
 
@@ -503,50 +320,6 @@ async function resolveTokenMetadataWithProvider(
   }
 }
 
-async function resolveTokenMetadataRaw(
-  tokenAddress: string,
-  networkKey?: string
-): Promise<TokenMetadata> {
-  const call = async (method: "name" | "symbol" | "decimals") => {
-    const data = ERC20_INTERFACE.encodeFunctionData(method, []);
-    return await ethCallRaw(networkKey, tokenAddress, data);
-  };
-
-  const decodeString = (method: "name" | "symbol", result: string) => {
-    try {
-      return String(ERC20_INTERFACE.decodeFunctionResult(method, result)?.[0] || "").trim();
-    } catch {
-      try {
-        const decoded = ERC20_BYTES32_INTERFACE.decodeFunctionResult(method, result)?.[0];
-        return parseBytes32Text(String(decoded || ""));
-      } catch {
-        return "";
-      }
-    }
-  };
-
-  const [rawName, rawSymbol, rawDecimals] = await Promise.all([
-    call("name").catch(() => ""),
-    call("symbol").catch(() => ""),
-    call("decimals").catch(() => ""),
-  ]);
-
-  let decimals = 18;
-  try {
-    decimals = Number(ERC20_INTERFACE.decodeFunctionResult("decimals", rawDecimals)?.[0] ?? 18);
-  } catch {}
-
-  const symbol = (decodeString("symbol", rawSymbol) || "TOKEN").toUpperCase();
-  const name = decodeString("name", rawName) || symbol || "Token";
-
-  return {
-    name,
-    symbol,
-    decimals,
-    logo: guessTokenLogo(symbol, networkKey, name),
-  };
-}
-
 export async function resolveTokenMetadata(
   tokenAddress: string,
   networkKey?: string
@@ -557,15 +330,8 @@ export async function resolveTokenMetadata(
     throw new Error("Invalid token address");
   }
 
-  let lastError: unknown;
-
-  try {
-    return await resolveTokenMetadataRaw(cleanAddress, networkKey);
-  } catch (error) {
-    lastError = error;
-  }
-
   const urls = getRpcUrls(networkKey);
+  let lastError: unknown;
 
   for (const url of urls) {
     try {
@@ -589,7 +355,7 @@ export async function loadAllBalances(
   networkKey?: string
 ) {
   const balances: Record<string, string> = {};
-  const activeKey = normalizeNetworkKeyForTokens(networkKey || getStoredNetwork().key);
+  const activeKey = networkKey || getStoredNetwork().key;
 
   if (!address) {
     for (const token of tokens) balances[token.symbol] = "0.000000";
@@ -599,7 +365,7 @@ export async function loadAllBalances(
   await Promise.all(
     tokens.map(async (token) => {
       try {
-        if (token.networkKey && normalizeNetworkKeyForTokens(token.networkKey) !== activeKey) {
+        if (token.networkKey && token.networkKey !== activeKey) {
           balances[token.symbol] = "0.000000";
           return;
         }

@@ -834,7 +834,7 @@ export const translations: Record<string, Record<string, string>> = {
 
 const extraTranslations: Record<string, Record<string, string>> = {
   en: {
-    settings_rpc_placeholder: "https://rpc-chain.inri.life",
+    settings_rpc_placeholder: "https://rpc.inri.life",
     settings_walletconnect_title: "WalletConnect",
     settings_walletconnect_hint: "Scan a WalletConnect QR code or paste a wc: URI. You can switch networks after pairing if the dApp requests it.",
     settings_walletconnect_connecting: "Connecting...",
@@ -962,7 +962,7 @@ const extraTranslations: Record<string, Record<string, string>> = {
     wc_details_unknown_method_risk: "Unknown or advanced method. Approve only if you fully trust this dApp."
   },
   pt: {
-    settings_rpc_placeholder: "https://rpc-chain.inri.life",
+    settings_rpc_placeholder: "https://rpc.inri.life",
     settings_walletconnect_title: "WalletConnect",
     settings_walletconnect_hint: "Escaneie um QR code do WalletConnect ou cole uma URI wc:. Você pode trocar de rede depois do pareamento se a dApp solicitar.",
     settings_walletconnect_connecting: "Conectando...",

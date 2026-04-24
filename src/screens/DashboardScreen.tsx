@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getDefaultTokensForNetwork, loadAllBalances, normalizeNetworkKeyForTokens, type TokenItem } from "../lib/inri";
+import { getDefaultTokensForNetwork, loadAllBalances, type TokenItem } from "../lib/inri";
 import { getStoredNetwork, type NetworkItem } from "../lib/network";
 import { tr } from "../i18n/translations";
 import ScreenCard from "../components/ScreenCard";
@@ -38,12 +38,9 @@ export default function DashboardScreen({ setTab, theme = "dark", lang = "en", a
   const isLight = theme === "light";
 
   const homeTokens = useMemo(() => {
-    const activeKey = normalizeNetworkKeyForTokens(network.key);
-    const defaults = getDefaultTokensForNetwork(activeKey);
-    const custom = readCustomTokens().filter((item) => normalizeNetworkKeyForTokens(item.networkKey || activeKey) === activeKey);
-    const defaultKeys = new Set(defaults.map((token) => String(token.address || token.symbol || "").toLowerCase()));
-    const safeCustom = custom.filter((token) => !defaultKeys.has(String(token.address || token.symbol || "").toLowerCase()));
-    const merged = [...defaults, ...safeCustom] as DashboardToken[];
+    const defaults = getDefaultTokensForNetwork(network.key);
+    const custom = readCustomTokens().filter((item) => !item.networkKey || item.networkKey === network.key);
+    const merged = [...defaults, ...custom] as DashboardToken[];
     return merged.map((token) => ({ ...token, balance: tokenBalances[token.symbol] || "0.000000" }));
   }, [network.key, tokenBalances]);
 
