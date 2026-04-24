@@ -47,6 +47,11 @@ function readCustomTokens(): ViewToken[] {
   }
 }
 
+function tokenKey(token: Pick<ViewToken, "symbol" | "isNative" | "address">) {
+  if (token.isNative) return `native:${token.symbol.toUpperCase()}`;
+  return `token:${(token.address || "").toLowerCase()}:${token.symbol.toUpperCase()}`;
+}
+
 function buildTokenList(networkKey: string, customTokens: ViewToken[]): ViewToken[] {
   const merged: ViewToken[] = [
     ...getDefaultTokensForNetwork(networkKey).map((item) => ({ ...item, balance: "0.000000" })),
@@ -63,10 +68,7 @@ function buildTokenList(networkKey: string, customTokens: ViewToken[]): ViewToke
   const unique: ViewToken[] = [];
 
   for (const token of merged) {
-    const key = token.isNative
-      ? `native:${token.symbol.toUpperCase()}`
-      : `token:${(token.address || "").toLowerCase()}:${token.symbol.toUpperCase()}`;
-
+    const key = tokenKey(token);
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(token);
@@ -90,9 +92,10 @@ export default function SendScreen({
 }) {
   const isLight = theme === "light";
   const [networkKey, setNetworkKey] = useState(getStoredNetwork().key);
-  const [selectedToken, setSelectedToken] = useState(
-    getDefaultTokensForNetwork(getStoredNetwork().key)[0]?.symbol || "INRI"
-  );
+  const [selectedTokenKey, setSelectedTokenKey] = useState(() => {
+    const first = getDefaultTokensForNetwork(getStoredNetwork().key)[0];
+    return first ? tokenKey({ ...first, balance: "0.000000" } as ViewToken) : "native:INRI";
+  });
   const [toAddress, setToAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [showReceiveQr, setShowReceiveQr] = useState(false);
@@ -109,15 +112,20 @@ export default function SendScreen({
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
 
   const token = useMemo(
-    () => tokens.find((t) => t.symbol === selectedToken) || tokens[0],
-    [selectedToken, tokens]
+    () => tokens.find((item) => tokenKey(item) === selectedTokenKey) || tokens[0],
+    [selectedTokenKey, tokens]
   );
 
   const tokenIdentityKey = useMemo(() => {
-    return tokens.map((t) => `${t.symbol}:${t.address || "native"}:${t.decimals || 18}`).join("|");
+    return tokens.map((t) => `${tokenKey(t)}:${t.decimals || 18}`).join("|");
   }, [tokens]);
 
   const t = getText(lang);
+
+  const amountNumber = Number(amount || "0");
+  const balanceNumber = Number(token?.balance || "0");
+  const hasValidPositiveAmount = Number.isFinite(amountNumber) && amountNumber > 0;
+  const amountOverBalance = !!token && hasValidPositiveAmount && Number.isFinite(balanceNumber) && amountNumber > balanceNumber;
 
   useEffect(() => {
     function refreshCustomTokens() {
@@ -129,12 +137,7 @@ export default function SendScreen({
         const rebuilt = buildTokenList(activeKey, customTokens);
 
         return rebuilt.map((item) => {
-          const existing = prev.find(
-            (p) =>
-              p.symbol === item.symbol &&
-              (p.address || "").toLowerCase() === (item.address || "").toLowerCase()
-          );
-
+          const existing = prev.find((p) => tokenKey(p) === tokenKey(item));
           return {
             ...item,
             balance: existing?.balance || item.balance || "0.000000",
@@ -146,26 +149,29 @@ export default function SendScreen({
     refreshCustomTokens();
 
     const onFocus = () => refreshCustomTokens();
+    const onNetworkUpdated = () => refreshCustomTokens();
     const onStorage = (event: StorageEvent) => {
-      if (!event.key || event.key === CUSTOM_TOKENS_KEY) {
+      if (!event.key || event.key === CUSTOM_TOKENS_KEY || event.key === "wallet_active_network") {
         refreshCustomTokens();
       }
     };
 
     window.addEventListener("focus", onFocus);
     window.addEventListener("storage", onStorage);
+    window.addEventListener("wallet-network-updated", onNetworkUpdated);
 
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener("wallet-network-updated", onNetworkUpdated);
     };
   }, []);
 
   useEffect(() => {
-    if (!tokens.some((item) => item.symbol === selectedToken)) {
-      setSelectedToken(tokens[0]?.symbol || "INRI");
+    if (!tokens.some((item) => tokenKey(item) === selectedTokenKey)) {
+      setSelectedTokenKey(tokens[0] ? tokenKey(tokens[0]) : "native:INRI");
     }
-  }, [tokens, selectedToken]);
+  }, [tokens, selectedTokenKey]);
 
   useEffect(() => {
     let active = true;
@@ -178,7 +184,7 @@ export default function SendScreen({
         setTokens((prev) =>
           prev.map((item) => ({
             ...item,
-            balance: balances[item.symbol] || "0.000000",
+            balance: balances[item.symbol] || item.balance || "0.000000",
           }))
         );
       } catch {}
@@ -195,7 +201,7 @@ export default function SendScreen({
 
   function showMessage(text: string) {
     setMessage(text);
-    setTimeout(() => setMessage(""), 2600);
+    setTimeout(() => setMessage(""), 3600);
   }
 
   async function copyAddress(text: string) {
@@ -221,30 +227,29 @@ export default function SendScreen({
     setTokens((prev) =>
       prev.map((item) => ({
         ...item,
-        balance: balances[item.symbol] || "0.000000",
+        balance: balances[item.symbol] || item.balance || "0.000000",
       }))
     );
   }
 
-  function validateSendForm() {
+  function validateSendForm(show = true) {
     if (!token) {
-      showMessage(t.sendFailed);
+      if (show) showMessage(t.sendFailed);
       return false;
     }
 
     if (!validateAddress(toAddress.trim())) {
-      showMessage(t.invalidAddress);
+      if (show) showMessage(t.invalidAddress);
       return false;
     }
 
-    const n = Number(amount || "0");
-    if (!Number.isFinite(n) || n <= 0) {
-      showMessage(t.invalidAmount);
+    if (!hasValidPositiveAmount) {
+      if (show) showMessage(t.invalidAmount);
       return false;
     }
 
-    if (Number(amount) > Number(token.balance || "0")) {
-      showMessage(t.insufficientBalance);
+    if (amountOverBalance) {
+      if (show) showMessage(`${t.insufficientBalance}: ${t.available} ${token.balance} ${token.symbol}.`);
       return false;
     }
 
@@ -252,12 +257,12 @@ export default function SendScreen({
   }
 
   function openSendReview() {
-    if (!validateSendForm()) return;
+    if (!validateSendForm(true)) return;
     setShowReview(true);
   }
 
   async function confirmReviewedSend() {
-    if (!validateSendForm()) return;
+    if (!validateSendForm(true)) return;
     setShowReview(false);
 
     if (onSensitiveAction) {
@@ -278,7 +283,7 @@ export default function SendScreen({
       return;
     }
 
-    if (!validateSendForm()) return;
+    if (!validateSendForm(true)) return;
 
     setSending(true);
 
@@ -295,7 +300,7 @@ export default function SendScreen({
         });
       } else {
         if (!token.address) {
-          throw new Error("Token contract address not found.");
+          throw new Error(t.tokenContractMissing);
         }
 
         const abi = ["function transfer(address to, uint256 amount) returns (bool)"];
@@ -311,7 +316,6 @@ export default function SendScreen({
       const receipt = await tx.wait();
 
       const gasUsed = receipt?.gasUsed ? receipt.gasUsed.toString() : "0";
-
       const gasPriceWei =
         tx.gasPrice?.toString?.() ||
         tx.maxFeePerGas?.toString?.() ||
@@ -319,14 +323,11 @@ export default function SendScreen({
         "0";
 
       const feeWei = BigInt(gasUsed || "0") * BigInt(gasPriceWei || "0");
-
       const gasPriceGwei = gasPriceWei !== "0" ? ethers.formatUnits(gasPriceWei, "gwei") : "0";
-
       const feeNative = feeWei !== 0n ? ethers.formatEther(feeWei) : "0";
 
       let priority = "normal";
       const gasGweiNumber = Number(gasPriceGwei);
-
       if (Number.isFinite(gasGweiNumber)) {
         if (gasGweiNumber > 20) priority = "high";
         else if (gasGweiNumber < 2) priority = "low";
@@ -456,15 +457,10 @@ export default function SendScreen({
     };
   }, []);
 
+  const activeNetwork = getStoredNetwork();
+
   return (
-    <div
-      style={{
-        border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-        borderRadius: 20,
-        background: isLight ? "#ffffff" : "#121621",
-        padding: 16,
-      }}
-    >
+    <div style={screenStyle(isLight)}>
       <h2 style={{ marginTop: 0, color: isLight ? "#10131a" : "#ffffff" }}>{t.send}</h2>
 
       <div style={{ display: "grid", gap: 12 }}>
@@ -485,12 +481,12 @@ export default function SendScreen({
             </div>
 
             <select
-              value={selectedToken}
-              onChange={(e) => setSelectedToken(e.target.value)}
+              value={selectedTokenKey}
+              onChange={(e) => setSelectedTokenKey(e.target.value)}
               style={selectStyle(isLight)}
             >
               {tokens.map((item) => (
-                <option key={`${item.symbol}-${item.address || "native"}`} value={item.symbol}>
+                <option key={tokenKey(item)} value={tokenKey(item)}>
                   {item.symbol}
                 </option>
               ))}
@@ -507,14 +503,7 @@ export default function SendScreen({
             style={inputStyle(isLight)}
           />
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
-              gap: 10,
-              marginTop: 12,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginTop: 12 }}>
             <button onClick={openScanner} style={secondaryButtonStyle()}>
               {t.openCamera}
             </button>
@@ -529,37 +518,24 @@ export default function SendScreen({
           <div style={labelStyle(isLight)}>{t.amount}</div>
           <input
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => setAmount(e.target.value.replace(",", "."))}
             placeholder="0.00"
+            inputMode="decimal"
             style={inputStyle(isLight)}
           />
+          {amountOverBalance ? (
+            <div style={dangerInlineStyle(isLight)}>
+              {t.insufficientBalance}. {t.available}: {token?.balance} {token?.symbol}. {t.tryLowerAmount}
+            </div>
+          ) : null}
         </div>
 
         <div style={cardStyle(isLight)}>
           <div style={labelStyle(isLight)}>{t.yourAddress}</div>
 
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-              background: isLight ? "#f6f8fc" : "#0d111b",
-              color: isLight ? "#4a5568" : "#97a0b3",
-              wordBreak: "break-all",
-              fontSize: 13,
-            }}
-          >
-            {address}
-          </div>
+          <div style={addressBoxStyle(isLight)}>{address}</div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
-              gap: 10,
-              marginTop: 12,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginTop: 12 }}>
             <button onClick={() => copyAddress(address)} style={secondaryButtonStyle()}>
               {t.copyAddress}
             </button>
@@ -570,22 +546,17 @@ export default function SendScreen({
           </div>
 
           {showReceiveQr ? (
-            <div
-              style={{
-                marginTop: 16,
-                borderRadius: 18,
-                background: "#ffffff",
-                padding: 14,
-                display: "grid",
-                placeItems: "center",
-              }}
-            >
+            <div style={qrBoxStyle}>
               <QRCode value={address} size={180} />
             </div>
           ) : null}
         </div>
 
-        <div style={secureBannerStyle(isLight)}>🔐 {t.secureV3}</div>
+        <div style={secureBannerStyle(isLight)}>🔐 SECURE SEND V7 ACTIVE — review first, password second, send last.</div>
+
+        {!token?.isNative ? (
+          <div style={gasNoticeStyle(isLight)}>⛽ {t.gasNotice}</div>
+        ) : null}
 
         <button
           onClick={openSendReview}
@@ -610,31 +581,30 @@ export default function SendScreen({
       {showReview ? (
         <div style={modalBackdropStyle} onClick={() => !sending && setShowReview(false)}>
           <div style={modalStyle(isLight)} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 900, color: "#3f7cff", letterSpacing: ".08em", textTransform: "uppercase" }}>
-                  INRI Secure Send V6
+                  INRI Secure Send V7
                 </div>
                 <div style={{ fontWeight: 900, fontSize: 22, color: isLight ? "#10131a" : "#ffffff" }}>
                   {t.reviewTransaction}
                 </div>
               </div>
               <button onClick={() => setShowReview(false)} disabled={sending} style={modalCloseButtonStyle(isLight)}>
-                {t.close}
+                ×
               </button>
             </div>
 
             <div style={reviewGridStyle}>
               <div style={reviewRowStyle(isLight)}><span>{t.token}</span><strong>{token?.symbol || "-"}</strong></div>
               <div style={reviewRowStyle(isLight)}><span>{t.amount}</span><strong>{amount || "0"}</strong></div>
-              <div style={reviewRowStyle(isLight)}><span>{t.network}</span><strong>{getStoredNetwork().name} · Chain {getStoredNetwork().chainId}</strong></div>
+              <div style={reviewRowStyle(isLight)}><span>{t.network}</span><strong>{activeNetwork.name} · Chain {activeNetwork.chainId}</strong></div>
               <div style={reviewRowStyle(isLight)}><span>{t.recipient}</span><strong>{truncateMiddle(toAddress.trim())}</strong></div>
               <div style={reviewRowStyle(isLight)}><span>{t.contract}</span><strong>{token?.isNative ? t.nativeTransfer : truncateMiddle(token?.address || "-")}</strong></div>
             </div>
 
-            <div style={warningStyle(isLight)}>
-              ⚠️ {t.securityWarning}
-            </div>
+            <div style={warningStyle(isLight)}>⚠️ {t.securityWarning}</div>
+            {!token?.isNative ? <div style={gasNoticeStyle(isLight)}>⛽ {t.gasNotice}</div> : null}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
               <button onClick={() => setShowReview(false)} disabled={sending} style={secondaryButtonStyle()}>
@@ -651,22 +621,8 @@ export default function SendScreen({
       {showScanner ? (
         <div style={modalBackdropStyle} onClick={closeScanner}>
           <div style={modalStyle(isLight)} onClick={(e) => e.stopPropagation()}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 12,
-                gap: 12,
-              }}
-            >
-              <div
-                style={{
-                  fontWeight: 800,
-                  fontSize: 18,
-                  color: isLight ? "#10131a" : "#ffffff",
-                }}
-              >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: 18, color: isLight ? "#10131a" : "#ffffff" }}>
                 {t.scanQr}
               </div>
 
@@ -682,23 +638,10 @@ export default function SendScreen({
               autoPlay
               muted
               playsInline
-              style={{
-                width: "100%",
-                height: 320,
-                objectFit: "cover",
-                borderRadius: 16,
-                border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-                background: "#000",
-              }}
+              style={{ width: "100%", height: 320, objectFit: "cover", borderRadius: 16, border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`, background: "#000" }}
             />
 
-            <div
-              style={{
-                color: isLight ? "#5b6578" : "#97a0b3",
-                fontSize: 13,
-                marginTop: 12,
-              }}
-            >
+            <div style={{ color: isLight ? "#5b6578" : "#97a0b3", fontSize: 13, marginTop: 12 }}>
               {isIosPwaStandalone() ? `${t.scanHint} ${t.openCamera}.` : t.scanHint}
             </div>
           </div>
@@ -709,22 +652,8 @@ export default function SendScreen({
 }
 
 function getText(lang: string) {
-  const common = {
-    network: "Network",
-    contract: "Contract",
-    nativeTransfer: "Native transfer",
-    reviewTransaction: "Review transaction",
-    securityWarning:
-      "Check the recipient and amount carefully. After confirmation, blockchain transactions cannot be reversed.",
-    cancel: "Cancel",
-    confirmSend: "Confirm send",
-    reviewSend: "Review send",
-    secureV3: "SECURE SEND V6 ACTIVE — review first, password second, send last.",
-  };
-
   const map: Record<string, any> = {
     en: {
-      ...common,
       send: "Send",
       token: "Token",
       balance: "Balance",
@@ -741,31 +670,32 @@ function getText(lang: string) {
       noWallet: "Unlock your wallet first.",
       invalidAddress: "Invalid recipient address.",
       invalidAmount: "Invalid amount.",
-      insufficientBalance: "Insufficient balance.",
+      insufficientBalance: "Insufficient balance",
+      available: "Available",
+      tryLowerAmount: "Use a lower amount.",
       sending: "Sending...",
       sent: "Sent",
       sendFailed: "Transaction failed.",
       nativeInfo: "Native token transfer pays network gas fees.",
       tokenInfo: "ERC-20 token transfer through the active network.",
+      gasNotice: "Token transfers still require native INRI in the wallet to pay network gas.",
       scanQr: "Scan QR",
       close: "Close",
       scanHint: "Point your camera at a QR code containing a wallet address.",
       qrCaptured: "Address captured from QR.",
       cameraFail: "Could not open camera.",
       cameraUnavailable: "Camera unavailable.",
+      reviewSend: "Review send",
+      reviewTransaction: "Review transaction",
+      network: "Network",
+      contract: "Contract",
+      nativeTransfer: "Native transfer",
+      securityWarning: "Check the recipient, amount, network and contract before confirming. After confirmation, this transaction cannot be reversed.",
+      cancel: "Cancel",
+      confirmSend: "Confirm send",
+      tokenContractMissing: "Token contract address not found.",
     },
     pt: {
-      ...common,
-      network: "Rede",
-      contract: "Contrato",
-      nativeTransfer: "Transferência nativa",
-      reviewTransaction: "Revisar transação",
-      securityWarning:
-        "Confira o destinatário e o valor com atenção. Depois de confirmar, transações na blockchain não podem ser desfeitas.",
-      cancel: "Cancelar",
-      confirmSend: "Confirmar envio",
-      reviewSend: "Revisar envio",
-      secureV3: "ENVIO SEGURO V6 ATIVO — primeiro revisa, depois pede senha, depois envia.",
       send: "Enviar",
       token: "Token",
       balance: "Saldo",
@@ -782,31 +712,32 @@ function getText(lang: string) {
       noWallet: "Desbloqueie sua carteira primeiro.",
       invalidAddress: "Endereço do destinatário inválido.",
       invalidAmount: "Quantidade inválida.",
-      insufficientBalance: "Saldo insuficiente.",
+      insufficientBalance: "Saldo insuficiente",
+      available: "Disponível",
+      tryLowerAmount: "Use um valor menor.",
       sending: "Enviando...",
       sent: "Enviado",
       sendFailed: "Falha na transação.",
       nativeInfo: "A transferência do token nativo paga as taxas da rede.",
       tokenInfo: "Transferência de token ERC-20 pela rede ativa.",
+      gasNotice: "Transferências de token ainda precisam de INRI nativo na carteira para pagar o gas da rede.",
       scanQr: "Ler QR",
       close: "Fechar",
       scanHint: "Aponte sua câmera para um QR code com endereço de carteira.",
       qrCaptured: "Endereço capturado do QR.",
       cameraFail: "Não foi possível abrir a câmera.",
       cameraUnavailable: "Câmera indisponível.",
+      reviewSend: "Revisar envio",
+      reviewTransaction: "Revisar transação",
+      network: "Rede",
+      contract: "Contrato",
+      nativeTransfer: "Transferência nativa",
+      securityWarning: "Confira o destinatário, valor, rede e contrato antes de confirmar. Depois de confirmar, essa transação não pode ser desfeita.",
+      cancel: "Cancelar",
+      confirmSend: "Confirmar envio",
+      tokenContractMissing: "Endereço do contrato do token não encontrado.",
     },
     es: {
-      ...common,
-      network: "Red",
-      contract: "Contrato",
-      nativeTransfer: "Transferencia nativa",
-      reviewTransaction: "Revisar transacción",
-      securityWarning:
-        "Comprueba cuidadosamente el destinatario y la cantidad. Después de confirmar, las transacciones en blockchain no se pueden deshacer.",
-      cancel: "Cancelar",
-      confirmSend: "Confirmar envío",
-      reviewSend: "Revisar envío",
-      secureV3: "ENVÍO SEGURO V6 ACTIVO — primero revisa, luego contraseña, luego envía.",
       send: "Enviar",
       token: "Token",
       balance: "Saldo",
@@ -823,18 +754,30 @@ function getText(lang: string) {
       noWallet: "Desbloquea tu wallet primero.",
       invalidAddress: "Dirección del destinatario inválida.",
       invalidAmount: "Cantidad inválida.",
-      insufficientBalance: "Saldo insuficiente.",
+      insufficientBalance: "Saldo insuficiente",
+      available: "Disponible",
+      tryLowerAmount: "Usa una cantidad menor.",
       sending: "Enviando...",
       sent: "Enviado",
       sendFailed: "La transacción falló.",
       nativeInfo: "La transferencia del token nativo paga las comisiones de la red.",
       tokenInfo: "Transferencia de token ERC-20 a través de la red activa.",
+      gasNotice: "Las transferencias de tokens también requieren INRI nativo para pagar el gas de la red.",
       scanQr: "Escanear QR",
       close: "Cerrar",
       scanHint: "Apunta tu cámara a un código QR que contenga una dirección de wallet.",
       qrCaptured: "Dirección capturada desde el QR.",
       cameraFail: "No se pudo abrir la cámara.",
       cameraUnavailable: "Cámara no disponible.",
+      reviewSend: "Revisar envío",
+      reviewTransaction: "Revisar transacción",
+      network: "Red",
+      contract: "Contrato",
+      nativeTransfer: "Transferencia nativa",
+      securityWarning: "Revisa el destinatario, monto, red y contrato antes de confirmar. Después de confirmar, esta transacción no se puede revertir.",
+      cancel: "Cancelar",
+      confirmSend: "Confirmar envío",
+      tokenContractMissing: "No se encontró la dirección del contrato del token.",
     },
   };
 
@@ -853,6 +796,15 @@ function truncateMiddle(value: string, left = 8, right = 6) {
   if (!value) return "-";
   if (value.length <= left + right + 3) return value;
   return `${value.slice(0, left)}...${value.slice(-right)}`;
+}
+
+function screenStyle(isLight: boolean): React.CSSProperties {
+  return {
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    borderRadius: 20,
+    background: isLight ? "#ffffff" : "#121621",
+    padding: 16,
+  };
 }
 
 function secureBannerStyle(isLight: boolean): React.CSSProperties {
@@ -900,16 +852,28 @@ function warningStyle(isLight: boolean): React.CSSProperties {
   };
 }
 
-function modalCloseButtonStyle(isLight: boolean): React.CSSProperties {
+function gasNoticeStyle(isLight: boolean): React.CSSProperties {
   return {
-    width: "auto",
-    minWidth: 96,
-    padding: "10px 14px",
+    border: `1px solid ${isLight ? "#bfdbfe" : "rgba(96,165,250,.22)"}`,
+    background: isLight ? "#eff6ff" : "rgba(96,165,250,.08)",
+    color: isLight ? "#1e40af" : "#bfdbfe",
     borderRadius: 14,
-    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
-    background: isLight ? "#f6f8fc" : "#1b2741",
-    color: isLight ? "#10131a" : "#ffffff",
-    cursor: "pointer",
+    padding: "10px 12px",
+    fontSize: 13,
+    lineHeight: 1.45,
+    fontWeight: 700,
+  };
+}
+
+function dangerInlineStyle(isLight: boolean): React.CSSProperties {
+  return {
+    marginTop: 10,
+    border: `1px solid ${isLight ? "#fecaca" : "rgba(248,113,113,.32)"}`,
+    background: isLight ? "#fff1f2" : "rgba(248,113,113,.08)",
+    color: isLight ? "#991b1b" : "#fecaca",
+    borderRadius: 12,
+    padding: "10px 12px",
+    fontSize: 13,
     fontWeight: 800,
   };
 }
@@ -982,6 +946,21 @@ function secondaryButtonStyle(): React.CSSProperties {
   };
 }
 
+function modalCloseButtonStyle(isLight: boolean): React.CSSProperties {
+  return {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#f6f8fc" : "#1b2741",
+    color: isLight ? "#10131a" : "#fff",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: 22,
+    lineHeight: 1,
+  };
+}
+
 const tokenPreviewStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -999,43 +978,67 @@ const tokenLeftStyle: React.CSSProperties = {
 const tokenLogoStyle: React.CSSProperties = {
   width: 34,
   height: 34,
-  borderRadius: 17,
+  borderRadius: 999,
   objectFit: "cover",
 };
 
-function infoStyle(isLight: boolean): React.CSSProperties {
+function addressBoxStyle(isLight: boolean): React.CSSProperties {
   return {
-    textAlign: "center",
-    color: isLight ? "#5b6578" : "#97a0b3",
+    padding: 12,
+    borderRadius: 12,
+    border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
+    background: isLight ? "#f6f8fc" : "#0d111b",
+    color: isLight ? "#4a5568" : "#97a0b3",
+    wordBreak: "break-all",
     fontSize: 13,
   };
 }
 
+const qrBoxStyle: React.CSSProperties = {
+  marginTop: 16,
+  borderRadius: 18,
+  background: "#ffffff",
+  padding: 14,
+  display: "grid",
+  placeItems: "center",
+};
+
+function infoStyle(isLight: boolean): React.CSSProperties {
+  return {
+    color: isLight ? "#5b6578" : "#97a0b3",
+    fontSize: 12,
+    lineHeight: 1.5,
+  };
+}
+
 const messageStyle: React.CSSProperties = {
-  color: "#3f7cff",
-  fontWeight: 700,
-  textAlign: "center",
+  padding: "10px 12px",
+  borderRadius: 12,
+  background: "rgba(63,124,255,.12)",
+  color: "#93c5fd",
   fontSize: 13,
+  fontWeight: 700,
 };
 
 const modalBackdropStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,.6)",
+  background: "rgba(0,0,0,.72)",
   display: "grid",
   placeItems: "center",
-  padding: 16,
-  zIndex: 50,
+  padding: 12,
+  zIndex: 9999,
 };
 
 function modalStyle(isLight: boolean): React.CSSProperties {
   return {
     width: "min(560px, 100%)",
-    maxHeight: "92dvh",
+    maxHeight: "calc(100dvh - 24px)",
     overflowY: "auto",
-    borderRadius: 20,
+    borderRadius: 22,
     border: `1px solid ${isLight ? "#dbe2f0" : "#252b39"}`,
     background: isLight ? "#ffffff" : "#121621",
     padding: 16,
+    boxShadow: "0 24px 80px rgba(0,0,0,.55)",
   };
 }
