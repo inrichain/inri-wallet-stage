@@ -41,7 +41,9 @@ export default function DashboardScreen({ setTab, theme = "dark", lang = "en", a
     const activeKey = normalizeNetworkKeyForTokens(network.key);
     const defaults = getDefaultTokensForNetwork(activeKey);
     const custom = readCustomTokens().filter((item) => normalizeNetworkKeyForTokens(item.networkKey || activeKey) === activeKey);
-    const merged = [...defaults, ...custom] as DashboardToken[];
+    const defaultKeys = new Set(defaults.map((token) => String(token.address || token.symbol || "").toLowerCase()));
+    const safeCustom = custom.filter((token) => !defaultKeys.has(String(token.address || token.symbol || "").toLowerCase()));
+    const merged = [...defaults, ...safeCustom] as DashboardToken[];
     return merged.map((token) => ({ ...token, balance: tokenBalances[token.symbol] || "0.000000" }));
   }, [network.key, tokenBalances]);
 

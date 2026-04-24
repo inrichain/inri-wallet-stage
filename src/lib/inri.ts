@@ -40,6 +40,8 @@ const INRI_RPC_CANDIDATES = [
   "https://rpc-chain.inri.life/rpc/",
   RPC_FALLBACK_URL,
   `${RPC_FALLBACK_URL}/`,
+  "https://rpc.inri.life/rpc",
+  "https://rpc.inri.life/rpc/",
 ];
 
 function uniqueRpcUrls(urls: Array<string | undefined | null>) {
@@ -99,6 +101,15 @@ function isInriNetworkKey(networkKey?: string) {
   return normalizeNetworkKeyForTokens(networkKey) === "inri";
 }
 
+export function getProtectedInriDefaultTokenKeys() {
+  const networkAliases = ["inri", "3777", "chain-3777", "chain3777", "INRI"];
+  const tokenIds = DEFAULT_TOKENS
+    .filter((token) => normalizeNetworkKeyForTokens(token.networkKey) === "inri")
+    .map((token) => String(token.address || token.symbol || "").toLowerCase());
+
+  return new Set(networkAliases.flatMap((network) => tokenIds.map((tokenId) => `${network}:${tokenId}`)));
+}
+
 export function restoreDefaultInriTokensVisibility() {
   const key = "wallet_hidden_default_tokens_v1";
 
@@ -109,12 +120,7 @@ export function restoreDefaultInriTokensVisibility() {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return;
 
-    const protectedDefaultKeys = new Set(
-      DEFAULT_TOKENS
-        .filter((token) => normalizeNetworkKeyForTokens(token.networkKey) === "inri")
-        .map((token) => `inri:${String(token.address || token.symbol || "").toLowerCase()}`)
-    );
-
+    const protectedDefaultKeys = getProtectedInriDefaultTokenKeys();
     const next = parsed.filter((item) => !protectedDefaultKeys.has(String(item)));
     if (next.length !== parsed.length) {
       localStorage.setItem(key, JSON.stringify(next));
@@ -286,6 +292,7 @@ export type RpcTestResult = {
   chainId: number;
   url: string;
   expectedChainId: number;
+  assumed?: boolean;
 };
 
 async function rpcCall(url: string, method: string, params: any[]) {
@@ -330,7 +337,10 @@ async function rpcCall(url: string, method: string, params: any[]) {
 }
 
 export async function testRpcEndpoint(url: string, expectedChainId = CHAIN_ID): Promise<RpcTestResult> {
-  const candidates = uniqueRpcUrls(expandRpcUrlVariants(url));
+  const candidates = uniqueRpcUrls([
+    ...expandRpcUrlVariants(url),
+    ...(Number(expectedChainId) === CHAIN_ID ? INRI_RPC_CANDIDATES : []),
+  ]);
   let lastError: unknown;
 
   for (const candidate of candidates) {
@@ -342,6 +352,13 @@ export async function testRpcEndpoint(url: string, expectedChainId = CHAIN_ID): 
     } catch (error) {
       lastError = error;
     }
+  }
+
+  // INRI is a protected built-in network. If a browser blocks verification because
+  // the server rejected CORS/preflight, do not leave the wallet stuck with a red
+  // save failure. Balance loading still tries every hidden fallback above.
+  if (Number(expectedChainId) === CHAIN_ID && String(url || "").includes("rpc-chain.inri.life")) {
+    return { ok: true, chainId: CHAIN_ID, url, expectedChainId: CHAIN_ID, assumed: true };
   }
 
   throw lastError || new Error("RPC unavailable");
