@@ -11,6 +11,7 @@ import {
   approvePolygonUsdtTx,
   bridgeTxUrl,
   burnInriToPolygonTx,
+  claimBridgeOperationTx,
   depositPolygonToInriTx,
   estimateBridgeQuote,
   formatBridgeAmount,
@@ -115,9 +116,10 @@ export default function BridgeScreen({
   const requiredNetworkKey = direction === "polygon_to_inri" ? "polygon" : "inri";
   const wrongNetwork = network.key !== requiredNetworkKey;
   const hasEnoughBalance = direction === "polygon_to_inri" ? balances.polygonUsdtBalance >= amountRaw : balances.inriIusdBalance >= amountRaw;
-  const needsApproval = direction === "polygon_to_inri" ? balances.polygonUsdtAllowance < amountRaw : balances.inriIusdAllowance < amountRaw;
+  const needsApproval = direction === "polygon_to_inri" ? balances.polygonUsdtAllowance < amountRaw : false;
   const canProceed = !!address && !!privateKey && amountRaw > 0n && hasEnoughBalance && !wrongNetwork;
   const operations = useMemo(() => getBridgeOperations(address).slice(0, 8), [address, opsVersion]);
+  const readyClaimOps = operations.filter((item) => item.status === "ready_to_claim" && !item.claimTxHash);
 
   async function runVerifyNow() {
     try {
@@ -139,9 +141,8 @@ export default function BridgeScreen({
       setBusy(true);
       setConfirmIntent(null);
       setMessage(t.approving);
-      const result = direction === "polygon_to_inri"
-        ? await approvePolygonUsdtTx(privateKey, amountRaw, address)
-        : await approveIusdForBridgeTx(privateKey, amountRaw, address);
+      if (direction !== "polygon_to_inri") return;
+      const result = await approvePolygonUsdtTx(privateKey, amountRaw, address);
       setLastTxHash(result.hash);
       setLastTxDirection(direction);
       setMessage(`${t.approveDone}: ${shortHash(result.hash)}`);
@@ -174,6 +175,23 @@ export default function BridgeScreen({
     }
   }
 
+  async function runClaimOperation(operation: any) {
+    if (!privateKey || !operation) return;
+    try {
+      setBusy(true);
+      setMessage(operation.direction === "polygon_to_inri" ? t.claimingIusd : t.claimingUsdt);
+      const result = await claimBridgeOperationTx(privateKey, operation);
+      setLastTxHash(result.hash);
+      setLastTxDirection(operation.direction === "polygon_to_inri" ? "inri_to_polygon" : "polygon_to_inri");
+      setMessage(operation.direction === "polygon_to_inri" ? t.claimIusdDone : t.claimUsdtDone);
+      setOpsVersion((v) => v + 1);
+    } catch (err: any) {
+      setMessage(err?.shortMessage || err?.message || t.claimFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const contractAddress = direction === "polygon_to_inri" ? POLYGON_LOCKBOX_ADDRESS : INRI_EXECUTOR_ADDRESS;
   const tokenAddress = direction === "polygon_to_inri" ? POLYGON_USDT_ADDRESS : IUSD_TOKEN_ADDRESS;
   const statusSubtitle = direction === "polygon_to_inri" ? t.depositSubtitle : t.withdrawSubtitle;
@@ -189,6 +207,27 @@ export default function BridgeScreen({
                 {t.openExplorer} {shortHash(lastTxHash)}
               </a>
             ) : null}
+          </div>
+        </ScreenCard>
+      ) : null}
+
+      {readyClaimOps.length ? (
+        <ScreenCard theme={theme}>
+          <SectionTitle title={t.readyToReceiveTitle} subtitle={t.readyToReceiveSubtitle} theme={theme} compact />
+          <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+            {readyClaimOps.map((item) => (
+              <div key={item.id} style={{ border: `1px solid ${isLight ? "#bfdbfe" : "#1d4ed8"}`, borderRadius: 18, padding: 16, background: isLight ? "#eff6ff" : "rgba(37,99,235,.12)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontWeight: 900, color: isLight ? "#0f172a" : "#fff" }}>{item.direction === "polygon_to_inri" ? t.readyIusd : t.readyUsdt}</div>
+                    <div className="wallet-ui-subtle" style={{ marginTop: 4 }}>{item.amountOut} {item.toSymbol} • {item.toNetworkName}</div>
+                  </div>
+                  <ActionButton theme={theme} tone="primary" onClick={() => runClaimOperation(item)} disabled={busy}>
+                    {busy ? t.processing : item.direction === "polygon_to_inri" ? t.claimIusdNow : t.claimUsdtNow}
+                  </ActionButton>
+                </div>
+              </div>
+            ))}
           </div>
         </ScreenCard>
       ) : null}
@@ -278,7 +317,7 @@ export default function BridgeScreen({
             </ActionButton>
           ) : null}
           <ActionButton theme={theme} onClick={() => setConfirmIntent("bridge")} disabled={!canProceed || needsApproval || busy} tone="primary">
-            {busy ? t.processing : direction === "polygon_to_inri" ? t.depositNow : t.burnNow}
+            {busy ? t.processing : direction === "polygon_to_inri" ? t.bridgeUsdtToIusd : t.bridgeIusdToUsdt}
           </ActionButton>
           <ActionButton theme={theme} onClick={runVerifyNow} disabled={busy}>
             {busy ? t.processing : t.checkStatusNow}
@@ -317,6 +356,11 @@ export default function BridgeScreen({
                   <InfoRow theme={theme} label={t.fee} value={`${item.feePercent.toFixed(2)}%`} />
                 </div>
                 <div className="wallet-action-row" style={{ marginTop: 12 }}>
+                  {item.status === "ready_to_claim" && !item.claimTxHash ? (
+                    <ActionButton theme={theme} tone="primary" onClick={() => runClaimOperation(item)} disabled={busy}>
+                      {busy ? t.processing : item.direction === "polygon_to_inri" ? t.claimIusdNow : t.claimUsdtNow}
+                    </ActionButton>
+                  ) : null}
                   {item.sourceTxHash ? <a href={bridgeTxUrl(item.direction, item.sourceTxHash)} target="_blank" rel="noreferrer" className="wallet-link-chip">{t.openTx}</a> : null}
                   {item.claimTxHash ? <a href={bridgeTxUrl(item.direction === "polygon_to_inri" ? "inri_to_polygon" : "polygon_to_inri", item.claimTxHash)} target="_blank" rel="noreferrer" className="wallet-link-chip">{t.openSettlementTx}</a> : null}
                 </div>
@@ -448,7 +492,20 @@ function getText(lang: string) {
       networkWarning: (key: string) => `Use the ${key.toUpperCase()} network for this direction.`,
       currentNetwork: (name: string) => `Current network: ${name}`,
       balanceLoadFailed: "Could not refresh bridge balances right now.",
-      checkStatusNow: "Check status now",
+      checkStatusNow: "Refresh",
+      bridgeUsdtToIusd: "Bridge USDT to iUSD",
+      bridgeIusdToUsdt: "Bridge iUSD to USDT",
+      readyToReceiveTitle: "Ready to receive",
+      readyToReceiveSubtitle: "Your bridge claim is ready. Finish it inside the wallet.",
+      readyIusd: "iUSD is ready",
+      readyUsdt: "USDT is ready",
+      claimIusdNow: "Claim iUSD now",
+      claimUsdtNow: "Claim USDT now",
+      claimingIusd: "Claiming iUSD on INRI…",
+      claimingUsdt: "Claiming USDT on Polygon…",
+      claimIusdDone: "iUSD received successfully",
+      claimUsdtDone: "USDT received successfully",
+      claimFailed: "Claim failed",
       checkingStatus: "Checking mint/release status...",
       noNewUpdates: "No new mint/release updates found yet.",
       statusCheckFailed: "Unable to check bridge status right now.",
@@ -511,7 +568,20 @@ function getText(lang: string) {
       networkWarning: (key: string) => `Use a rede ${key.toUpperCase()} para essa direção.`,
       currentNetwork: (name: string) => `Rede atual: ${name}`,
       balanceLoadFailed: "Não foi possível atualizar os saldos do bridge agora.",
-      checkStatusNow: "Checar status agora",
+      checkStatusNow: "Atualizar",
+      bridgeUsdtToIusd: "Comprar iUSD com USDT",
+      bridgeIusdToUsdt: "Vender iUSD por USDT",
+      readyToReceiveTitle: "Pronto para receber",
+      readyToReceiveSubtitle: "Seu claim do bridge está pronto. Finalize dentro da carteira.",
+      readyIusd: "iUSD pronto",
+      readyUsdt: "USDT pronto",
+      claimIusdNow: "Receber iUSD agora",
+      claimUsdtNow: "Receber USDT agora",
+      claimingIusd: "Recebendo iUSD na INRI…",
+      claimingUsdt: "Recebendo USDT na Polygon…",
+      claimIusdDone: "iUSD recebido com sucesso",
+      claimUsdtDone: "USDT recebido com sucesso",
+      claimFailed: "Falha ao receber",
       checkingStatus: "Checando status do mint/release...",
       noNewUpdates: "Ainda não houve novas atualizações de mint/release.",
       statusCheckFailed: "Não foi possível checar o status do bridge agora.",
@@ -574,7 +644,20 @@ function getText(lang: string) {
       networkWarning: (key: string) => `Usa la red ${key.toUpperCase()} para esta dirección.`,
       currentNetwork: (name: string) => `Red actual: ${name}`,
       balanceLoadFailed: "No se pudieron actualizar los saldos del bridge ahora.",
-      checkStatusNow: "Revisar estado ahora",
+      checkStatusNow: "Actualizar",
+      bridgeUsdtToIusd: "Comprar iUSD con USDT",
+      bridgeIusdToUsdt: "Vender iUSD por USDT",
+      readyToReceiveTitle: "Listo para recibir",
+      readyToReceiveSubtitle: "Tu claim del bridge está listo. Finaliza dentro de la wallet.",
+      readyIusd: "iUSD listo",
+      readyUsdt: "USDT listo",
+      claimIusdNow: "Recibir iUSD ahora",
+      claimUsdtNow: "Recibir USDT ahora",
+      claimingIusd: "Recibiendo iUSD en INRI…",
+      claimingUsdt: "Recibiendo USDT en Polygon…",
+      claimIusdDone: "iUSD recibido con éxito",
+      claimUsdtDone: "USDT recibido con éxito",
+      claimFailed: "Error al recibir",
       checkingStatus: "Revisando estado de mint/release...",
       noNewUpdates: "Aún no hay nuevas actualizaciones de mint/release.",
       statusCheckFailed: "No se pudo revisar el estado del bridge ahora.",
