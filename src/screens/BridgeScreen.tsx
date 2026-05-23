@@ -35,6 +35,9 @@ const TOKENS = {
 
 type ConfirmIntent = null | "approve" | "bridge";
 
+console.log("INRI_BRIDGE_CLAIM_PATCH_V2_FULL_FILE_LOADED");
+
+
 export default function BridgeScreen({
   theme = "dark",
   lang = "en",
@@ -119,7 +122,7 @@ export default function BridgeScreen({
   const needsApproval = direction === "polygon_to_inri" ? balances.polygonUsdtAllowance < amountRaw : false;
   const canProceed = !!address && !!privateKey && amountRaw > 0n && hasEnoughBalance && !wrongNetwork;
   const operations = useMemo(() => getBridgeOperations(address).slice(0, 8), [address, opsVersion]);
-  const readyClaimOps = operations.filter((item) => item.status === "ready_to_claim" && !item.claimTxHash);
+  const readyClaimOps = operations.filter((item) => item.status === "ready_to_claim");
 
   async function runVerifyNow() {
     try {
@@ -356,7 +359,7 @@ export default function BridgeScreen({
                   <InfoRow theme={theme} label={t.fee} value={`${item.feePercent.toFixed(2)}%`} />
                 </div>
                 <div className="wallet-action-row" style={{ marginTop: 12 }}>
-                  {item.status === "ready_to_claim" && !item.claimTxHash ? (
+                  {item.status === "ready_to_claim" ? (
                     <ActionButton theme={theme} tone="primary" onClick={() => runClaimOperation(item)} disabled={busy}>
                       {busy ? t.processing : item.direction === "polygon_to_inri" ? t.claimIusdNow : t.claimUsdtNow}
                     </ActionButton>
