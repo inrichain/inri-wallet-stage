@@ -27,6 +27,8 @@ import {
 } from "../lib/bridge";
 import { getStoredNetwork } from "../lib/network";
 
+console.log("INRI_BRIDGE_FORCE_CLAIM_CARD_V3");
+
 const BASE = import.meta.env.BASE_URL || "/";
 const TOKENS = {
   usdt: { symbol: "USDT", logo: `${BASE}token-usdt.png`, network: "Polygon" },
@@ -491,7 +493,7 @@ function getText(lang: string) {
       depositFlow: "Polygon USDT → INRI iUSD",
       withdrawFlow: "INRI iUSD → Polygon USDT",
       depositSubtitle: "Approve USDT on Polygon, deposit to Lockbox, then wait for validator mint on INRI.",
-      withdrawSubtitle: "Approve iUSD on INRI, burn in executor, then wait for release on Polygon.",
+      withdrawSubtitle: "Burn iUSD on INRI, then claim USDT on Polygon.",
       networkWarning: (key: string) => `Use the ${key.toUpperCase()} network for this direction.`,
       currentNetwork: (name: string) => `Current network: ${name}`,
       balanceLoadFailed: "Could not refresh bridge balances right now.",
@@ -567,7 +569,7 @@ function getText(lang: string) {
       depositFlow: "Polygon USDT → INRI iUSD",
       withdrawFlow: "INRI iUSD → Polygon USDT",
       depositSubtitle: "Aprove USDT na Polygon, deposite no Lockbox e aguarde o mint dos validadores na INRI.",
-      withdrawSubtitle: "Aprove iUSD na INRI, faça o burn no executor e aguarde o release na Polygon.",
+      withdrawSubtitle: "Queime iUSD na INRI e depois receba USDT na Polygon.",
       networkWarning: (key: string) => `Use a rede ${key.toUpperCase()} para essa direção.`,
       currentNetwork: (name: string) => `Rede atual: ${name}`,
       balanceLoadFailed: "Não foi possível atualizar os saldos do bridge agora.",
@@ -643,7 +645,7 @@ function getText(lang: string) {
       depositFlow: "Polygon USDT → INRI iUSD",
       withdrawFlow: "INRI iUSD → Polygon USDT",
       depositSubtitle: "Aprueba USDT en Polygon, deposita en Lockbox y espera el mint de validadores en INRI.",
-      withdrawSubtitle: "Aprueba iUSD en INRI, quema en el executor y espera el release en Polygon.",
+      withdrawSubtitle: "Quema iUSD en INRI y luego recibe USDT en Polygon.",
       networkWarning: (key: string) => `Usa la red ${key.toUpperCase()} para esta dirección.`,
       currentNetwork: (name: string) => `Red actual: ${name}`,
       balanceLoadFailed: "No se pudieron actualizar los saldos del bridge ahora.",
